@@ -81,7 +81,7 @@ proprietary equivalent. The format **will** change in incompatible
 ways before v1.
 
 The first stable version (v1.0) will land alongside the InSight
-reference implementation when its Phase 3 engine ships
+reference implementation when its insight-metalog engine ships
 (target: Q3 2026). After v1.0, breaking changes follow semver and
 [GOVERNANCE.md](GOVERNANCE.md).
 
@@ -91,7 +91,7 @@ reference implementation when its Phase 3 engine ships
 
 | Implementation | Language | License | Status |
 |---|---|---|---|
-| **InSight** ([repo](https://github.com/coderoast-dev/insight)) | C++23 | BSL-1.1 (planned, at v1) | Phase 4/5 in progress |
+| **InSight** ([repo](https://github.com/coderoast-dev/insight)) | C++23 | BSL-1.1 (planned, at v1) | detection + explain (insight-eidos) in progress |
 | *Your implementation here* | — | — | PRs welcome |
 
 The spec is deliberately implementation-agnostic. Any language that
