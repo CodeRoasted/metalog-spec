@@ -4,7 +4,7 @@
 > bounded-size summaries of log streams.
 
 **Status:** Draft v0.2.0 · April 2026
-**Editor:** the InSight project ([github.com/coderoast-dev/insight](https://github.com/coderoast-dev/insight))
+**Editor:** the InSight project (`insight-metalog` and `insight-eidos`)
 **License:** Spec text — [CC-BY-4.0](LICENSE-SPEC). Reference schemas — [MIT](LICENSE).
 
 ---
@@ -81,8 +81,9 @@ proprietary equivalent. The format **will** change in incompatible
 ways before v1.
 
 The first stable version (v1.0) will land alongside the InSight
-reference implementation when its insight-metalog engine ships
-(target: Q3 2026). After v1.0, breaking changes follow semver and
+reference implementation when the `insight-metalog` producer and
+downstream `insight-eidos` consumers have enough compatibility evidence
+to freeze the schema. After v1.0, breaking changes follow semver and
 [GOVERNANCE.md](GOVERNANCE.md).
 
 ---
@@ -91,7 +92,8 @@ reference implementation when its insight-metalog engine ships
 
 | Implementation | Language | License | Status |
 |---|---|---|---|
-| **InSight** ([repo](https://github.com/coderoast-dev/insight)) | C++23 | BSL-1.1 (planned, at v1) | detection + explain (insight-eidos) in progress |
+| **insight-metalog** ([repo](https://github.com/coderoast-dev/insight-metalog)) | C++23 | CodeRoast-owned package | MetaLog v0.2.0 producer, compose, and diff |
+| **insight-eidos** ([repo](https://github.com/coderoast-dev/insight-eidos)) | C++23 | CodeRoast-owned package | Detection and explanation consumers |
 | *Your implementation here* | — | — | PRs welcome |
 
 The spec is deliberately implementation-agnostic. Any language that
@@ -118,7 +120,7 @@ following are **explicitly out of scope** for MetaLog:
 - **Anomaly detection algorithms.** A MetaLog is the *input* to a
   detector. The detector itself is not part of this spec.
 - **A wire protocol.** MetaLogs are JSON documents. Move them with
-  HTTP, Kafka, files, or carrier pigeons.
+  HTTP, Kafka, files, object storage, or any transport that fits your system.
 
 ---
 
