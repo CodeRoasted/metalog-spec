@@ -11,6 +11,40 @@ The spec follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [0.3.0] — 2026-05-17
+
+### Added
+- **`stats.tail_summary`** (optional) — three-field block
+  exposing the *shape* of the long tail in bounded space:
+  `tail_template_count`, `tail_entropy_bits`, `tail_max_rate`.
+  Adds ~60 bytes per window; preserves the 4 KB / 1 M-line
+  envelope target. Lets consumers detect tail-mass concentration
+  shifts that the existing `tail_count` / `tail_unique` pair
+  cannot expose. SPEC §3.6, ADR
+  [`adr/0002-stats-tail-summary.md`](adr/0002-stats-tail-summary.md).
+- **§12.3.1 (informative)** — Multi-source n-gram noise. Documents
+  the structural limitation that `behavior.top_ngrams`-derived
+  signals (BranchingShift, NoveltyNGram, VanishedTemplate against
+  n-gram pairs) carry interleaving-dependent noise on composed
+  multi-source documents and SHOULD be treated by consumers as
+  supporting evidence, not standalone alert sources.
+
+### Changed
+- None. Backwards compatible with 0.2.x. Consumers that do not
+  understand `tail_summary` ignore it per §8 Conformance.
+
+### Schema
+- `schema/metalog.v0.schema.json` extended with the optional
+  `stats.tail_summary` object (all three fields required when
+  present). No existing field changes.
+
+### Status
+- `attribution` remains reserved for v1.0.
+- v0.3.x is still draft; MINOR bumps may break compatibility
+  until v1.0.
+
+---
+
 ## [0.2.0] — 2026-04-27
 
 ### Changed (breaking)

@@ -1,4 +1,4 @@
-# MetaLog Specification — v0.2.0 (Draft)
+# MetaLog Specification — v0.3.0 (Draft)
 
 > **Status:** Draft. Subject to incompatible change until v1.0.
 > **Cross-reference:** [`RATIONALE.md`](RATIONALE.md) for *why*
@@ -134,6 +134,11 @@ how often*, in bounded space.
   "top_k_size": 64,                   // integer, required, value of k used
   "tail_count": 4117,                  // integer, required, sum of counts not in top_k
   "tail_unique": 31,                   // integer, required, number of distinct templates in tail
+  "tail_summary": {                    // object, optional — see §3.6 (new in v0.3.0)
+    "tail_template_count": 31,         // integer, required if tail_summary present
+    "tail_entropy_bits":   3.42,       // number,  required if tail_summary present
+    "tail_max_rate":       0.0021      // number,  required if tail_summary present
+  },
   "entropy_bits": 5.83                 // number, optional, Shannon entropy over template distribution
 }
 ```
@@ -325,6 +330,75 @@ cardinality delta:
   `current_cardinality / previous_cardinality > N` (e.g. N = 10) and
   `previous_cardinality < threshold` (baseline was low-cardinality).
 - `field_histogram_deltas` **MUST** be sorted by `js_divergence` descending.
+
+---
+
+### 3.6 `tail_summary` — bounded shape of the long tail (optional)
+
+> **New in v0.3.0.** Producers **MAY** include a `tail_summary` object inside
+> `stats` to give consumers a bounded, comparable picture of the templates that
+> fell *outside* `top_k`. The block adds at most three numeric fields to the
+> document; cost is ~60 bytes per window irrespective of input cardinality.
+> See [`adr/0002-stats-tail-summary.md`](adr/0002-stats-tail-summary.md) for
+> the design discussion and the trade-off against composition lossiness
+> (§12.3).
+
+```jsonc
+"tail_summary": {
+  "tail_template_count": 31,     // integer, required if tail_summary present
+                                 // distinct templates contributing to tail_count
+                                 // (informational mirror of stats.tail_unique;
+                                 // emitted alongside the other fields so the
+                                 // tail can be reasoned about in isolation)
+  "tail_entropy_bits":   3.42,   // number,  required if tail_summary present
+                                 // Shannon entropy over the *tail-only*
+                                 // distribution (counts of templates NOT in
+                                 // top_k, row-normalised across the tail)
+  "tail_max_rate":       0.0021  // number,  required if tail_summary present
+                                 // max(count_i) / lines_observed across all
+                                 // tail templates; gives consumers an upper
+                                 // bound on per-template tail activity
+}
+```
+
+- The block is **OPTIONAL**. Producers **MAY** omit `tail_summary` entirely;
+  consumers **MUST** treat its absence as "no tail-shape information available".
+- When emitted, **all three fields are REQUIRED**. Producers **MUST NOT** emit
+  a partial `tail_summary`.
+- `tail_template_count` **MUST** equal `stats.tail_unique`. The duplication
+  is intentional: it allows the `tail_summary` block to be carried, cached,
+  or transmitted independently of the parent `stats` object without losing
+  context.
+- `tail_entropy_bits` **MUST** be computed over the row-normalised tail
+  distribution `p_i = count_i / tail_count`. A tail of one template yields
+  0.0 (Dirac); a uniform tail of `tail_template_count = n` yields `log2(n)`.
+- `tail_max_rate` **MUST** be in `[0.0, 1.0]` and **MUST** equal
+  `max(count_i) / lines_observed` across all tail templates, or 0.0 when
+  `tail_count = 0`.
+- Producers **MAY** emit `tail_summary` even when `tail_count = 0`; in that
+  case `tail_template_count = 0`, `tail_entropy_bits = 0.0`, and
+  `tail_max_rate = 0.0`.
+
+#### 3.6.1 Why a summary instead of a longer `top_k`?
+
+Doubling `top_k` from 64 to 128 grows the envelope by ~10 KB per window in
+inline mode (§11). `tail_summary` provides three of the four signals that
+matter most for downstream detection — *how many* templates are in the tail
+(`tail_template_count`), *how spread* they are (`tail_entropy_bits`), and
+*how loud* the loudest one is (`tail_max_rate`) — for an envelope cost of
+~60 bytes. This preserves the headline 4 KB / 1 M-lines target ([§11](#11-size-budget))
+while letting consumers detect tail-mass shifts (e.g. error-burst templates
+that never quite reach `top_k` but collectively grow), which the current
+`tail_count` / `tail_unique` pair cannot expose.
+
+#### 3.6.2 Compatibility with composition (§12)
+
+A composer **SHOULD** recompute `tail_summary` from the merged document's
+tail rather than averaging inputs. When inputs do not provide
+`tail_summary`, the composer **MAY** omit it from the composed document
+(consumers must already handle absence). The block is intentionally
+designed to survive lossy composition: all three fields are computable from
+the post-composition `stats` regardless of input attribution.
 
 ---
 
@@ -652,6 +726,39 @@ those counts to the merged tail. The total `lines_observed` across
 the merged document **MUST** still equal `A.lines_observed +
 B.lines_observed` (no lines are invented or lost), even if the
 top-K coverage drops slightly.
+
+#### 12.3.1 Multi-source n-gram noise (informative)
+
+When a composed document covers **multiple sub-sources** (e.g. several
+service instances merged into a fleet view) the `behavior.top_ngrams`
+field carries an additional, **structural** source of noise that consumers
+**MUST** account for. Per-source event streams interleave during
+composition in an order that depends on per-event timestamps and tie-break
+rules; small differences in interleaving order can swap which template
+follows which, even when the per-source behaviour is unchanged. This
+manifests downstream as:
+
+- *Dominant-path swaps*: the greedy path reconstruction (§4.1) can flip
+  between two near-equal candidates window-to-window, producing a stream of
+  "the dominant path changed" signals that reflect interleaving rather than
+  service behaviour.
+- *N-gram churn*: bigrams `(A, B)` and `(A, B')` can both have appreciable
+  mass and trade ranking each composition, leading to "new n-gram" /
+  "vanished n-gram" reports against a stable underlying workload.
+
+Consumers operating on composed MetaLogs **SHOULD** treat the standalone
+confidence of n-gram-derived signals (BranchingShift, NoveltyNGram,
+VanishedTemplate when scoped to an n-gram pair) as **inherently bounded
+below the level required for an isolated alert** and **SHOULD** surface
+those signals only as supporting evidence for incidents that other
+detectors (Drift, FieldDrift, VolumeAnomaly, Composite cross-scale
+agreement) also raise. This is a *structural* limitation of multi-source
+composition, not a producer defect.
+
+Producers **MAY** mitigate by computing `behavior` per session
+([§4.3](#43-sessions_observed-and-session_aware)) where sessions are
+defined to avoid cross-source interleaving; but consumers **MUST NOT**
+assume any particular producer mitigation is in place.
 
 ### 12.4 `provenance` block
 
