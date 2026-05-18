@@ -92,8 +92,8 @@ to freeze the schema. After v1.0, breaking changes follow semver and
 
 | Implementation | Language | License | Status |
 |---|---|---|---|
-| **insight-metalog** ([repo](https://github.com/coderoast-dev/insight-metalog)) | C++23 | CodeRoast-owned package | MetaLog v0.2.0 producer, compose, and diff |
-| **insight-eidos** ([repo](https://github.com/coderoast-dev/insight-eidos)) | C++23 | CodeRoast-owned package | Detection and explanation consumers |
+| **insight-metalog** ([repo](https://github.com/CodeRoasted/insight-metalog)) | C++23 | CodeRoast-owned package | MetaLog v0.2.0 producer, compose, and diff |
+| **insight-eidos** ([repo](https://github.com/CodeRoasted/insight-eidos)) | C++23 | CodeRoast-owned package | Detection and explanation consumers |
 | *Your implementation here* | — | — | PRs welcome |
 
 The spec is deliberately implementation-agnostic. Any language that

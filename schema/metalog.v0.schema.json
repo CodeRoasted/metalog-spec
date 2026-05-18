@@ -2,7 +2,7 @@
     "$schema": "https://json-schema.org/draft/2020-12/schema",
     "$id": "https://metalog-spec.org/schema/metalog.v0.schema.json",
     "title": "MetaLog v0",
-    "description": "A bounded-size statistical fingerprint of a window of log behaviour. v0.2.0. See https://github.com/coderoast-dev/metalog-spec/blob/main/SPEC.md",
+    "description": "A bounded-size statistical fingerprint of a window of log behaviour. v0.2.0. See https://github.com/CodeRoasted/metalog-spec/blob/main/SPEC.md",
     "type": "object",
     "additionalProperties": true,
     "required": [
@@ -20,35 +20,75 @@
         },
         "producer": {
             "type": "object",
-            "required": ["name", "version"],
+            "required": [
+                "name",
+                "version"
+            ],
             "properties": {
-                "name": { "type": "string", "minLength": 1 },
-                "version": { "type": "string", "minLength": 1 },
-                "implementation_uri": { "type": "string", "format": "uri" }
+                "name": {
+                    "type": "string",
+                    "minLength": 1
+                },
+                "version": {
+                    "type": "string",
+                    "minLength": 1
+                },
+                "implementation_uri": {
+                    "type": "string",
+                    "format": "uri"
+                }
             },
             "additionalProperties": false
         },
         "window": {
             "type": "object",
-            "required": ["start", "end", "duration_seconds", "lines_observed"],
+            "required": [
+                "start",
+                "end",
+                "duration_seconds",
+                "lines_observed"
+            ],
             "properties": {
-                "start": { "type": "string", "format": "date-time" },
-                "end": { "type": "string", "format": "date-time" },
-                "duration_seconds": { "type": "integer", "minimum": 0 },
-                "lines_observed": { "type": "integer", "minimum": 0 }
+                "start": {
+                    "type": "string",
+                    "format": "date-time"
+                },
+                "end": {
+                    "type": "string",
+                    "format": "date-time"
+                },
+                "duration_seconds": {
+                    "type": "integer",
+                    "minimum": 0
+                },
+                "lines_observed": {
+                    "type": "integer",
+                    "minimum": 0
+                }
             },
             "additionalProperties": false
         },
         "source": {
             "type": "object",
             "properties": {
-                "service": { "type": "string" },
-                "fleet": { "type": "string" },
-                "host_count": { "type": "integer", "minimum": 0 },
-                "host": { "type": "string" },
+                "service": {
+                    "type": "string"
+                },
+                "fleet": {
+                    "type": "string"
+                },
+                "host_count": {
+                    "type": "integer",
+                    "minimum": 0
+                },
+                "host": {
+                    "type": "string"
+                },
                 "tags": {
                     "type": "object",
-                    "additionalProperties": { "type": "string" }
+                    "additionalProperties": {
+                        "type": "string"
+                    }
                 }
             },
             "additionalProperties": false
@@ -57,7 +97,10 @@
             "type": "object",
             "description": "Optional dedup map template_id -> template_str (SPEC §3.4).",
             "patternProperties": {
-                "^[a-z]+:.+$": { "type": "string", "minLength": 1 }
+                "^[a-z]+:.+$": {
+                    "type": "string",
+                    "minLength": 1
+                }
             },
             "additionalProperties": false
         },
@@ -71,11 +114,26 @@
                 "tail_unique"
             ],
             "properties": {
-                "unique_templates": { "type": "integer", "minimum": 0 },
-                "top_k_size": { "type": "integer", "minimum": 1 },
-                "tail_count": { "type": "integer", "minimum": 0 },
-                "tail_unique": { "type": "integer", "minimum": 0 },
-                "entropy_bits": { "type": "number", "minimum": 0 },
+                "unique_templates": {
+                    "type": "integer",
+                    "minimum": 0
+                },
+                "top_k_size": {
+                    "type": "integer",
+                    "minimum": 1
+                },
+                "tail_count": {
+                    "type": "integer",
+                    "minimum": 0
+                },
+                "tail_unique": {
+                    "type": "integer",
+                    "minimum": 0
+                },
+                "entropy_bits": {
+                    "type": "number",
+                    "minimum": 0
+                },
                 "tail_summary": {
                     "type": "object",
                     "description": "Optional bounded summary of the tail (templates not in top_k). Added in v0.3.0. See SPEC §3.6.",
@@ -85,9 +143,19 @@
                         "tail_max_rate"
                     ],
                     "properties": {
-                        "tail_template_count": { "type": "integer", "minimum": 0 },
-                        "tail_entropy_bits":   { "type": "number",  "minimum": 0 },
-                        "tail_max_rate":       { "type": "number",  "minimum": 0, "maximum": 1 }
+                        "tail_template_count": {
+                            "type": "integer",
+                            "minimum": 0
+                        },
+                        "tail_entropy_bits": {
+                            "type": "number",
+                            "minimum": 0
+                        },
+                        "tail_max_rate": {
+                            "type": "number",
+                            "minimum": 0,
+                            "maximum": 1
+                        }
                     },
                     "additionalProperties": false
                 },
@@ -95,16 +163,32 @@
                     "type": "array",
                     "items": {
                         "type": "object",
-                        "required": ["template_id", "count", "frequency"],
+                        "required": [
+                            "template_id",
+                            "count",
+                            "frequency"
+                        ],
                         "properties": {
                             "template_id": {
                                 "type": "string",
                                 "pattern": "^[a-z]+:.+$"
                             },
-                            "template": { "type": "string", "minLength": 1 },
-                            "count": { "type": "integer", "minimum": 0 },
-                            "frequency": { "type": "number", "minimum": 0, "maximum": 1 },
-                            "level": { "type": "string" }
+                            "template": {
+                                "type": "string",
+                                "minLength": 1
+                            },
+                            "count": {
+                                "type": "integer",
+                                "minimum": 0
+                            },
+                            "frequency": {
+                                "type": "number",
+                                "minimum": 0,
+                                "maximum": 1
+                            },
+                            "level": {
+                                "type": "string"
+                            }
                         },
                         "additionalProperties": false
                     }
@@ -114,27 +198,65 @@
         },
         "behavior": {
             "type": "object",
-            "required": ["ngram_size", "top_ngrams", "top_ngrams_size"],
+            "required": [
+                "ngram_size",
+                "top_ngrams",
+                "top_ngrams_size"
+            ],
             "properties": {
-                "ngram_size": { "type": "integer", "minimum": 2 },
-                "top_ngrams_size": { "type": "integer", "minimum": 1 },
-                "graph_edge_count": { "type": "integer", "minimum": 0 },
-                "sessions_observed": { "type": "integer", "minimum": 0 },
-                "session_aware": { "type": "boolean" },
+                "ngram_size": {
+                    "type": "integer",
+                    "minimum": 2
+                },
+                "top_ngrams_size": {
+                    "type": "integer",
+                    "minimum": 1
+                },
+                "graph_edge_count": {
+                    "type": "integer",
+                    "minimum": 0
+                },
+                "sessions_observed": {
+                    "type": "integer",
+                    "minimum": 0
+                },
+                "session_aware": {
+                    "type": "boolean"
+                },
                 "dominant_path": {
                     "type": "array",
-                    "items": { "type": "string", "pattern": "^[a-z]+:.+$" }
+                    "items": {
+                        "type": "string",
+                        "pattern": "^[a-z]+:.+$"
+                    }
                 },
                 "branching": {
                     "type": "array",
                     "items": {
                         "type": "object",
-                        "required": ["template_id", "fanout", "total_outgoing", "entropy_bits"],
+                        "required": [
+                            "template_id",
+                            "fanout",
+                            "total_outgoing",
+                            "entropy_bits"
+                        ],
                         "properties": {
-                            "template_id": { "type": "string", "pattern": "^[a-z]+:.+$" },
-                            "fanout": { "type": "integer", "minimum": 0 },
-                            "total_outgoing": { "type": "integer", "minimum": 0 },
-                            "entropy_bits": { "type": "number", "minimum": 0 }
+                            "template_id": {
+                                "type": "string",
+                                "pattern": "^[a-z]+:.+$"
+                            },
+                            "fanout": {
+                                "type": "integer",
+                                "minimum": 0
+                            },
+                            "total_outgoing": {
+                                "type": "integer",
+                                "minimum": 0
+                            },
+                            "entropy_bits": {
+                                "type": "number",
+                                "minimum": 0
+                            }
                         },
                         "additionalProperties": false
                     }
@@ -143,15 +265,29 @@
                     "type": "array",
                     "items": {
                         "type": "object",
-                        "required": ["sequence", "count", "probability"],
+                        "required": [
+                            "sequence",
+                            "count",
+                            "probability"
+                        ],
                         "properties": {
                             "sequence": {
                                 "type": "array",
                                 "minItems": 2,
-                                "items": { "type": "string", "pattern": "^[a-z]+:.+$" }
+                                "items": {
+                                    "type": "string",
+                                    "pattern": "^[a-z]+:.+$"
+                                }
                             },
-                            "count": { "type": "integer", "minimum": 0 },
-                            "probability": { "type": "number", "minimum": 0, "maximum": 1 }
+                            "count": {
+                                "type": "integer",
+                                "minimum": 0
+                            },
+                            "probability": {
+                                "type": "number",
+                                "minimum": 0,
+                                "maximum": 1
+                            }
                         },
                         "additionalProperties": false
                     }
@@ -161,28 +297,67 @@
         },
         "stability": {
             "type": "object",
-            "required": ["previous_window_end"],
+            "required": [
+                "previous_window_end"
+            ],
             "properties": {
-                "previous_window_end": { "type": "string", "format": "date-time" },
-                "kl_divergence": { "type": "number", "minimum": 0 },
-                "js_divergence": { "type": "number", "minimum": 0, "maximum": 1 },
-                "new_templates": { "type": "integer", "minimum": 0 },
-                "vanished_templates": { "type": "integer", "minimum": 0 },
-                "stability_score": { "type": "number", "minimum": 0, "maximum": 1 }
+                "previous_window_end": {
+                    "type": "string",
+                    "format": "date-time"
+                },
+                "kl_divergence": {
+                    "type": "number",
+                    "minimum": 0
+                },
+                "js_divergence": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 1
+                },
+                "new_templates": {
+                    "type": "integer",
+                    "minimum": 0
+                },
+                "vanished_templates": {
+                    "type": "integer",
+                    "minimum": 0
+                },
+                "stability_score": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 1
+                }
             },
             "additionalProperties": false
         },
         "attribution": {
             "type": "object",
-            "required": ["dimension", "sketch_type", "sketch_params", "encoded"],
+            "required": [
+                "dimension",
+                "sketch_type",
+                "sketch_params",
+                "encoded"
+            ],
             "properties": {
-                "dimension": { "type": "string", "minLength": 1 },
+                "dimension": {
+                    "type": "string",
+                    "minLength": 1
+                },
                 "sketch_type": {
                     "type": "string",
-                    "enum": ["count_min", "exact", "topk_per_dim"]
+                    "enum": [
+                        "count_min",
+                        "exact",
+                        "topk_per_dim"
+                    ]
                 },
-                "sketch_params": { "type": "object" },
-                "encoded": { "type": "string", "pattern": "^base64:" }
+                "sketch_params": {
+                    "type": "object"
+                },
+                "encoded": {
+                    "type": "string",
+                    "pattern": "^base64:"
+                }
             },
             "additionalProperties": false
         },
@@ -191,20 +366,38 @@
             "description": "Set when this MetaLog was composed from others (SPEC §12).",
             "items": {
                 "type": "object",
-                "required": ["window"],
+                "required": [
+                    "window"
+                ],
                 "properties": {
                     "window": {
                         "type": "object",
-                        "required": ["start", "end"],
+                        "required": [
+                            "start",
+                            "end"
+                        ],
                         "properties": {
-                            "start": { "type": "string", "format": "date-time" },
-                            "end": { "type": "string", "format": "date-time" }
+                            "start": {
+                                "type": "string",
+                                "format": "date-time"
+                            },
+                            "end": {
+                                "type": "string",
+                                "format": "date-time"
+                            }
                         },
                         "additionalProperties": true
                     },
-                    "source": { "type": "object" },
-                    "lines_observed": { "type": "integer", "minimum": 0 },
-                    "document_id": { "type": "string" }
+                    "source": {
+                        "type": "object"
+                    },
+                    "lines_observed": {
+                        "type": "integer",
+                        "minimum": 0
+                    },
+                    "document_id": {
+                        "type": "string"
+                    }
                 },
                 "additionalProperties": false
             }
