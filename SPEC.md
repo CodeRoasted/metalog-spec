@@ -52,7 +52,7 @@ top-level fields:
 
 | Field | Type | Required | Purpose |
 |---|---|---|---|
-| `metalog_version` | string | yes | Spec version this document conforms to. SemVer string (e.g. `"0.2.0"`). |
+t| `metalog_version` | string | yes | Spec version this document conforms to. SemVer string (e.g. `"0.3.0"`). |
 | `producer` | object | yes | Identifies the producing implementation. See §2.1. |
 | `window` | object | yes | The time interval covered. See §2.2. |
 | `source` | object | yes | What was observed (service, host, fleet). See §2.3. |
