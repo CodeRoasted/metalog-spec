@@ -127,6 +127,27 @@
                 }
             },
             "additionalProperties": false
+        },
+        "tail_delta": {
+            "type": "object",
+            "description": "Long-tail shape change (SPEC §13). Present only when both documents carried a stats.tail_summary.",
+            "required": [
+                "previous_tail_template_count", "current_tail_template_count", "tail_template_count_delta",
+                "previous_tail_entropy_bits", "current_tail_entropy_bits", "tail_entropy_bits_delta",
+                "previous_tail_max_rate", "current_tail_max_rate", "tail_max_rate_delta"
+            ],
+            "properties": {
+                "previous_tail_template_count": { "type": "integer", "minimum": 0 },
+                "current_tail_template_count": { "type": "integer", "minimum": 0 },
+                "tail_template_count_delta": { "type": "integer" },
+                "previous_tail_entropy_bits": { "type": "number", "minimum": 0 },
+                "current_tail_entropy_bits": { "type": "number", "minimum": 0 },
+                "tail_entropy_bits_delta": { "type": "number" },
+                "previous_tail_max_rate": { "type": "number", "minimum": 0, "maximum": 1 },
+                "current_tail_max_rate": { "type": "number", "minimum": 0, "maximum": 1 },
+                "tail_max_rate_delta": { "type": "number" }
+            },
+            "additionalProperties": false
         }
     }
 }

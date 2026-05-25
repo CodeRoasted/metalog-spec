@@ -11,6 +11,22 @@ The spec follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [0.4.0] — 2026-05-24
+
+### Added
+- **`MetaLogDiff.tail_delta`** (optional) — the pair-wise difference of
+  two documents' `stats.tail_summary` blocks, completing the 0.3.0
+  tail-shape work: 0.3.0 added the per-window tail signal, 0.4.0 adds
+  its diff. Each `tail_summary` field is reported as
+  `previous_`/`current_`/`*_delta`. Emitted only when **both** inputs
+  carry a `tail_summary`. A concentrating (`tail_entropy_bits_delta` < 0)
+  and louder (`tail_max_rate_delta` > 0) tail is the signature of a
+  chronic error emerging below `top_k` — invisible to `template_deltas`
+  alone. Structured evidence, not a standalone alert. SPEC §13.5;
+  `diff_version` → `0.4.0`.
+
+---
+
 ## [0.3.0] — 2026-05-17
 
 ### Added
