@@ -1,5 +1,5 @@
 {
-    "metalog_version": "0.3.0",
+    "metalog_version": "0.4.0",
     "producer": {
         "name": "insight",
         "version": "0.2.0",

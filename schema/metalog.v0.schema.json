@@ -136,7 +136,7 @@
                 },
                 "tail_summary": {
                     "type": "object",
-                    "description": "Optional bounded summary of the tail (templates not in top_k). Added in v0.3.0. See SPEC §3.6.",
+                    "description": "Optional bounded summary of the tail (templates not in top_k). Added in v0.4.0. See SPEC §3.6.",
                     "required": [
                         "tail_template_count",
                         "tail_entropy_bits",
