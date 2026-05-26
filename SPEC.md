@@ -1,4 +1,4 @@
-# MetaLog Specification — v0.3.0 (Draft)
+# MetaLog Specification — v0.4.0 (Draft)
 
 > **Status:** Draft. Subject to incompatible change until v1.0.
 > **Cross-reference:** [`RATIONALE.md`](RATIONALE.md) for *why*
@@ -52,7 +52,7 @@ top-level fields:
 
 | Field | Type | Required | Purpose |
 |---|---|---|---|
-t| `metalog_version` | string | yes | Spec version this document conforms to. SemVer string (e.g. `"0.3.0"`). |
+t| `metalog_version` | string | yes | Spec version this document conforms to. SemVer string (e.g. `"0.4.0"`). |
 | `producer` | object | yes | Identifies the producing implementation. See §2.1. |
 | `window` | object | yes | The time interval covered. See §2.2. |
 | `source` | object | yes | What was observed (service, host, fleet). See §2.3. |
@@ -792,7 +792,7 @@ pairs (not just consecutive windows).
 
 ```jsonc
 {
-  "diff_version": "0.2.0",
+  "diff_version": "0.4.0",
   "current":  { "window": { "start": "...", "end": "..." }, "document_id": "sha256:..." },
   "previous": { "window": { "start": "...", "end": "..." }, "document_id": "sha256:..." },
   "kl_divergence": 0.043,
@@ -825,7 +825,12 @@ pairs (not just consecutive windows).
       "current_cardinality":   183204,
       "cardinality_delta":     181357
     }
-  ]
+  ],
+  "tail_delta": {                      // object, optional — see §13.5 (new in v0.4.0)
+    "previous_tail_template_count": 40, "current_tail_template_count": 38, "tail_template_count_delta": -2,
+    "previous_tail_entropy_bits": 4.0,  "current_tail_entropy_bits": 1.0,  "tail_entropy_bits_delta": -3.0,
+    "previous_tail_max_rate": 0.001,    "current_tail_max_rate": 0.02,     "tail_max_rate_delta": 0.019
+  }
 }
 ```
 
@@ -834,9 +839,9 @@ pairs (not just consecutive windows).
 - `diff_version`, `current`, `previous` are **REQUIRED**.
 - All other fields are **OPTIONAL** but at least one of
   `kl_divergence`, `js_divergence`, `template_deltas`,
-  `new_templates`, `vanished_templates`, `branching_delta`, or
-  `ngram_delta` **MUST** be present (an empty diff is a no-op
-  document and should not be emitted).
+  `new_templates`, `vanished_templates`, `branching_delta`,
+  `ngram_delta`, or `tail_delta` **MUST** be present (an empty diff
+  is a no-op document and should not be emitted).
 - `template_deltas` **SHOULD** be capped at the larger of the two
   inputs' `top_k_size`. Producers **MAY** report the cap in
   `extensions.org.metalog.deltas_truncated_at`.
@@ -860,6 +865,32 @@ pairs (not just consecutive windows).
   semantically two snapshots, not in time order).
 - **Pre/post deploy:** diff the MetaLogs of the 5 minutes before
   and 5 minutes after a deploy.
+
+### 13.5 `tail_delta` — long-tail shape change (new in v0.4.0)
+
+`tail_delta` is the pair-wise difference of the two documents'
+`stats.tail_summary` blocks (§3.6). It generalises the tail-shape
+signal to arbitrary pairs the same way the rest of the diff
+generalises `stability` (§5).
+
+- A producer **MUST** emit `tail_delta` only when **both** input
+  documents carry a `stats.tail_summary`. A one-sided tail is a tail
+  *appearing* or *vanishing*, which is already expressed by the
+  template-level `new_templates` / `vanished_templates` signals.
+- Each of the three `tail_summary` fields is reported as a
+  `previous_` / `current_` pair plus a `*_delta` (`= current −
+  previous`), so consumers need not re-derive it.
+- **Interpretation.** A *negative* `tail_entropy_bits_delta`
+  (tail concentrating toward one template) combined with a
+  *positive* `tail_max_rate_delta` (the loudest tail template
+  growing) is the signature of a single chronic error emerging
+  inside the long tail **without breaching `top_k`** — a class of
+  change invisible to `template_deltas` alone. This is the pair-wise
+  analogue of the streaming tail-shift detector described in
+  consumer implementations; the diff field is stateless and carries
+  no baseline.
+- `tail_delta` **MUST NOT** be treated as an alert on its own; it is
+  structured evidence. Consumers decide significance.
 
 ---
 
