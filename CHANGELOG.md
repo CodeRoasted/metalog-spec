@@ -29,6 +29,22 @@ The spec follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - **§3.7 reservoir** (formalisation of the shipped reservoir): see §3.7.
 
 ### Added
+- **§2.4 Processing identifiers (`canonicalization_version`,
+  `retention_profile`)** — two opaque top-level strings naming the
+  *producer-side processing contract*: the canonicalization rules and the
+  retention parameters under which the document was generated. Independent of
+  `metalog_version`. **Comparability gate (normative):** when both inputs to
+  `compose()` (§12) or to `MetaLogDiff` (§13) carry one of these identifiers,
+  the values **MUST** be equal; mismatch **MUST** fail or be signalled as
+  incompatible. Recapped in §9; enforced explicitly in §12.1 (compose) and §13
+  (diff). The `retention_profile` is the field that §3.7 references for
+  reservoir weights/size/caps.
+- **§12.1 reservoir-carry under `compose()`** — composition now lists
+  `C.stats.reservoir` explicitly: salience **re-derived** over merged counts,
+  `structural_surprise`/`novelty` carried as **max**, entries excluded from the
+  tail (§3.7.3). Resolves the multi-scale rare-salient memory gap (composed
+  baselines previously had no reservoir).
+- **§3.7 reservoir** (formalisation of the shipped reservoir): see §3.7.
 - **§15 Re-derivation coordinate** (optional): `source_ref` (opaque resolvable
   handle + resolver-kind) + event-time `bounds` `{start_tick, end_tick}` make any
   window re-derivable to source (`raw = replay(source, bounds)`),

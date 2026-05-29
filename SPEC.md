@@ -60,6 +60,8 @@ t| `metalog_version` | string | yes | Spec version this document conforms to. Se
 | `producer` | object | yes | Identifies the producing implementation. See §2.1. |
 | `window` | object | yes | The time interval covered. See §2.2. |
 | `source` | object | yes | What was observed (service, host, fleet). See §2.3. |
+| `canonicalization_version` | string | no | Opaque identifier for the canonicalization rules in effect. Gates `compose()`/diff comparability. See §2.4. |
+| `retention_profile` | string | no | Opaque identifier for the retention parameters (top_k, reservoir, salience weights, diversity caps). Gates `compose()`/diff comparability. See §2.4. |
 | `stats` | object | yes | Per-template counts and frequency metrics. See §3. |
 | `templates` | object | no | Optional dedup map `template_id → template_str`. See §3.4. |
 | `behavior` | object | no | Sequence/transition fingerprint. See §4. |
@@ -114,6 +116,33 @@ it **MUST** emit its best estimate and **SHOULD** emit an
 
 Identifies *what* the MetaLog describes. All fields are optional but
 producers **SHOULD** populate at least one of `service` or `fleet`.
+
+### 2.4 `canonicalization_version` and `retention_profile`
+
+A MetaLog **MAY** carry two opaque processing-identifier strings that name the
+**contract** under which it was produced:
+
+- `canonicalization_version` — names the **canonicalization rules** in effect
+  (masking, tokenization, classification — the rules that map raw bytes to
+  templates and structural metadata). It **MUST** be bumped when those rules'
+  *output-affecting* semantics change; a binary rebuild with no rule change
+  **MUST NOT** bump it. It is **not** a binary build id.
+- `retention_profile` — names the **retention parameters** in effect: `top_k`
+  size (§3.1), reservoir admission weights and size and diversity caps (§3.7),
+  and the salience arithmetic. It **MUST** be bumped when any of those
+  parameters change.
+
+The values are **opaque strings**. This spec defines neither a registry of names
+nor a canonical format; producers and consumers within an environment **MUST**
+agree on their meaning out-of-band.
+
+**Comparability gate (normative).** When both inputs to `compose()` (§12) or to
+a `MetaLogDiff` operation (§13) carry `canonicalization_version`, the values
+**MUST** be **equal**; an operation across mismatched values **MUST** fail or
+**MUST** signal incompatibility to the consumer. The same rule applies to
+`retention_profile`. When an input omits an identifier, the operation **MAY**
+proceed but the consumer **SHOULD** treat the result with caution — the
+documents may have been produced under incompatible contracts.
 
 ---
 
@@ -637,6 +666,13 @@ Producers and consumers **MUST** check `metalog_version`'s MAJOR
 component and **MAY** refuse to process documents with an unknown
 MAJOR.
 
+**Processing identifiers (separate axis).** Distinct from the spec version,
+`canonicalization_version` and `retention_profile` (§2.4) identify the
+*producer-side processing contract* under which a document was generated. They
+evolve independently of `metalog_version`. `compose()` (§12) and `MetaLogDiff`
+(§13) **MUST** enforce equality of these identifiers across inputs that carry
+them; see §2.4 for the comparability gate.
+
 ---
 
 ## 10. Security considerations
@@ -746,6 +782,18 @@ to a 1-hour MetaLog).
 - `C.stability` **MUST** be omitted (it is meaningless across
   composed inputs); consumers wanting a current-vs-prior view of a
   composed document should use §13 Diff explicitly.
+- `C.canonicalization_version` is `A.canonicalization_version` if equal to
+  `B.canonicalization_version`. When the values **differ**, `compose()` **MUST**
+  fail (the inputs were produced under incompatible canon contracts; merging
+  them yields a fingerprint addressable to no consistent contract). When **one**
+  or **both** inputs omit the identifier, the composer **MAY** proceed but
+  **MUST NOT** synthesize a value (omit it in `C`). The same rule applies to
+  `C.retention_profile`.
+- `C.stats.reservoir` is **carried** through composition: salience is **re-
+  derived** over the merged per-template counts (rarity shifts on merge),
+  `structural_surprise` and `novelty` are carried as the **max** across inputs,
+  and carried entries remain **excluded** from the tail (§3.7.3). The composed
+  reservoir is therefore present at every pyramid scale.
 - `C.templates` is the union of `A.templates` and `B.templates`
   (both keyed by `template_id`; values are byte-equal by §3.2 so
   conflicts cannot arise).
@@ -828,6 +876,13 @@ A `MetaLogDiff` is a **separate JSON document type** (not a block
 inside a MetaLog) that describes the difference between two
 MetaLogs. It generalises the `stability` block (§5) to arbitrary
 pairs (not just consecutive windows).
+
+A producer **MUST** enforce the §2.4 comparability gate on the two inputs: when
+both carry `canonicalization_version`, the values **MUST** be equal; when both
+carry `retention_profile`, the values **MUST** be equal. Diffing across
+mismatched processing identifiers **MUST** fail or be signalled as
+incompatible — the templates and salience scores under different contracts are
+not directly comparable.
 
 ### 13.1 Document structure
 
