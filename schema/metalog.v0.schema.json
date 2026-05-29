@@ -216,13 +216,6 @@
                     "type": "integer",
                     "minimum": 0
                 },
-                "sessions_observed": {
-                    "type": "integer",
-                    "minimum": 0
-                },
-                "session_aware": {
-                    "type": "boolean"
-                },
                 "dominant_path": {
                     "type": "array",
                     "items": {

@@ -11,12 +11,10 @@ keywords: **MUST**, **MUST NOT**, **SHOULD**, **SHOULD NOT**, **MAY**.
 > inside `stats.top_k` entries — they live in an optional top-level
 > `templates` dedup map instead, and may be omitted entirely
 > (id-only mode). The `behavior` block has been formalised
-> (`dominant_path`, `graph_edge_count`, `branching`,
-> `sessions_observed`, `session_aware`). Two sibling sections were
-> added: `compose()` (§12) for merging MetaLogs across windows or
-> shards, and a separate `MetaLogDiff` document (§13). Sessions are
-> defined in §14. See [`CHANGELOG.md`](CHANGELOG.md) for the full
-> diff.
+> (`dominant_path`, `graph_edge_count`, `branching`). Two sibling
+> sections were added: `compose()` (§12) for merging MetaLogs across
+> windows or shards, and a separate `MetaLogDiff` document (§13). See
+> [`CHANGELOG.md`](CHANGELOG.md) for the full diff.
 
 ---
 
@@ -32,9 +30,6 @@ keywords: **MUST**, **MUST NOT**, **SHOULD**, **SHOULD NOT**, **MAY**.
   template. See §3.2.
 - **Window** — A contiguous time interval over which a single MetaLog
   is computed.
-- **Session** — A producer-defined opaque grouping of related events
-  (e.g. trace ID, request ID, user session). Used to scope sequence
-  observations. See §14.
 - **Producer** — A program that consumes log lines and emits MetaLog
   documents.
 - **Consumer** — A program that reads MetaLog documents (dashboard,
@@ -428,9 +423,7 @@ Captures *how* templates follow each other, beyond raw frequency.
       "total_outgoing": 9421,           // sum of counts on outgoing edges
       "entropy_bits": 0.918             // H over the row-normalised outgoing distribution
     }
-  ],
-  "sessions_observed": 0,               // integer, optional, distinct session keys seen
-  "session_aware": false                // bool, optional, true iff this fingerprint was computed per-session (§14)
+  ]
 }
 ```
 
@@ -466,14 +459,6 @@ the other). Producers **SHOULD** emit branching for at least the
 nodes that appear in `top_ngrams` and `dominant_path`; emitting it
 for *every* node is **NOT REQUIRED** (and may exceed the size
 budget).
-
-### 4.3 `sessions_observed` and `session_aware`
-
-These two fields disclose how the producer scoped its sequence
-observations. See §14. When `session_aware = false`, n-grams cross
-session boundaries (the global event stream); when
-`session_aware = true`, n-grams are computed within a single session
-and aggregated across sessions.
 
 Producers that cannot compute sequence information (e.g. a streaming
 producer with no buffering) **MUST** omit the `behavior` object
@@ -603,9 +588,6 @@ MAJOR.
   This is **less sensitive** than raw logs but **not zero**.
   Consumers **SHOULD** treat MetaLogs with the same access controls
   as service-level metrics.
-- Session keys (§14) **MUST NOT** carry user-identifying information
-  in interoperable MetaLogs. Producers **SHOULD** hash external
-  identifiers before using them as session keys.
 - Sketches in `attribution` are probabilistic and **MUST NOT** be
   treated as authoritative for security decisions.
 
@@ -755,11 +737,6 @@ detectors (Drift, FieldDrift, VolumeAnomaly, Composite cross-scale
 agreement) also raise. This is a *structural* limitation of multi-source
 composition, not a producer defect.
 
-Producers **MAY** mitigate by computing `behavior` per session
-([§4.3](#43-sessions_observed-and-session_aware)) where sessions are
-defined to avoid cross-source interleaving; but consumers **MUST NOT**
-assume any particular producer mitigation is in place.
-
 ### 12.4 `provenance` block
 
 When emitted, `provenance` is an array of objects:
@@ -891,49 +868,3 @@ generalises `stability` (§5).
   no baseline.
 - `tail_delta` **MUST NOT** be treated as an alert on its own; it is
   structured evidence. Consumers decide significance.
-
----
-
-## 14. Sessions
-
-A **session** is a producer-defined opaque grouping of related
-events. Examples: HTTP request trace ID, user login session,
-distributed-trace span tree, Kafka partition key.
-
-### 14.1 Why sessions matter
-
-A bare global event stream conflates events from concurrent
-unrelated activities. The bigram `(login, payment_failed)` looks
-suspicious until you realise the login and the failure belonged to
-two different users. Session-aware n-grams remove this confounding.
-
-### 14.2 Behaviour when `session_aware = true`
-
-When a producer computes `behavior` per-session and aggregates:
-
-- An n-gram **MUST NOT** span a session boundary. The producer
-  groups events by session key, computes the per-session n-grams,
-  and sums their counts into the global `top_ngrams` table.
-- `behavior.sessions_observed` **MUST** be set to the number of
-  distinct session keys that contributed at least one event during
-  the window.
-- `behavior.session_aware` **MUST** be `true`.
-- `dominant_path` is computed over the aggregated per-session
-  transition graph (a transition `A → B` exists if some session
-  observed `A` immediately followed by `B`).
-
-### 14.3 Behaviour when `session_aware = false`
-
-When a producer cannot or does not want to identify sessions, it
-**MUST** omit `behavior.session_aware` (treated as `false`) and
-**MAY** omit `behavior.sessions_observed` (treated as `0`). N-grams
-are computed over the global event stream as in v0.1.
-
-### 14.4 Session key opacity
-
-Session keys **MUST NOT** appear in interoperable MetaLogs. They
-are an internal partitioning hint for the producer. Consumers see
-only the aggregated per-session counts via the standard `behavior`
-fields. Producers needing to expose session-level breakdowns
-**SHOULD** emit one MetaLog per session and combine them via §12
-Composition with `provenance` annotations.

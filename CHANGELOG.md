@@ -11,6 +11,18 @@ The spec follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [Unreleased]
+
+### Removed
+- **§14 Sessions** and the two `behavior` fields `sessions_observed` /
+  `session_aware` — premature. Session-awareness is deferred to the planned
+  `CORRELATION_ID` classification (salience epic §4.1); the bespoke session_key
+  was an unsourced specialization and has been ripped from the implementation
+  (insight-canon, insight-metalog). N-grams remain computed over the global event
+  stream until session-scoping rides classification.
+
+---
+
 ## [0.4.0] — 2026-05-24
 
 ### Added

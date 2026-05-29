@@ -82,8 +82,6 @@
                 "entropy_bits": 1.812
             }
         ],
-        "sessions_observed": 0,
-        "session_aware": false,
         "top_ngrams": [
             {
                 "sequence": [
