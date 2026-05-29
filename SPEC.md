@@ -404,6 +404,61 @@ tail rather than averaging inputs. When inputs do not provide
 designed to survive lossy composition: all three fields are computable from
 the post-composition `stats` regardless of input attribution.
 
+### 3.7 `reservoir` — salient entries retained beyond `top_k` (optional)
+
+`top_k` retains by **frequency**; `tail_summary` (§3.6) captures only the
+*aggregate* shape of everything below it. Neither preserves a **rare-but-important
+single** template — a lone fatal, an off-path branch — which is exactly the event
+a fingerprint must not lose. The optional `stats.reservoir` is a **bounded** set
+of such entries, retained by **intrinsic salience, not frequency**.
+
+#### 3.7.1 Entry shape
+
+| field | type | meaning |
+|---|---|---|
+| `template_id` | string | as in `top_k` (§3.2). |
+| `count` | uint | occurrences in the window. |
+| `frequency` | number | `count / lines_observed` (§3.3 precision). |
+| `template` | string, optional | omitted in dedup / id-only modes (§3.4). |
+| `level` | string, optional | severity level when known. |
+| `structural_role` | string, optional | announced role (e.g. `terminator`); omitted when none. |
+| `structural_surprise` | uint `0..100` | deviation of the template's most-likely incoming transition from the `dominant_path` (§4.1); `0` = on the expected flow. |
+| `novelty` | uint `0..100` | how late the template first appeared within the window (first-seen position over `lines_observed`); `0` = present from the start. The `retention_profile` MAY weight/cap it softer than severity/structure. |
+| `salience` | uint | the deterministic admission/ranking score (§3.7.2). |
+| `within_window_ordinal` | uint, optional | reconciled first-seen ordinal; the per-entry re-derivation sub-coordinate (§15.4). |
+
+A `reservoir` entry **MUST NOT** also appear in `top_k` (the reservoir holds only
+templates that did not qualify by frequency).
+
+#### 3.7.2 Salience and admission
+
+`salience` is a **deterministic, integer** score combining intrinsic axes —
+severity (from `level` / `structural_role` / content), `structural_surprise`, and
+`novelty` — **modulated by rarity**. Rarity is a **modulator, never a gate**: a
+benign, contentless template scores `0` and **MUST NOT** be admitted (rarity alone
+never promotes a template). Admission is **salience-ranked**, subject to a
+**per-class diversity cap** (the reservoir covers *distinct* salient kinds, not
+many variants of one), and **bounded** by the configured reservoir size.
+
+The exact weights, reservoir size, and diversity caps are the producer's
+**`retention_profile`** (§9), not fixed by this spec. Their **mechanism** is
+normative: salience combines the named axes with rarity-modulation, admission is
+salience-ranked + diversity-capped, arithmetic is **integer** with **tie-break by
+`template_id`**, and a given input under a given `retention_profile` **MUST** yield
+a **bit-identical** reservoir. Two documents are comparable (diff, §13) only under
+a **matching** `retention_profile`.
+
+#### 3.7.3 Relationship to `tail_summary` and composition
+
+`tail_summary` (§3.6) is computed over the **residual after `top_k` ∪
+`reservoir`**; a reservoir-promoted template **MUST NOT** be double-counted in the
+tail aggregates. Under composition (§12) the reservoir is **carried**: `salience`
+is **re-derived** over the merged counts (rarity shifts on merge),
+`structural_surprise` / `novelty` are carried as the **max** across inputs, and
+entries remain **excluded from the tail**. A composed reservoir is re-derivable
+for any template that was salient in **at least one** input; it cannot recover a
+template that was pure-tail in every input (the `compose`-lossy-tail limit).
+
 ---
 
 ## 4. `behavior` — sequence fingerprint (optional)
