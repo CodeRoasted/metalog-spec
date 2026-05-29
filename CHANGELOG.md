@@ -13,10 +13,12 @@ The spec follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
-> **Version → 0.5.0 (Draft).** Phase-3 spec formalization, landing
-> incrementally. §15 below is the first piece; further additions (the
-> `reservoir` section, header `canonicalization_version` / `retention_profile`
-> + `compose()`/diff version-gating, compose-visible field histograms) follow.
+> **Version → 0.5.0 (Draft).** Phase-3 spec formalization **complete in
+> scope** (still Draft; v1.0 freeze gated on broader criteria — see ROADMAP).
+> 0.5.0 contracts the salience-epic shape end-to-end: §3.7 reservoir, §2.4
+> processing identifiers + compose/diff gating, §15 re-derivation coordinate
+> (raw/composed XOR), and §12.1 reservoir-carry + compose-visible field
+> histograms.
 
 ### Changed
 - **§15.2 raw / composed XOR (refined during 0.5.0 Draft).** A coordinate is now
@@ -26,9 +28,17 @@ The spec follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `source_ref`/`bounds`; consumers discriminate by `children.present`. Resolves
   the ambiguity earlier 0.5.0 drafts had between required `source_ref`/`bounds`
   and "address-is-the-children" composition.
-- **§3.7 reservoir** (formalisation of the shipped reservoir): see §3.7.
 
 ### Added
+- **§3.5 / §12.1 compose-visible field histograms.** `param_histograms` are
+  **carried** through `compose()` (previously dropped — the F8 / F2-value gap).
+  Per `(template_id, param_index)` pair present in both inputs: merge
+  `value_counts` (union + sum, top-N truncate to cap), sum `total`, recompute
+  `entropy_bits`; `approximate_cardinality` MAY use sketch-union or
+  `max(A, B)` as a conservative lower bound. One-input-only histograms MAY be
+  carried unchanged (`total` reflects partial coverage) or omitted. Per-slot
+  value-distribution shifts now remain visible against composed (pyramid-
+  baseline) documents, not only at raw scale.
 - **§2.4 Processing identifiers (`canonicalization_version`,
   `retention_profile`)** — two opaque top-level strings naming the
   *producer-side processing contract*: the canonicalization rules and the

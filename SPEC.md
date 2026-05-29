@@ -364,6 +364,15 @@ cardinality delta:
   `previous_cardinality < threshold` (baseline was low-cardinality).
 - `field_histogram_deltas` **MUST** be sorted by `js_divergence` descending.
 
+**Composition (compose-visible).** `param_histograms` are **carried** through
+`compose()` — they are not lossy at composed scales. For each
+`(template_id, param_index)` present in both inputs the composer merges
+`value_counts` (union + summed counts, truncated to the cap), sets the merged
+`total`, recomputes `entropy_bits`, and updates `approximate_cardinality`. See
+§12.1 for the normative rule. As a result, per-slot value-distribution shifts
+remain visible in a `MetaLogDiff` taken against a composed (pyramid-baseline)
+document, not only at the raw scale.
+
 ---
 
 ### 3.6 `tail_summary` — bounded shape of the long tail (optional)
@@ -794,6 +803,21 @@ to a 1-hour MetaLog).
   `structural_surprise` and `novelty` are carried as the **max** across inputs,
   and carried entries remain **excluded** from the tail (§3.7.3). The composed
   reservoir is therefore present at every pyramid scale.
+- `C.stats.top_k[*].param_histograms` are **carried** through composition. For
+  each `(template_id, param_index)` pair present in **both** inputs'
+  histograms, the composer **MUST** merge: union the `value_counts` keys, sum
+  the counts, truncate to the producer's `max_param_histograms` cap (keeping
+  the top-N by count); set `total = A.total + B.total`; recompute
+  `entropy_bits` over the (possibly-truncated) merged `value_counts`;
+  `approximate_cardinality` **MAY** be merged via a sketch union when the
+  producer supports it (§3.5.1), otherwise set to `max(A.cardinality,
+  B.cardinality)` as a conservative lower-bound estimate. When a histogram is
+  present in only **one** input (the other had the template in its tail, or
+  omitted the histogram), the composer **MAY** carry it unchanged — in which
+  case `total` reflects only that input's contribution — or **MAY** omit it.
+  This makes per-slot value-distribution shifts visible in `MetaLogDiff`
+  against composed baselines (status-code regimes, latency-bucket shifts, etc.)
+  that previously vanished at composed scales.
 - `C.templates` is the union of `A.templates` and `B.templates`
   (both keyed by `template_id`; values are byte-equal by §3.2 so
   conflicts cannot arise).
