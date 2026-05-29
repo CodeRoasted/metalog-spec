@@ -13,6 +13,25 @@ The spec follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+> **Version → 0.5.0 (Draft).** Phase-3 spec formalization, landing
+> incrementally. §15 below is the first piece; further additions (the
+> `reservoir` section, header `canonicalization_version` / `retention_profile`
+> + `compose()`/diff version-gating, compose-visible field histograms) follow.
+
+### Added
+- **§15 Re-derivation coordinate** (optional): `source_ref` (opaque resolvable
+  handle + resolver-kind) + event-time `bounds` `{start_tick, end_tick}` make any
+  window re-derivable to source (`raw = replay(source, bounds)`),
+  canon-version-independent (guarantee 1); optional `canonicalization_version` +
+  `config_hash` reproduce the fingerprint (guarantee 2). Window-level mandatory;
+  optional bounded per-reservoir `within_window_ordinal`; composed = set of child
+  coordinates. **Event-time-only bounds MUST** — replay resolvers prefix-monotone
+  in the target, fetch resolvers stable event-time selection (replay form
+  verified). Descriptive metadata; never feeds deterministic-content; recovered
+  raw re-enters the bounding gate.
+- §14 retained as a **Reserved tombstone** (formerly Sessions) so §15+ references
+  stay stable.
+
 ### Removed
 - **§14 Sessions** and the two `behavior` fields `sessions_observed` /
   `session_aware` — premature. Session-awareness is deferred to the planned

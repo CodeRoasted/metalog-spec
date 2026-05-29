@@ -1,4 +1,4 @@
-# MetaLog Specification — v0.4.0 (Draft)
+# MetaLog Specification — v0.5.0 (Draft)
 
 > **Status:** Draft. Subject to incompatible change until v1.0.
 > **Cross-reference:** [`RATIONALE.md`](RATIONALE.md) for *why*
@@ -7,6 +7,15 @@
 This document uses [RFC 2119](https://www.rfc-editor.org/rfc/rfc2119)
 keywords: **MUST**, **MUST NOT**, **SHOULD**, **SHOULD NOT**, **MAY**.
 
+> **What changed in 0.5 (Phase-3 formalization, in progress):** added §15 the
+> **re-derivation coordinate** — every window is addressable back to its source
+> (`raw(window) = replay(source, bounds)`) for on-demand raw recovery and citable
+> findings. §14 *Sessions* is now a removed-section tombstone (deferred to
+> correlation-keyed `trace_id` processing). Further 0.5 additions are landing:
+> the `reservoir` (salient-entry) section, header `canonicalization_version` /
+> `retention_profile` with `compose()`/diff version-gating, and compose-visible
+> field histograms. See [`CHANGELOG.md`](CHANGELOG.md).
+>
 > **What changed in 0.2:** template strings are no longer required
 > inside `stats.top_k` entries — they live in an optional top-level
 > `templates` dedup map instead, and may be omitted entirely
@@ -868,3 +877,106 @@ generalises `stability` (§5).
   no baseline.
 - `tail_delta` **MUST NOT** be treated as an alert on its own; it is
   structured evidence. Consumers decide significance.
+
+---
+
+## 14. Sessions
+
+*Reserved — removed in 0.5.0.* This section number formerly specified
+per-session n-grams (`behavior.session_aware` / `sessions_observed`). It was
+removed as a premature, unsourced specialization. Session-awareness is deferred
+to correlation-keyed processing over a standard `trace_id` (a `CORRELATION_ID`
+class); n-grams remain computed over the global event stream until then. The
+number is retained as a tombstone to keep cross-references stable. See
+[`CHANGELOG.md`](CHANGELOG.md).
+
+---
+
+## 15. Re-derivation coordinate (optional)
+
+A MetaLog document is a **lossy** fingerprint: canonicalization, top-k/reservoir
+compression, and `compose()` discard the raw bytes. The **re-derivation
+coordinate** makes any window **addressable back to its source**, so ground truth
+is recoverable on demand — `raw(window) = replay(source, bounds)` — with no raw
+buffering, and every finding **citable and verifiable**.
+
+### 15.1 Two guarantees
+
+A coordinate provides one or both of:
+
+1. **Raw recovery** (mandatory when a coordinate is present): `source_ref` +
+   event-time `bounds` recover the window's raw bytes. **Independent of the
+   canonicalization version** — it addresses bytes upstream of canon.
+2. **Fingerprint reproduction** (optional): additionally
+   `canonicalization_version` + `config_hash` re-derive the *same fingerprint*
+   (canon output depends on canon code + config, not just raw bytes).
+
+### 15.2 Fields
+
+A `coordinate` object, when present, **MUST** contain:
+
+- `source_ref` — `{ resolver_kind: string, handle: string }`. An **opaque,
+  resolvable** handle plus a tag selecting the resolver. The handle's meaning is
+  defined by the environment, **not** this spec (e.g. a deterministic-replay
+  source key, an immutable artifact URI, or an `otel_trace` reference). A
+  producer **MUST NOT** assume a particular resolver.
+- `bounds` — `{ start_tick: uint64, end_tick: uint64 }`. **Event-time** integer
+  ticks; the window is `[start_tick, end_tick)`. Ticks **MUST** be integers (no
+  float) and **MUST** be bit-identical across replays.
+
+and **MAY** contain:
+
+- `canonicalization_version` — string; required for guarantee (2). The semantic
+  canonicalization-rules version, **not** a binary build id.
+- `config_hash` — string; hash of the effective canon+metalog config, for
+  guarantee (2).
+- `children` — array of coordinates; present **only** on composed documents
+  (§15.5).
+
+### 15.3 Event-time bounds — normative
+
+Window membership **MUST** be determined **solely** by event-time
+∈ `[start_tick, end_tick)`. It **MUST NOT** depend on the global sequence
+counter (non-deterministic across replays — the transport race carve-out) or on
+replay depth. Two conformance forms by resolver class:
+
+- **Replay resolvers MUST be prefix-monotone in the target:**
+  `replay(source, [start, T_mid])` **MUST** equal the event-time prefix of
+  `replay(source, [start, T])` for every `T_mid ≤ T`.
+- **Fetch resolvers** (immutable source) **MUST** yield **deterministic
+  event-time selection:** the set of events with event-time ∈ `[start, end)` over
+  the fetched bytes **MUST** be stable across fetches.
+
+*Conformance evidence (replay).* Verified on a deterministic-replay source: two
+replays to a target are byte-identical (1502 lines), and a replay to an earlier
+target is the exact event-time prefix of the later one (752-line prefix at the
+mid target) — bounds are replay-depth-independent. Producers **SHOULD** keep such
+a replay round-trip as a standing conformance fixture.
+
+### 15.4 Granularity
+
+- A **window-level** coordinate is the unit of addressability.
+- A **per-reservoir-entry** sub-coordinate (`within_window_ordinal`, the
+  reconciled first-seen ordinal within the window) is **OPTIONAL** and bounded by
+  the reservoir size. It is a **guarantee-(2)** aid: a reservoir entry is a canon
+  artifact, so locating it requires re-deriving raw (1) then re-canonicalizing
+  (2). A producer **MUST NOT** emit a per-line coordinate (unbounded).
+
+### 15.5 Composition
+
+A composed document's coordinate **MUST** be the **set of its raw children's
+coordinates** (carried alongside `provenance`, §12.4), **never** a single coarse
+`[first, last]` range (which over-claims across gaps, shards, or sources). A
+composed coordinate therefore always resolves to **raw children**, never to a
+composed intermediate.
+
+### 15.6 Determinism, security, and the bounding gate
+
+- Coordinate values are part of the deterministic document — bit-identical across
+  replays. They are **descriptive metadata** and **MUST NOT** feed any
+  deterministic-content computation.
+- Raw recovered via a coordinate **MUST** re-enter the normal canonicalization /
+  bounding path before exposure to a downstream consumer — recovery yields a
+  bounded re-derived artifact, not a raw dump.
+- Resolvability is bounded by **source retention**: a coordinate is a pointer;
+  this spec does not guarantee the source outlives the document.
