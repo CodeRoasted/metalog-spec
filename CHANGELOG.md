@@ -18,6 +18,16 @@ The spec follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 > `reservoir` section, header `canonicalization_version` / `retention_profile`
 > + `compose()`/diff version-gating, compose-visible field histograms) follow.
 
+### Changed
+- **§15.2 raw / composed XOR (refined during 0.5.0 Draft).** A coordinate is now
+  explicitly **either** a *raw* coordinate (`source_ref`+`bounds`) **or** a
+  *composed* coordinate (`children`), mutually exclusive — never both, never
+  neither. Composed coordinates **MUST NOT** emit sentinel values for
+  `source_ref`/`bounds`; consumers discriminate by `children.present`. Resolves
+  the ambiguity earlier 0.5.0 drafts had between required `source_ref`/`bounds`
+  and "address-is-the-children" composition.
+- **§3.7 reservoir** (formalisation of the shipped reservoir): see §3.7.
+
 ### Added
 - **§15 Re-derivation coordinate** (optional): `source_ref` (opaque resolvable
   handle + resolver-kind) + event-time `bounds` `{start_tick, end_tick}` make any

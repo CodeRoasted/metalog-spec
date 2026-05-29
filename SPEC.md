@@ -968,7 +968,13 @@ A coordinate provides one or both of:
 
 ### 15.2 Fields
 
-A `coordinate` object, when present, **MUST** contain:
+A `coordinate` describes either a **raw** window (a single addressable source)
+or a **composed** window (the set of its raw children's coordinates, §15.5).
+**Exactly one** of the two field groups below **MUST** be present in a given
+coordinate; a producer **MUST NOT** emit both and **MUST NOT** emit neither.
+Consumers discriminate by the presence of `children`.
+
+**Raw coordinate** — addresses a single source:
 
 - `source_ref` — `{ resolver_kind: string, handle: string }`. An **opaque,
   resolvable** handle plus a tag selecting the resolver. The handle's meaning is
@@ -979,14 +985,27 @@ A `coordinate` object, when present, **MUST** contain:
   ticks; the window is `[start_tick, end_tick)`. Ticks **MUST** be integers (no
   float) and **MUST** be bit-identical across replays.
 
-and **MAY** contain:
+**Composed coordinate** — addresses a `compose()` output:
+
+- `children` — a non-empty array of `coordinate` objects, each addressing a raw
+  (or recursively composed) child of the composition. A composed coordinate
+  **MUST NOT** carry `source_ref` or `bounds`: it has no single source, and a
+  coarse `[start, end]` standing in for the children would over-claim across
+  gaps, shards, or sources (§15.5).
+
+A coordinate of either kind **MAY** additionally contain:
 
 - `canonicalization_version` — string; required for guarantee (2). The semantic
   canonicalization-rules version, **not** a binary build id.
 - `config_hash` — string; hash of the effective canon+metalog config, for
   guarantee (2).
-- `children` — array of coordinates; present **only** on composed documents
-  (§15.5).
+
+> **Encoding note (non-normative).** Earlier drafts of `0.5.0` required
+> `source_ref`/`bounds` on every coordinate and forced composed coordinates to
+> emit sentinel values (e.g. `source_ref={"composed",""}`, `bounds={0,0}`) as a
+> "see children" marker. That workaround is **no longer permitted**: the two
+> field groups are mutually exclusive, and sentinel values **MUST NOT** be
+> emitted on composed coordinates.
 
 ### 15.3 Event-time bounds — normative
 
