@@ -20,17 +20,20 @@
             "region": "eu-west-3"
         }
     },
+    "canonicalization_version": "canon-1.3.8",
+    "retention_profile": "tier2-salience-f1",
     "templates": {
         "h:90585f810bb26f3ccb3193975150dd40": "User <*> logged in from <*>",
         "h:6c05dc06a24a45a267b3818679e456dd": "GET /api/v1/cart/<*> 200 <*>ms",
         "h:2c0d325d15f820b8485948ee8c117fd7": "DB connection pool size=<*> in_use=<*>",
-        "h:fb7bee89967bc69ed7f5e7008598544b": "Payment <*> failed: <*>"
+        "h:fb7bee89967bc69ed7f5e7008598544b": "Payment <*> failed: <*>",
+        "h:6bafbb07d45412828b58106f4682993c": "FATAL: payment ledger checksum mismatch shard=<*>"
     },
     "stats": {
         "unique_templates": 87,
         "top_k_size": 64,
-        "tail_count": 4117,
-        "tail_unique": 31,
+        "tail_count": 4116,
+        "tail_unique": 30,
         "entropy_bits": 5.83,
         "top_k": [
             {
@@ -56,6 +59,19 @@
                 "count": 42,
                 "frequency": 0.000228,
                 "level": "ERROR"
+            }
+        ],
+        "reservoir": [
+            {
+                "template_id": "h:6bafbb07d45412828b58106f4682993c",
+                "count": 1,
+                "frequency": 0.0000054,
+                "level": "FATAL",
+                "structural_role": "Terminator",
+                "structural_surprise": 73,
+                "novelty": 88,
+                "salience": 91,
+                "within_window_ordinal": 182947
             }
         ]
     },
@@ -100,6 +116,18 @@
         "new_templates": 3,
         "vanished_templates": 1,
         "stability_score": 0.94
+    },
+    "coordinate": {
+        "source_ref": {
+            "resolver_kind": "logcraft",
+            "handle": "checkout-api@scenario#seed=7"
+        },
+        "bounds": {
+            "start_tick": 1745488800000,
+            "end_tick": 1745489100000
+        },
+        "canonicalization_version": "canon-1.3.8",
+        "config_hash": "sha256:8f14e45fceea167a5a36dedd4bea2543c7b6e5f1a2d3c4b5a6978f0e1d2c3b4a5"
     },
     "extensions": {
         "org.insight.compression_ratio": {
