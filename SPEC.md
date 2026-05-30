@@ -313,15 +313,22 @@ paths, status codes) rather than only at the template level.
   configurable limit, default 256, and count overflows in `total`).
 - A consumer **MUST** treat an absent `param_histograms` array as equivalent to
   an empty array (the slot was not tracked).
-- **Integer-only on the wire (determinism).** `param_histograms` carries only
-  integers (`param_index`, `value_counts` counts, `total`, `approximate_cardinality`),
-  so a histogram-bearing document is bit-identical across machines **without**
-  float-hardening ([ROADMAP](../ROADMAP.md) § Next #12). The slot's Shannon entropy
-  is **losslessly derivable from `value_counts`** and therefore **MUST NOT** be
-  emitted here; a consumer that needs it computes it (pinning its own rounding).
-  `MetaLogDiff.field_histogram_deltas` (§3.5.2) may still carry float fields
-  (`js_divergence`, entropy deltas) — those are diff-derived, not part of the
-  persisted bundle; their cross-machine determinism is the #12 concern.
+- **Integer-valued distribution, with one tracked float-derived exception
+  (determinism).** The value-distribution fields — `param_index`, `value_counts`
+  counts, `total` — are integers, so the per-slot *distribution* is bit-identical
+  across machines with no float-hardening. The slot's Shannon entropy is **losslessly
+  derivable from `value_counts`** and therefore **MUST NOT** be emitted here (a
+  consumer that needs it computes it, pinning its own rounding). **`approximate_cardinality`
+  is the exception:** it is `uint64`-*typed* but **HLL-estimate-derived** (a float
+  computation — `log` / `ldexp` / accumulating sums — then cast to integer), so it is
+  **deterministic under same-machine replay but NOT guaranteed bit-identical across
+  machines** until the float paths are hardened ([ROADMAP](../ROADMAP.md) § Next #12).
+  It is kept on the wire because it is the **uncapped** distinct-value count and is
+  **not** derivable from the capped `value_counts` (its whole reason to exist) — but a
+  **cross-build (history) signal derived from it MUST NOT be trusted until #12**, the
+  same gate that already governs the document's other wire floats (`stats.entropy_bits`,
+  the `stability` divergences). `MetaLogDiff.field_histogram_deltas` (§3.5.2) likewise
+  carries float fields (`js_divergence`, entropy deltas) — diff-derived, #12-governed.
 
 #### 3.5.1 `approximate_cardinality`
 

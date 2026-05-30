@@ -594,7 +594,7 @@
         },
         "param_histogram": {
             "type": "object",
-            "description": "A per-wildcard-position value-count histogram (SPEC §3.5). INTEGER-ONLY on the wire: Shannon entropy is NOT emitted (it is losslessly derivable from value_counts) so a histogram-bearing document needs no float-hardening to be bit-identical across machines. value_counts is bounded (top-N values); total MAY exceed sum(value_counts) when the cap is hit; value_counts MUST serialise key-sorted for replay bit-identity (SPEC §15.6).",
+            "description": "A per-wildcard-position value-count histogram (SPEC §3.5). The distribution fields (param_index, value_counts, total) are integer, so the per-slot distribution is bit-identical across machines with no float-hardening; Shannon entropy is NOT emitted (losslessly derivable from value_counts). approximate_cardinality is uint64-typed but HLL-float-derived: deterministic under same-machine replay, but cross-machine bit-identity rides float-hardening (ROADMAP #12), so any cross-build signal derived from it is #12-gated. It is kept because it is the uncapped distinct-value count, not derivable from the capped value_counts. value_counts is bounded (top-N); total MAY exceed sum(value_counts) when the cap is hit; value_counts MUST serialise key-sorted for replay bit-identity (SPEC §15.6).",
             "required": [
                 "param_index",
                 "value_counts",
