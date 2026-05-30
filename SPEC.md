@@ -296,14 +296,12 @@ paths, status codes) rather than only at the template level.
       },
       "total":       1100,     // integer, required, total events for this slot
                                // MAY exceed sum(value_counts) when the cap is hit
-      "entropy_bits": 0.47,    // number, optional, Shannon entropy over value_counts
       "approximate_cardinality": 1847  // integer, optional — see §3.5.1
     },
     {
       "param_index": 1,
       "value_counts": { "200": 950, "500": 50 },
       "total": 1000,
-      "entropy_bits": 0.31,
       "approximate_cardinality": 6
     }
   ]
@@ -315,6 +313,15 @@ paths, status codes) rather than only at the template level.
   configurable limit, default 256, and count overflows in `total`).
 - A consumer **MUST** treat an absent `param_histograms` array as equivalent to
   an empty array (the slot was not tracked).
+- **Integer-only on the wire (determinism).** `param_histograms` carries only
+  integers (`param_index`, `value_counts` counts, `total`, `approximate_cardinality`),
+  so a histogram-bearing document is bit-identical across machines **without**
+  float-hardening ([ROADMAP](../ROADMAP.md) § Next #12). The slot's Shannon entropy
+  is **losslessly derivable from `value_counts`** and therefore **MUST NOT** be
+  emitted here; a consumer that needs it computes it (pinning its own rounding).
+  `MetaLogDiff.field_histogram_deltas` (§3.5.2) may still carry float fields
+  (`js_divergence`, entropy deltas) — those are diff-derived, not part of the
+  persisted bundle; their cross-machine determinism is the #12 concern.
 
 #### 3.5.1 `approximate_cardinality`
 

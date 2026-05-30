@@ -594,7 +594,7 @@
         },
         "param_histogram": {
             "type": "object",
-            "description": "A per-wildcard-position value-count histogram (SPEC §3.5). value_counts is bounded (top-N values); total MAY exceed sum(value_counts) when the cap is hit. value_counts MUST serialise key-sorted for replay bit-identity (SPEC §15.6).",
+            "description": "A per-wildcard-position value-count histogram (SPEC §3.5). INTEGER-ONLY on the wire: Shannon entropy is NOT emitted (it is losslessly derivable from value_counts) so a histogram-bearing document needs no float-hardening to be bit-identical across machines. value_counts is bounded (top-N values); total MAY exceed sum(value_counts) when the cap is hit; value_counts MUST serialise key-sorted for replay bit-identity (SPEC §15.6).",
             "required": [
                 "param_index",
                 "value_counts",
@@ -614,10 +614,6 @@
                 },
                 "total": {
                     "type": "integer",
-                    "minimum": 0
-                },
-                "entropy_bits": {
-                    "type": "number",
                     "minimum": 0
                 },
                 "approximate_cardinality": {
