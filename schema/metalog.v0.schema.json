@@ -2,7 +2,7 @@
     "$schema": "https://json-schema.org/draft/2020-12/schema",
     "$id": "https://metalog-spec.org/schema/metalog.v0.schema.json",
     "title": "MetaLog v0",
-    "description": "A bounded-size statistical fingerprint of a window of log behaviour. v0.2.0. See https://github.com/CodeRoasted/metalog-spec/blob/main/SPEC.md",
+    "description": "A bounded-size statistical fingerprint of a window of log behaviour. Tracks the MetaLog v0.x line; pin a concrete version via the document's metalog_version, not this schema URI (SPEC §9). See https://github.com/CodeRoasted/metalog-spec/blob/main/SPEC.md",
     "type": "object",
     "additionalProperties": true,
     "required": [
