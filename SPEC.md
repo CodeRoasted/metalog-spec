@@ -373,6 +373,20 @@ cardinality delta:
 remain visible in a `MetaLogDiff` taken against a composed (pyramid-baseline)
 document, not only at the raw scale.
 
+> **Wire-emission status (reference producer, v0.5.0).** `param_histograms` is an
+> **optional** wire field. The reference producer (`insight-metalog`) computes the
+> histograms and carries them through `compose()` in its **internal representation**,
+> but does **not yet emit them on the wire** (and `MetaLogDiff.field_histogram_deltas`
+> is likewise computed but not yet serialised) — a conformant choice, since a consumer
+> treats an absent `param_histograms` as an empty array. Wire emission is **batch-mode**:
+> the §11 streaming envelope cannot afford per-slot value maps, but a full-fidelity
+> (batch) diff can. It lands together with the ordinal **Wasserstein-1** trait
+> ([ROADMAP](../ROADMAP.md) § Next #10) — `js_divergence` over `value_counts` treats a
+> numeric slot's support as **unordered**, so emitting histograms for ordinal slots
+> before that trait exists would surface a magnitude-blind delta. When emitted,
+> `value_counts` **MUST** serialise in a deterministic (key-sorted) order for replay
+> bit-identity (§15.6).
+
 ---
 
 ### 3.6 `tail_summary` — bounded shape of the long tail (optional)

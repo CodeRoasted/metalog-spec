@@ -188,6 +188,13 @@
                             },
                             "level": {
                                 "type": "string"
+                            },
+                            "param_histograms": {
+                                "type": "array",
+                                "description": "Per-wildcard-position value-count histograms for this template (SPEC §3.5). Optional, batch-mode emission (see §3.5). MUST NOT be present for entries not in top_k.",
+                                "items": {
+                                    "$ref": "#/$defs/param_histogram"
+                                }
                             }
                         },
                         "additionalProperties": false
@@ -579,6 +586,41 @@
                     "minimum": 0
                 },
                 "within_window_ordinal": {
+                    "type": "integer",
+                    "minimum": 0
+                }
+            },
+            "additionalProperties": false
+        },
+        "param_histogram": {
+            "type": "object",
+            "description": "A per-wildcard-position value-count histogram (SPEC §3.5). value_counts is bounded (top-N values); total MAY exceed sum(value_counts) when the cap is hit. value_counts MUST serialise key-sorted for replay bit-identity (SPEC §15.6).",
+            "required": [
+                "param_index",
+                "value_counts",
+                "total"
+            ],
+            "properties": {
+                "param_index": {
+                    "type": "integer",
+                    "minimum": 0
+                },
+                "value_counts": {
+                    "type": "object",
+                    "additionalProperties": {
+                        "type": "integer",
+                        "minimum": 0
+                    }
+                },
+                "total": {
+                    "type": "integer",
+                    "minimum": 0
+                },
+                "entropy_bits": {
+                    "type": "number",
+                    "minimum": 0
+                },
+                "approximate_cardinality": {
                     "type": "integer",
                     "minimum": 0
                 }
