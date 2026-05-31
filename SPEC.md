@@ -313,22 +313,19 @@ paths, status codes) rather than only at the template level.
   configurable limit, default 256, and count overflows in `total`).
 - A consumer **MUST** treat an absent `param_histograms` array as equivalent to
   an empty array (the slot was not tracked).
-- **Integer-valued distribution, with one tracked float-derived exception
-  (determinism).** The value-distribution fields — `param_index`, `value_counts`
-  counts, `total` — are integers, so the per-slot *distribution* is bit-identical
-  across machines with no float-hardening. The slot's Shannon entropy is **losslessly
-  derivable from `value_counts`** and therefore **MUST NOT** be emitted here (a
-  consumer that needs it computes it, pinning its own rounding). **`approximate_cardinality`
-  is the exception:** it is `uint64`-*typed* but **HLL-estimate-derived** (a float
-  computation — `log` / `ldexp` / accumulating sums — then cast to integer), so it is
-  **deterministic under same-machine replay but NOT guaranteed bit-identical across
-  machines** until the float paths are hardened ([ROADMAP](../ROADMAP.md) § Next #12).
-  It is kept on the wire because it is the **uncapped** distinct-value count and is
-  **not** derivable from the capped `value_counts` (its whole reason to exist) — but a
-  **cross-build (history) signal derived from it MUST NOT be trusted until #12**, the
-  same gate that already governs the document's other wire floats (`stats.entropy_bits`,
-  the `stability` divergences). `MetaLogDiff.field_histogram_deltas` (§3.5.2) likewise
-  carries float fields (`js_divergence`, entropy deltas) — diff-derived, #12-governed.
+- **The whole histogram is cross-machine bit-identical (determinism).** The
+  value-distribution fields — `param_index`, `value_counts` counts, `total` — are
+  integers. The slot's Shannon entropy is **losslessly derivable from `value_counts`**
+  and therefore **MUST NOT** be emitted here (a consumer that needs it computes it).
+  `approximate_cardinality` is `uint64`-typed but HLL-estimate-derived; it **MUST** be
+  computed **deterministically — no libm transcendentals** — via an exact dyadic
+  register sum plus a fixed-point logarithm, so that it is **bit-identical across
+  machines** (§15.6). It is kept on the wire because it is the **uncapped**
+  distinct-value count, **not** derivable from the capped `value_counts` (its whole
+  reason to exist). `MetaLogDiff.field_histogram_deltas` (§3.5.2) carries
+  `js_divergence` + entropy deltas; these too **MUST** be computed deterministically
+  (fixed-point logarithm, defined reduction order) so they are bit-identical across
+  machines.
 
 #### 3.5.1 `approximate_cardinality`
 
