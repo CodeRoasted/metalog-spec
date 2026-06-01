@@ -1,4 +1,4 @@
-# MetaLog Specification — v0.4.0 (Draft)
+# MetaLog Specification — v0.5.0 (Draft)
 
 > **Status:** Draft. Subject to incompatible change until v1.0.
 > **Cross-reference:** [`RATIONALE.md`](RATIONALE.md) for *why*
@@ -7,16 +7,23 @@
 This document uses [RFC 2119](https://www.rfc-editor.org/rfc/rfc2119)
 keywords: **MUST**, **MUST NOT**, **SHOULD**, **SHOULD NOT**, **MAY**.
 
+> **What changed in 0.5 (Phase-3 formalization, in progress):** added §15 the
+> **re-derivation coordinate** — every window is addressable back to its source
+> (`raw(window) = replay(source, bounds)`) for on-demand raw recovery and citable
+> findings. §14 *Sessions* is now a removed-section tombstone (deferred to
+> correlation-keyed `trace_id` processing). Further 0.5 additions are landing:
+> the `reservoir` (salient-entry) section, header `canonicalization_version` /
+> `retention_profile` with `compose()`/diff version-gating, and compose-visible
+> field histograms. See [`CHANGELOG.md`](CHANGELOG.md).
+>
 > **What changed in 0.2:** template strings are no longer required
 > inside `stats.top_k` entries — they live in an optional top-level
 > `templates` dedup map instead, and may be omitted entirely
 > (id-only mode). The `behavior` block has been formalised
-> (`dominant_path`, `graph_edge_count`, `branching`,
-> `sessions_observed`, `session_aware`). Two sibling sections were
-> added: `compose()` (§12) for merging MetaLogs across windows or
-> shards, and a separate `MetaLogDiff` document (§13). Sessions are
-> defined in §14. See [`CHANGELOG.md`](CHANGELOG.md) for the full
-> diff.
+> (`dominant_path`, `graph_edge_count`, `branching`). Two sibling
+> sections were added: `compose()` (§12) for merging MetaLogs across
+> windows or shards, and a separate `MetaLogDiff` document (§13). See
+> [`CHANGELOG.md`](CHANGELOG.md) for the full diff.
 
 ---
 
@@ -32,9 +39,6 @@ keywords: **MUST**, **MUST NOT**, **SHOULD**, **SHOULD NOT**, **MAY**.
   template. See §3.2.
 - **Window** — A contiguous time interval over which a single MetaLog
   is computed.
-- **Session** — A producer-defined opaque grouping of related events
-  (e.g. trace ID, request ID, user session). Used to scope sequence
-  observations. See §14.
 - **Producer** — A program that consumes log lines and emits MetaLog
   documents.
 - **Consumer** — A program that reads MetaLog documents (dashboard,
@@ -52,10 +56,12 @@ top-level fields:
 
 | Field | Type | Required | Purpose |
 |---|---|---|---|
-t| `metalog_version` | string | yes | Spec version this document conforms to. SemVer string (e.g. `"0.4.0"`). |
+| `metalog_version` | string | yes | Spec version this document conforms to. SemVer string (e.g. `"0.5.0"`). |
 | `producer` | object | yes | Identifies the producing implementation. See §2.1. |
 | `window` | object | yes | The time interval covered. See §2.2. |
 | `source` | object | yes | What was observed (service, host, fleet). See §2.3. |
+| `canonicalization_version` | string | no | Opaque identifier for the canonicalization rules in effect. Gates `compose()`/diff comparability. See §2.4. |
+| `retention_profile` | string | no | Opaque identifier for the retention parameters (top_k, reservoir, salience weights, diversity caps). Gates `compose()`/diff comparability. See §2.4. |
 | `stats` | object | yes | Per-template counts and frequency metrics. See §3. |
 | `templates` | object | no | Optional dedup map `template_id → template_str`. See §3.4. |
 | `behavior` | object | no | Sequence/transition fingerprint. See §4. |
@@ -74,7 +80,7 @@ top-level fields and **MUST** ignore unknown keys inside
 ```jsonc
 {
   "name": "insight",          // string, required
-  "version": "0.2.0",         // string, required, SemVer
+  "version": "0.5.0",         // string, required, SemVer
   "implementation_uri": "https://github.com/.../insight"  // string, optional
 }
 ```
@@ -110,6 +116,33 @@ it **MUST** emit its best estimate and **SHOULD** emit an
 
 Identifies *what* the MetaLog describes. All fields are optional but
 producers **SHOULD** populate at least one of `service` or `fleet`.
+
+### 2.4 `canonicalization_version` and `retention_profile`
+
+A MetaLog **MAY** carry two opaque processing-identifier strings that name the
+**contract** under which it was produced:
+
+- `canonicalization_version` — names the **canonicalization rules** in effect
+  (masking, tokenization, classification — the rules that map raw bytes to
+  templates and structural metadata). It **MUST** be bumped when those rules'
+  *output-affecting* semantics change; a binary rebuild with no rule change
+  **MUST NOT** bump it. It is **not** a binary build id.
+- `retention_profile` — names the **retention parameters** in effect: `top_k`
+  size (§3.1), reservoir admission weights and size and diversity caps (§3.7),
+  and the salience arithmetic. It **MUST** be bumped when any of those
+  parameters change.
+
+The values are **opaque strings**. This spec defines neither a registry of names
+nor a canonical format; producers and consumers within an environment **MUST**
+agree on their meaning out-of-band.
+
+**Comparability gate (normative).** When both inputs to `compose()` (§12) or to
+a `MetaLogDiff` operation (§13) carry `canonicalization_version`, the values
+**MUST** be **equal**; an operation across mismatched values **MUST** fail or
+**MUST** signal incompatibility to the consumer. The same rule applies to
+`retention_profile`. When an input omits an identifier, the operation **MAY**
+proceed but the consumer **SHOULD** treat the result with caution — the
+documents may have been produced under incompatible contracts.
 
 ---
 
@@ -263,14 +296,12 @@ paths, status codes) rather than only at the template level.
       },
       "total":       1100,     // integer, required, total events for this slot
                                // MAY exceed sum(value_counts) when the cap is hit
-      "entropy_bits": 0.47,    // number, optional, Shannon entropy over value_counts
       "approximate_cardinality": 1847  // integer, optional — see §3.5.1
     },
     {
       "param_index": 1,
       "value_counts": { "200": 950, "500": 50 },
       "total": 1000,
-      "entropy_bits": 0.31,
       "approximate_cardinality": 6
     }
   ]
@@ -282,6 +313,19 @@ paths, status codes) rather than only at the template level.
   configurable limit, default 256, and count overflows in `total`).
 - A consumer **MUST** treat an absent `param_histograms` array as equivalent to
   an empty array (the slot was not tracked).
+- **The whole histogram is cross-machine bit-identical (determinism).** The
+  value-distribution fields — `param_index`, `value_counts` counts, `total` — are
+  integers. The slot's Shannon entropy is **losslessly derivable from `value_counts`**
+  and therefore **MUST NOT** be emitted here (a consumer that needs it computes it).
+  `approximate_cardinality` is `uint64`-typed but HLL-estimate-derived; it **MUST** be
+  computed **deterministically — no libm transcendentals** — via an exact dyadic
+  register sum plus a fixed-point logarithm, so that it is **bit-identical across
+  machines** (§15.6). It is kept on the wire because it is the **uncapped**
+  distinct-value count, **not** derivable from the capped `value_counts` (its whole
+  reason to exist). `MetaLogDiff.field_histogram_deltas` (§3.5.2) carries
+  `js_divergence` + entropy deltas; these too **MUST** be computed deterministically
+  (fixed-point logarithm, defined reduction order) so they are bit-identical across
+  machines.
 
 #### 3.5.1 `approximate_cardinality`
 
@@ -330,6 +374,29 @@ cardinality delta:
   `current_cardinality / previous_cardinality > N` (e.g. N = 10) and
   `previous_cardinality < threshold` (baseline was low-cardinality).
 - `field_histogram_deltas` **MUST** be sorted by `js_divergence` descending.
+
+**Composition (compose-visible).** `param_histograms` are **carried** through
+`compose()` — they are not lossy at composed scales. For each
+`(template_id, param_index)` present in both inputs the composer merges
+`value_counts` (union + summed counts, truncated to the cap), sets the merged
+`total`, recomputes `entropy_bits`, and updates `approximate_cardinality`. See
+§12.1 for the normative rule. As a result, per-slot value-distribution shifts
+remain visible in a `MetaLogDiff` taken against a composed (pyramid-baseline)
+document, not only at the raw scale.
+
+> **Wire-emission status (reference producer, v0.5.0).** `param_histograms` is an
+> **optional** wire field. The reference producer (`insight-metalog`) computes the
+> histograms and carries them through `compose()` in its **internal representation**,
+> but does **not yet emit them on the wire** (and `MetaLogDiff.field_histogram_deltas`
+> is likewise computed but not yet serialised) — a conformant choice, since a consumer
+> treats an absent `param_histograms` as an empty array. Wire emission is **batch-mode**:
+> the §11 streaming envelope cannot afford per-slot value maps, but a full-fidelity
+> (batch) diff can. It lands together with the ordinal **Wasserstein-1** trait
+> ([ROADMAP](../ROADMAP.md) § Next #10) — `js_divergence` over `value_counts` treats a
+> numeric slot's support as **unordered**, so emitting histograms for ordinal slots
+> before that trait exists would surface a magnitude-blind delta. When emitted,
+> `value_counts` **MUST** serialise in a deterministic (key-sorted) order for replay
+> bit-identity (§15.6).
 
 ---
 
@@ -400,6 +467,61 @@ tail rather than averaging inputs. When inputs do not provide
 designed to survive lossy composition: all three fields are computable from
 the post-composition `stats` regardless of input attribution.
 
+### 3.7 `reservoir` — salient entries retained beyond `top_k` (optional)
+
+`top_k` retains by **frequency**; `tail_summary` (§3.6) captures only the
+*aggregate* shape of everything below it. Neither preserves a **rare-but-important
+single** template — a lone fatal, an off-path branch — which is exactly the event
+a fingerprint must not lose. The optional `stats.reservoir` is a **bounded** set
+of such entries, retained by **intrinsic salience, not frequency**.
+
+#### 3.7.1 Entry shape
+
+| field | type | meaning |
+|---|---|---|
+| `template_id` | string | as in `top_k` (§3.2). |
+| `count` | uint | occurrences in the window. |
+| `frequency` | number | `count / lines_observed` (§3.3 precision). |
+| `template` | string, optional | omitted in dedup / id-only modes (§3.4). |
+| `level` | string, optional | severity level when known. |
+| `structural_role` | string, optional | announced role (e.g. `terminator`); omitted when none. |
+| `structural_surprise` | uint `0..100` | deviation of the template's most-likely incoming transition from the `dominant_path` (§4.1); `0` = on the expected flow. |
+| `novelty` | uint `0..100` | how late the template first appeared within the window (first-seen position over `lines_observed`); `0` = present from the start. The `retention_profile` MAY weight/cap it softer than severity/structure. |
+| `salience` | uint | the deterministic admission/ranking score (§3.7.2). |
+| `within_window_ordinal` | uint, optional | reconciled first-seen ordinal; the per-entry re-derivation sub-coordinate (§15.4). |
+
+A `reservoir` entry **MUST NOT** also appear in `top_k` (the reservoir holds only
+templates that did not qualify by frequency).
+
+#### 3.7.2 Salience and admission
+
+`salience` is a **deterministic, integer** score combining intrinsic axes —
+severity (from `level` / `structural_role` / content), `structural_surprise`, and
+`novelty` — **modulated by rarity**. Rarity is a **modulator, never a gate**: a
+benign, contentless template scores `0` and **MUST NOT** be admitted (rarity alone
+never promotes a template). Admission is **salience-ranked**, subject to a
+**per-class diversity cap** (the reservoir covers *distinct* salient kinds, not
+many variants of one), and **bounded** by the configured reservoir size.
+
+The exact weights, reservoir size, and diversity caps are the producer's
+**`retention_profile`** (§9), not fixed by this spec. Their **mechanism** is
+normative: salience combines the named axes with rarity-modulation, admission is
+salience-ranked + diversity-capped, arithmetic is **integer** with **tie-break by
+`template_id`**, and a given input under a given `retention_profile` **MUST** yield
+a **bit-identical** reservoir. Two documents are comparable (diff, §13) only under
+a **matching** `retention_profile`.
+
+#### 3.7.3 Relationship to `tail_summary` and composition
+
+`tail_summary` (§3.6) is computed over the **residual after `top_k` ∪
+`reservoir`**; a reservoir-promoted template **MUST NOT** be double-counted in the
+tail aggregates. Under composition (§12) the reservoir is **carried**: `salience`
+is **re-derived** over the merged counts (rarity shifts on merge),
+`structural_surprise` / `novelty` are carried as the **max** across inputs, and
+entries remain **excluded from the tail**. A composed reservoir is re-derivable
+for any template that was salient in **at least one** input; it cannot recover a
+template that was pure-tail in every input (the `compose`-lossy-tail limit).
+
 ---
 
 ## 4. `behavior` — sequence fingerprint (optional)
@@ -428,9 +550,7 @@ Captures *how* templates follow each other, beyond raw frequency.
       "total_outgoing": 9421,           // sum of counts on outgoing edges
       "entropy_bits": 0.918             // H over the row-normalised outgoing distribution
     }
-  ],
-  "sessions_observed": 0,               // integer, optional, distinct session keys seen
-  "session_aware": false                // bool, optional, true iff this fingerprint was computed per-session (§14)
+  ]
 }
 ```
 
@@ -466,14 +586,6 @@ the other). Producers **SHOULD** emit branching for at least the
 nodes that appear in `top_ngrams` and `dominant_path`; emitting it
 for *every* node is **NOT REQUIRED** (and may exceed the size
 budget).
-
-### 4.3 `sessions_observed` and `session_aware`
-
-These two fields disclose how the producer scoped its sequence
-observations. See §14. When `session_aware = false`, n-grams cross
-session boundaries (the global event stream); when
-`session_aware = true`, n-grams are computed within a single session
-and aggregated across sessions.
 
 Producers that cannot compute sequence information (e.g. a streaming
 producer with no buffering) **MUST** omit the `behavior` object
@@ -588,6 +700,13 @@ Producers and consumers **MUST** check `metalog_version`'s MAJOR
 component and **MAY** refuse to process documents with an unknown
 MAJOR.
 
+**Processing identifiers (separate axis).** Distinct from the spec version,
+`canonicalization_version` and `retention_profile` (§2.4) identify the
+*producer-side processing contract* under which a document was generated. They
+evolve independently of `metalog_version`. `compose()` (§12) and `MetaLogDiff`
+(§13) **MUST** enforce equality of these identifiers across inputs that carry
+them; see §2.4 for the comparability gate.
+
 ---
 
 ## 10. Security considerations
@@ -603,9 +722,6 @@ MAJOR.
   This is **less sensitive** than raw logs but **not zero**.
   Consumers **SHOULD** treat MetaLogs with the same access controls
   as service-level metrics.
-- Session keys (§14) **MUST NOT** carry user-identifying information
-  in interoperable MetaLogs. Producers **SHOULD** hash external
-  identifiers before using them as session keys.
 - Sketches in `attribution` are probabilistic and **MUST NOT** be
   treated as authoritative for security decisions.
 
@@ -700,6 +816,33 @@ to a 1-hour MetaLog).
 - `C.stability` **MUST** be omitted (it is meaningless across
   composed inputs); consumers wanting a current-vs-prior view of a
   composed document should use §13 Diff explicitly.
+- `C.canonicalization_version` is `A.canonicalization_version` if equal to
+  `B.canonicalization_version`. When the values **differ**, `compose()` **MUST**
+  fail (the inputs were produced under incompatible canon contracts; merging
+  them yields a fingerprint addressable to no consistent contract). When **one**
+  or **both** inputs omit the identifier, the composer **MAY** proceed but
+  **MUST NOT** synthesize a value (omit it in `C`). The same rule applies to
+  `C.retention_profile`.
+- `C.stats.reservoir` is **carried** through composition: salience is **re-
+  derived** over the merged per-template counts (rarity shifts on merge),
+  `structural_surprise` and `novelty` are carried as the **max** across inputs,
+  and carried entries remain **excluded** from the tail (§3.7.3). The composed
+  reservoir is therefore present at every pyramid scale.
+- `C.stats.top_k[*].param_histograms` are **carried** through composition. For
+  each `(template_id, param_index)` pair present in **both** inputs'
+  histograms, the composer **MUST** merge: union the `value_counts` keys, sum
+  the counts, truncate to the producer's `max_param_histograms` cap (keeping
+  the top-N by count); set `total = A.total + B.total`; recompute
+  `entropy_bits` over the (possibly-truncated) merged `value_counts`;
+  `approximate_cardinality` **MAY** be merged via a sketch union when the
+  producer supports it (§3.5.1), otherwise set to `max(A.cardinality,
+  B.cardinality)` as a conservative lower-bound estimate. When a histogram is
+  present in only **one** input (the other had the template in its tail, or
+  omitted the histogram), the composer **MAY** carry it unchanged — in which
+  case `total` reflects only that input's contribution — or **MAY** omit it.
+  This makes per-slot value-distribution shifts visible in `MetaLogDiff`
+  against composed baselines (status-code regimes, latency-bucket shifts, etc.)
+  that previously vanished at composed scales.
 - `C.templates` is the union of `A.templates` and `B.templates`
   (both keyed by `template_id`; values are byte-equal by §3.2 so
   conflicts cannot arise).
@@ -755,11 +898,6 @@ detectors (Drift, FieldDrift, VolumeAnomaly, Composite cross-scale
 agreement) also raise. This is a *structural* limitation of multi-source
 composition, not a producer defect.
 
-Producers **MAY** mitigate by computing `behavior` per session
-([§4.3](#43-sessions_observed-and-session_aware)) where sessions are
-defined to avoid cross-source interleaving; but consumers **MUST NOT**
-assume any particular producer mitigation is in place.
-
 ### 12.4 `provenance` block
 
 When emitted, `provenance` is an array of objects:
@@ -787,6 +925,13 @@ A `MetaLogDiff` is a **separate JSON document type** (not a block
 inside a MetaLog) that describes the difference between two
 MetaLogs. It generalises the `stability` block (§5) to arbitrary
 pairs (not just consecutive windows).
+
+A producer **MUST** enforce the §2.4 comparability gate on the two inputs: when
+both carry `canonicalization_version`, the values **MUST** be equal; when both
+carry `retention_profile`, the values **MUST** be equal. Diffing across
+mismatched processing identifiers **MUST** fail or be signalled as
+incompatible — the templates and salience scores under different contracts are
+not directly comparable.
 
 ### 13.1 Document structure
 
@@ -896,44 +1041,120 @@ generalises `stability` (§5).
 
 ## 14. Sessions
 
-A **session** is a producer-defined opaque grouping of related
-events. Examples: HTTP request trace ID, user login session,
-distributed-trace span tree, Kafka partition key.
+*Reserved — removed in 0.5.0.* This section number formerly specified
+per-session n-grams (`behavior.session_aware` / `sessions_observed`). It was
+removed as a premature, unsourced specialization. Session-awareness is deferred
+to correlation-keyed processing over a standard `trace_id` (a `CORRELATION_ID`
+class); n-grams remain computed over the global event stream until then. The
+number is retained as a tombstone to keep cross-references stable. See
+[`CHANGELOG.md`](CHANGELOG.md).
 
-### 14.1 Why sessions matter
+---
 
-A bare global event stream conflates events from concurrent
-unrelated activities. The bigram `(login, payment_failed)` looks
-suspicious until you realise the login and the failure belonged to
-two different users. Session-aware n-grams remove this confounding.
+## 15. Re-derivation coordinate (optional)
 
-### 14.2 Behaviour when `session_aware = true`
+A MetaLog document is a **lossy** fingerprint: canonicalization, top-k/reservoir
+compression, and `compose()` discard the raw bytes. The **re-derivation
+coordinate** makes any window **addressable back to its source**, so ground truth
+is recoverable on demand — `raw(window) = replay(source, bounds)` — with no raw
+buffering, and every finding **citable and verifiable**.
 
-When a producer computes `behavior` per-session and aggregates:
+### 15.1 Two guarantees
 
-- An n-gram **MUST NOT** span a session boundary. The producer
-  groups events by session key, computes the per-session n-grams,
-  and sums their counts into the global `top_ngrams` table.
-- `behavior.sessions_observed` **MUST** be set to the number of
-  distinct session keys that contributed at least one event during
-  the window.
-- `behavior.session_aware` **MUST** be `true`.
-- `dominant_path` is computed over the aggregated per-session
-  transition graph (a transition `A → B` exists if some session
-  observed `A` immediately followed by `B`).
+A coordinate provides one or both of:
 
-### 14.3 Behaviour when `session_aware = false`
+1. **Raw recovery** (mandatory when a coordinate is present): `source_ref` +
+   event-time `bounds` recover the window's raw bytes. **Independent of the
+   canonicalization version** — it addresses bytes upstream of canon.
+2. **Fingerprint reproduction** (optional): additionally
+   `canonicalization_version` + `config_hash` re-derive the *same fingerprint*
+   (canon output depends on canon code + config, not just raw bytes).
 
-When a producer cannot or does not want to identify sessions, it
-**MUST** omit `behavior.session_aware` (treated as `false`) and
-**MAY** omit `behavior.sessions_observed` (treated as `0`). N-grams
-are computed over the global event stream as in v0.1.
+### 15.2 Fields
 
-### 14.4 Session key opacity
+A `coordinate` describes either a **raw** window (a single addressable source)
+or a **composed** window (the set of its raw children's coordinates, §15.5).
+**Exactly one** of the two field groups below **MUST** be present in a given
+coordinate; a producer **MUST NOT** emit both and **MUST NOT** emit neither.
+Consumers discriminate by the presence of `children`.
 
-Session keys **MUST NOT** appear in interoperable MetaLogs. They
-are an internal partitioning hint for the producer. Consumers see
-only the aggregated per-session counts via the standard `behavior`
-fields. Producers needing to expose session-level breakdowns
-**SHOULD** emit one MetaLog per session and combine them via §12
-Composition with `provenance` annotations.
+**Raw coordinate** — addresses a single source:
+
+- `source_ref` — `{ resolver_kind: string, handle: string }`. An **opaque,
+  resolvable** handle plus a tag selecting the resolver. The handle's meaning is
+  defined by the environment, **not** this spec (e.g. a deterministic-replay
+  source key, an immutable artifact URI, or an `otel_trace` reference). A
+  producer **MUST NOT** assume a particular resolver.
+- `bounds` — `{ start_tick: uint64, end_tick: uint64 }`. **Event-time** integer
+  ticks; the window is `[start_tick, end_tick)`. Ticks **MUST** be integers (no
+  float) and **MUST** be bit-identical across replays.
+
+**Composed coordinate** — addresses a `compose()` output:
+
+- `children` — a non-empty array of `coordinate` objects, each addressing a raw
+  (or recursively composed) child of the composition. A composed coordinate
+  **MUST NOT** carry `source_ref` or `bounds`: it has no single source, and a
+  coarse `[start, end]` standing in for the children would over-claim across
+  gaps, shards, or sources (§15.5).
+
+A coordinate of either kind **MAY** additionally contain:
+
+- `canonicalization_version` — string; required for guarantee (2). The semantic
+  canonicalization-rules version, **not** a binary build id.
+- `config_hash` — string; hash of the effective canon+metalog config, for
+  guarantee (2).
+
+> **Encoding note (non-normative).** Earlier drafts of `0.5.0` required
+> `source_ref`/`bounds` on every coordinate and forced composed coordinates to
+> emit sentinel values (e.g. `source_ref={"composed",""}`, `bounds={0,0}`) as a
+> "see children" marker. That workaround is **no longer permitted**: the two
+> field groups are mutually exclusive, and sentinel values **MUST NOT** be
+> emitted on composed coordinates.
+
+### 15.3 Event-time bounds — normative
+
+Window membership **MUST** be determined **solely** by event-time
+∈ `[start_tick, end_tick)`. It **MUST NOT** depend on the global sequence
+counter (non-deterministic across replays — the transport race carve-out) or on
+replay depth. Two conformance forms by resolver class:
+
+- **Replay resolvers MUST be prefix-monotone in the target:**
+  `replay(source, [start, T_mid])` **MUST** equal the event-time prefix of
+  `replay(source, [start, T])` for every `T_mid ≤ T`.
+- **Fetch resolvers** (immutable source) **MUST** yield **deterministic
+  event-time selection:** the set of events with event-time ∈ `[start, end)` over
+  the fetched bytes **MUST** be stable across fetches.
+
+*Conformance evidence (replay).* Verified on a deterministic-replay source: two
+replays to a target are byte-identical (1502 lines), and a replay to an earlier
+target is the exact event-time prefix of the later one (752-line prefix at the
+mid target) — bounds are replay-depth-independent. Producers **SHOULD** keep such
+a replay round-trip as a standing conformance fixture.
+
+### 15.4 Granularity
+
+- A **window-level** coordinate is the unit of addressability.
+- A **per-reservoir-entry** sub-coordinate (`within_window_ordinal`, the
+  reconciled first-seen ordinal within the window) is **OPTIONAL** and bounded by
+  the reservoir size. It is a **guarantee-(2)** aid: a reservoir entry is a canon
+  artifact, so locating it requires re-deriving raw (1) then re-canonicalizing
+  (2). A producer **MUST NOT** emit a per-line coordinate (unbounded).
+
+### 15.5 Composition
+
+A composed document's coordinate **MUST** be the **set of its raw children's
+coordinates** (carried alongside `provenance`, §12.4), **never** a single coarse
+`[first, last]` range (which over-claims across gaps, shards, or sources). A
+composed coordinate therefore always resolves to **raw children**, never to a
+composed intermediate.
+
+### 15.6 Determinism, security, and the bounding gate
+
+- Coordinate values are part of the deterministic document — bit-identical across
+  replays. They are **descriptive metadata** and **MUST NOT** feed any
+  deterministic-content computation.
+- Raw recovered via a coordinate **MUST** re-enter the normal canonicalization /
+  bounding path before exposure to a downstream consumer — recovery yields a
+  bounded re-derived artifact, not a raw dump.
+- Resolvability is bounded by **source retention**: a coordinate is a pointer;
+  this spec does not guarantee the source outlives the document.

@@ -3,7 +3,7 @@
 > A compact, deterministic, vendor-neutral fingerprint format for
 > bounded-size summaries of log streams.
 
-**Status:** Draft v0.2.0 · April 2026
+**Status:** Draft v0.5.0 · May 2026
 **Editor:** the InSight project (`insight-metalog` and `insight-eidos`)
 **License:** Spec text — [CC-BY-4.0](LICENSE-SPEC). Reference schemas — [MIT](LICENSE).
 
@@ -92,7 +92,7 @@ to freeze the schema. After v1.0, breaking changes follow semver and
 
 | Implementation | Language | License | Status |
 |---|---|---|---|
-| **insight-metalog** ([repo](https://github.com/CodeRoasted/insight-metalog)) | C++23 | CodeRoast-owned package | MetaLog v0.2.0 producer, compose, and diff |
+| **insight-metalog** ([repo](https://github.com/CodeRoasted/insight-metalog)) | C++23 | CodeRoast-owned package | MetaLog v0.5.0 producer, compose, and diff |
 | **insight-eidos** ([repo](https://github.com/CodeRoasted/insight-eidos)) | C++23 | CodeRoast-owned package | Detection and explanation consumers |
 | *Your implementation here* | — | — | PRs welcome |
 

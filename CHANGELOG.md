@@ -11,6 +11,73 @@ The spec follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [Unreleased]
+
+> **Version → 0.5.0 (Draft).** Phase-3 spec formalization **complete in
+> scope** (still Draft; v1.0 freeze gated on broader criteria — see ROADMAP).
+> 0.5.0 contracts the salience-epic shape end-to-end: §3.7 reservoir, §2.4
+> processing identifiers + compose/diff gating, §15 re-derivation coordinate
+> (raw/composed XOR), and §12.1 reservoir-carry + compose-visible field
+> histograms.
+
+### Changed
+- **§15.2 raw / composed XOR (refined during 0.5.0 Draft).** A coordinate is now
+  explicitly **either** a *raw* coordinate (`source_ref`+`bounds`) **or** a
+  *composed* coordinate (`children`), mutually exclusive — never both, never
+  neither. Composed coordinates **MUST NOT** emit sentinel values for
+  `source_ref`/`bounds`; consumers discriminate by `children.present`. Resolves
+  the ambiguity earlier 0.5.0 drafts had between required `source_ref`/`bounds`
+  and "address-is-the-children" composition.
+
+### Added
+- **§3.5 / §12.1 compose-visible field histograms.** `param_histograms` are
+  **carried** through `compose()` (previously dropped — the F8 / F2-value gap).
+  Per `(template_id, param_index)` pair present in both inputs: merge
+  `value_counts` (union + sum, top-N truncate to cap), sum `total`, recompute
+  `entropy_bits`; `approximate_cardinality` MAY use sketch-union or
+  `max(A, B)` as a conservative lower bound. One-input-only histograms MAY be
+  carried unchanged (`total` reflects partial coverage) or omitted. Per-slot
+  value-distribution shifts now remain visible against composed (pyramid-
+  baseline) documents, not only at raw scale.
+- **§2.4 Processing identifiers (`canonicalization_version`,
+  `retention_profile`)** — two opaque top-level strings naming the
+  *producer-side processing contract*: the canonicalization rules and the
+  retention parameters under which the document was generated. Independent of
+  `metalog_version`. **Comparability gate (normative):** when both inputs to
+  `compose()` (§12) or to `MetaLogDiff` (§13) carry one of these identifiers,
+  the values **MUST** be equal; mismatch **MUST** fail or be signalled as
+  incompatible. Recapped in §9; enforced explicitly in §12.1 (compose) and §13
+  (diff). The `retention_profile` is the field that §3.7 references for
+  reservoir weights/size/caps.
+- **§12.1 reservoir-carry under `compose()`** — composition now lists
+  `C.stats.reservoir` explicitly: salience **re-derived** over merged counts,
+  `structural_surprise`/`novelty` carried as **max**, entries excluded from the
+  tail (§3.7.3). Resolves the multi-scale rare-salient memory gap (composed
+  baselines previously had no reservoir).
+- **§3.7 reservoir** (formalisation of the shipped reservoir): see §3.7.
+- **§15 Re-derivation coordinate** (optional): `source_ref` (opaque resolvable
+  handle + resolver-kind) + event-time `bounds` `{start_tick, end_tick}` make any
+  window re-derivable to source (`raw = replay(source, bounds)`),
+  canon-version-independent (guarantee 1); optional `canonicalization_version` +
+  `config_hash` reproduce the fingerprint (guarantee 2). Window-level mandatory;
+  optional bounded per-reservoir `within_window_ordinal`; composed = set of child
+  coordinates. **Event-time-only bounds MUST** — replay resolvers prefix-monotone
+  in the target, fetch resolvers stable event-time selection (replay form
+  verified). Descriptive metadata; never feeds deterministic-content; recovered
+  raw re-enters the bounding gate.
+- §14 retained as a **Reserved tombstone** (formerly Sessions) so §15+ references
+  stay stable.
+
+### Removed
+- **§14 Sessions** and the two `behavior` fields `sessions_observed` /
+  `session_aware` — premature. Session-awareness is deferred to the planned
+  `CORRELATION_ID` classification (salience epic §4.1); the bespoke session_key
+  was an unsourced specialization and has been ripped from the implementation
+  (insight-canon, insight-metalog). N-grams remain computed over the global event
+  stream until session-scoping rides classification.
+
+---
+
 ## [0.4.0] — 2026-05-24
 
 ### Added
