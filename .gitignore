@@ -8,3 +8,8 @@ __pycache__/
 *.log
 .idea/
 .vscode/
+
+# Environment files (secrets)
+.env
+.env.local
+.env.*.local
