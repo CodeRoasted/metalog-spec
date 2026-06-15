@@ -1,4 +1,4 @@
-# MetaLog Specification — v0.5.0 (Draft)
+# MetaLog Specification — v0.6.0 (Draft)
 
 > **Status:** Draft. Subject to incompatible change until v1.0.
 > **Cross-reference:** [`RATIONALE.md`](RATIONALE.md) for *why*
@@ -7,6 +7,14 @@
 This document uses [RFC 2119](https://www.rfc-editor.org/rfc/rfc2119)
 keywords: **MUST**, **MUST NOT**, **SHOULD**, **SHOULD NOT**, **MAY**.
 
+> **What changed in 0.6 (the cube — EXPERIMENTAL):** added §16 the **`cube`**
+> block — an intra-window joint categorical condensation (a *closed cube* over
+> `level × structural_role × where`-chain) — and §13.6 **`cube_diff`** (its
+> emerging border). The cube is **additive, provisional, and removable in a single
+> revert** (§16.8); it is gated for comparability by `canonicalization_version` and
+> `retention_profile`. `reservoir` entries gain an optional `cube_coord` (the
+> LOCATION-only reservoir→cell cross, §16.6). See [`CHANGELOG.md`](CHANGELOG.md).
+>
 > **What changed in 0.5 (Phase-3 formalization, in progress):** added §15 the
 > **re-derivation coordinate** — every window is addressable back to its source
 > (`raw(window) = replay(source, bounds)`) for on-demand raw recovery and citable
@@ -46,6 +54,10 @@ keywords: **MUST**, **MUST NOT**, **SHOULD**, **SHOULD NOT**, **MAY**.
 - **MetaLog** — A JSON document conforming to this specification.
 - **MetaLogDiff** — A separate JSON document describing the
   difference between two MetaLogs. See §13.
+- **Cube** — A bounded *joint* over a small, fixed set of low-cardinality
+  categorical axes, condensed by closure (a *closed cube*). See §16.
+- **Emerging border** — The minimal `(lower, upper)` cell-pair characterising
+  what grew (or vanished) between two cubes. See §13.6.
 
 ---
 
@@ -67,6 +79,7 @@ top-level fields:
 | `behavior` | object | no | Sequence/transition fingerprint. See §4. |
 | `stability` | object | no | Divergence from the previous window. See §5. |
 | `attribution` | object | no | Distribution of templates across sub-sources. See §6. |
+| `cube` | object | no | Joint categorical condensation (closed cube). **Experimental.** See §16. |
 | `provenance` | array | no | When this document was composed from others. See §12. |
 | `extensions` | object | no | Vendor-specific data. See §7. |
 
@@ -143,6 +156,12 @@ a `MetaLogDiff` operation (§13) carry `canonicalization_version`, the values
 `retention_profile`. When an input omits an identifier, the operation **MAY**
 proceed but the consumer **SHOULD** treat the result with caution — the
 documents may have been produced under incompatible contracts.
+
+The `cube` block (§16) is part of these contracts: its **axis set**, each axis's
+**chain** levels, and the frozen **`floor_depth`** are fixed by the
+`canonicalization_version` (WHERE grounding) and `retention_profile` (axis/floor
+configuration). Two cubes are diffable into a `cube_diff` (§13.6) **only** when both
+identifiers match **and** their `axes` are equal.
 
 ---
 
@@ -489,9 +508,16 @@ of such entries, retained by **intrinsic salience, not frequency**.
 | `novelty` | uint `0..100` | how late the template first appeared within the window (first-seen position over `lines_observed`); `0` = present from the start. The `retention_profile` MAY weight/cap it softer than severity/structure. |
 | `salience` | uint | the deterministic admission/ranking score (§3.7.2). |
 | `within_window_ordinal` | uint, optional | reconciled first-seen ordinal; the per-entry re-derivation sub-coordinate (§15.4). |
+| `cube_coord` | object, optional | the entry's **LOCATION** in the cube (§16) — the reservoir→cell cross (§16.6). Present only when a `cube` block is emitted. |
 
 A `reservoir` entry **MUST NOT** also appear in `top_k` (the reservoir holds only
 templates that did not qualify by frequency).
+
+`cube_coord`, when present, is the **LOCATION-only** (`level` + `where`-path) cube
+coordinate the entry occupies — the one-way, read-only bridge that restores the
+WHERE of a salient template the (capped) emerging border never surfaced. It carries
+**no salience back into the cube** and is a **pure function** of the entry's
+`(level, where-path)`. See §16.6 for the firewall invariant.
 
 #### 3.7.2 Salience and admission
 
@@ -843,6 +869,16 @@ to a 1-hour MetaLog).
   This makes per-slot value-distribution shifts visible in `MetaLogDiff`
   against composed baselines (status-code regimes, latency-bucket shifts, etc.)
   that previously vanished at composed scales.
+- `C.cube` (§16) is **re-closed**, not merged cell-by-cell. The distributive
+  **counts** compose by addition (SIMD-friendly), but the **closure does not
+  distribute** (e.g. `auth:500 ∪ auth:200` makes `(auth, *)` emerge — closed in
+  neither input). The composer **MUST** therefore expand both cubes to full counts,
+  add, and **re-close**; recompute is the deterministic default (incremental closure
+  is arrival-order-sensitive and **MUST NOT** feed deterministic content). Both
+  inputs' `cube.axes` **MUST** be equal. The **compose cube** draws its WHERE
+  coordinate from each input's **`source`** block (service / fleet / region — the
+  cross-document organ), distinct from the intra-window cube's `component`-chain
+  (§16.7). When either input omits `cube`, `C.cube` **MAY** be omitted.
 - `C.templates` is the union of `A.templates` and `B.templates`
   (both keyed by `template_id`; values are byte-equal by §3.2 so
   conflicts cannot arise).
@@ -1037,6 +1073,45 @@ generalises `stability` (§5).
 - `tail_delta` **MUST NOT** be treated as an alert on its own; it is
   structured evidence. Consumers decide significance.
 
+### 13.6 `cube_diff` — emerging border (new in v0.6.0, EXPERIMENTAL)
+
+`cube_diff` is the pair-wise difference of the two documents' `cube` blocks (§16):
+the **emerging border** — the smallest constraint characterising *what grew* between
+`previous` and `current`. The emerging region (`count_previous ≤ θ_was ∧
+count_current ≥ θ_now`, the two absolute thresholds of §16.5 **MUST-2**) is
+**order-convex**, bounded by a **(lower, upper) border pair**:
+
+- `lower` — the most-**specific** emerging cells (the precise description, e.g.
+  `(db, timeout, error)`).
+- `upper` — the most-**general** emerging cells = the **minimal generators** = the
+  deterministic **headline** (e.g. `{ "where": ["db"] }` — "the smallest condition
+  that characterises everything that emerged").
+
+`vanishing` is the dual (`count_previous ≥ θ_was ∧ count_current ≤ θ_now` —
+disappearance). Each border cell carries `coord` + `previous_count` +
+`current_count`.
+
+```jsonc
+"cube_diff": {
+  "axes": [ /* MUST equal both inputs' cube axes */ ],
+  "emerging": {
+    "lower": [ { "coord": { "level": "ERROR", "where": ["db", "pool"] }, "previous_count": 0, "current_count": 53 } ],
+    "upper": [ { "coord": { "where": ["db"] },                            "previous_count": 0, "current_count": 57 } ]
+  },
+  "vanishing": { "lower": [], "upper": [] }
+}
+```
+
+- A `cube_diff` **MUST** be emitted only when **both** inputs carried a `cube` **and**
+  their `axes` are equal (the §2.4 comparability gate plus an equal cube schema).
+- Emergence **MUST** be defined by the two absolute thresholds, **never** a growth
+  ratio (§16.5 MUST-2); the WHERE chain **MUST** be a single-parent tree (§16.5
+  MUST-1). Either violated ⇒ the border is ill-defined.
+- The `upper` border is the deterministic headline — *computed, not narrated*. An
+  LLM narrator (if any) narrates a result already decided (§16.1).
+- `cube_diff` **MUST NOT** be treated as an alert on its own; it is structured
+  evidence. Consumers decide significance.
+
 ---
 
 ## 14. Sessions
@@ -1158,3 +1233,214 @@ composed intermediate.
   bounded re-derived artifact, not a raw dump.
 - Resolvability is bounded by **source retention**: a coordinate is a pointer;
   this spec does not guarantee the source outlives the document.
+
+---
+
+## 16. `cube` — intra-window joint categorical condensation (optional, EXPERIMENTAL)
+
+> **Status: EXPERIMENTAL (added in v0.6.0).** The `cube` block is **provisional**.
+> It is **additive** — it does not replace or reshape any existing field — and a
+> future 0.x release **MAY remove it** in a single revert (§16.8). Consumers **MUST**
+> treat its absence as "no joint-categorical information available" and **MUST NOT**
+> make it required. It is gated for comparability by **both**
+> `canonicalization_version` and `retention_profile` (§2.4).
+
+A MetaLog's 1-D fields carry **marginals** (`level` per template, etc.). A marginal
+loses the **joint**: it records "5 timeouts" and "5 events on db" but not "the 5
+timeouts *are* on db". The `cube` is a **closed** joint over a small, fixed set of
+low-cardinality categorical **axes** — retained losslessly where the data correlates
+(the closure collapses redundant cells) and diffed by an **emerging border**
+(§13.6). It is an **attributor / projector**, *not* a detector: given events already
+marked interesting **elsewhere** (a threshold, a reservoir, a frequency-shift), it
+answers "*what is the smallest conjunction of conditions that characterises them*" —
+it does **not** decide what is interesting.
+
+### 16.1 Block shape
+
+```jsonc
+"cube": {
+  "axes": [ /* ordered axis descriptors — §16.2 */ ],
+  "cells": [ /* closed cells — §16.4 */ ],
+  "cell_count": 5,          // number of closed cells emitted
+  "raw_cell_count": 142,    // raw (pre-closure) populated-cell count; collapse rate = cell_count / raw_cell_count
+  "floor_saturation": 0.18  // optional WHERE-floor health metric — §16.3
+}
+```
+
+### 16.2 Axes — fixed, small, frozen, axis-generic
+
+The axis set is **fixed in config, small, chosen once per measure, and frozen** — it
+**MUST NOT** be adapted per window (per-window dimension selection destroys
+cross-window comparability and is blind to the low-variance dimension that *flips*,
+which is exactly the incident). Each axis is one of two kinds:
+
+| `kind` | meaning | value in a cell coord |
+|---|---|---|
+| `categorical` | a flat low-cardinality category | a string |
+| `chain` | a single-parent roll-up hierarchy (§16.3) | an ordered prefix-path (array of strings) |
+
+The reference producer's grounded axes in v0.6.0 are:
+
+- `level` (`categorical`) — severity.
+- `structural_role` (`categorical`) — the announced KIND-FRAMING marker
+  (`GroupBegin` / `Terminator` / …); a *property of the line*, not a membership key.
+- `where` (`chain`) — the WHERE-chain (§16.3), grounded in canon's `component`.
+
+The axis set is **generic and extensible**: a new axis (e.g. un-folding a `status`
+axis from `level` when later causal work demands it) is a **config addition** — one
+more entry in `axes` and one more key in each cell `coord` — **not a schema reshape**
+(the `coord` object is open over axis names; §16.4). A producer **MUST NOT**
+speculatively add an axis that is not grounded in a deterministic canon field.
+
+`template_id` **MUST NOT** be a cube axis: its cardinality is unbounded and drifting,
+and it already encodes service/status in its text (a trivial, self-explaining joint).
+The cube structures *what crosses* the template alphabet; it does not replace it.
+
+### 16.3 The WHERE chain — single-parent prefix-tree + the frozen floor
+
+`where` is a **chain**: one hierarchical path read coarse→fine (e.g.
+`build_step ▸ component` in CI; `subsystem ▸ component`, `namespace ▸ service` in
+deployment), declared as the ordered `chain` array (**coarsest first**). A cell's
+`where` coordinate is a **prefix** of that chain — `["test", "auth"]` pins the first
+two levels and aggregates (`*`) below.
+
+- **`floor_depth`** is the schema-frozen retained depth (`≤ len(chain)`). The
+  hierarchy is **cut at the floor**: levels below it (the **WHICH-leaf** — e.g.
+  `file`, an ephemeral `instance.id`) are **not cubed**; they are the matching key
+  Sift pairs *along*, consumed below the floor (a key is *allowed* to be
+  high-cardinality — that is its role). The floor is frozen **offline, per regime,
+  once — never per window** (§16.9). The emerging border floats *up* from the floor,
+  **never below it**.
+- **Roll-up = prefix truncation**, a many-to-one map, so `count` is **monotone under
+  roll-up** (`count(coarser) ≥ count(finer)` — generalising unions the row sets).
+  This is what preserves the border structure (§16.5 MUST-1). A future **runtime
+  roll-up** to a coarser frozen floor (the planned dimensional-shrink, to bound
+  per-dimension cardinality) is exactly *prefix truncation of the chain* and requires
+  **no schema change**: `floor_depth` shrinks and the cells roll up. The
+  representation is forward-compatible by construction.
+- **`floor_saturation`** (optional) = the fraction of emerging borders that hit the
+  floor without being able to descend. High ⇒ the floor is too coarse ⇒ re-freeze it
+  finer **offline on the corpus, never per window**. It is a **health metric, not a
+  gate**: a saturated floor is *real signal at a coarse granularity*, not absence of
+  signal.
+
+A WHERE chain **MUST** be a tree — every node has a **single parent**. A multi-parent
+node (a DAG) breaks the roll-up function (double-counting) and therefore breaks
+count-monotonicity and the border. It is **forbidden** (§16.5 MUST-1).
+
+Transverse membership keys (`trace_id` and the like) are **orthogonal** to the WHERE
+chain (they are the leaf of no chain, they cross services), are **consumed, never
+stored**, and are **neither a cube axis nor a `structural_role`**. The reference CI
+regime is mono-thread → membership is positional → no such key is carried; this is a
+**declared regime precondition**, not a law of CI (matrix jobs, intra-step
+parallelism, and worker re-buffering can violate it and are out-of-regime).
+
+### 16.4 Cells — closed cells, COUNT measure, deterministic order
+
+`cells` is the set of **closed cells** — the condensed representation: every cell
+whose pinned dimensions are *exactly* those constant over its row set. All non-closed
+cells regenerate by closure (**lossless reconstruction**). Each cell:
+
+```jsonc
+{ "coord": { "level": "ERROR", "where": ["test", "auth"] }, "count": 53 }
+```
+
+- `coord` is an object keyed by **axis name**. An **absent** axis means **aggregated
+  (`*`)**. A `categorical` axis value is a **string**; a `chain` axis value is an
+  ordered **prefix-path array** (`array[i]` = value at chain level `i`; its length is
+  the roll-up granularity, `≤ floor_depth`). The object is **open over axis names** —
+  so a future axis validates with no schema change — but each value **MUST** be a
+  string or an array of strings.
+- `count` is the distributive base measure (**integer**).
+- The fully-aggregated cell (`coord: {}`) carries the window total.
+- Cells **MUST** serialise in a deterministic canonical (coord-sorted) order for
+  replay bit-identity (§16.9).
+
+`cell_count` / `raw_cell_count` expose the **collapse rate** the closure achieved on
+this window — the condensation measure.
+
+### 16.5 Two hard implementation MUSTs (border-monotonicity preconditions)
+
+The emerging border (§13.6) is well-defined **only** under **both** of these. They
+are stated here so an implementation cannot silently violate them:
+
+- **MUST-1 — WHERE is a single-parent prefix-tree.** Roll-up is prefix truncation, a
+  many-to-one map; `count` is monotone under it. A DAG (multi-parent node)
+  double-counts ⇒ monotonicity lost ⇒ the border is ill-defined. A producer **MUST**
+  reject a non-tree WHERE chain.
+- **MUST-2 — emergence is defined by absolute thresholds, never a ratio.** A cell is
+  emerging iff `count_previous ≤ θ_was ∧ count_current ≥ θ_now` (two **absolute**
+  thresholds). This makes the emerging set the intersection of an up-set (monotone)
+  and a down-set (anti-monotone) = **order-convex**, bounded by a **(lower, upper)
+  border pair**. A growth **ratio** (`count_current / count_previous ≥ ρ`) is a
+  *mediant* — neither monotone nor anti-monotone — and **breaks** the border
+  structure. A producer **MUST NOT** define emergence by a ratio.
+
+Either MUST violated ⇒ the floating (dynamic-granularity) border is incorrect.
+
+### 16.6 The reservoir→cell cross (LOCATION-only, read-only)
+
+A `reservoir` entry (§3.7) **MAY** carry a `cube_coord` — its LOCATION in the cube,
+`{ level, where }` — the **only** bridge between the salience-ranked reservoir and
+the emergence-ranked cube. It restores the WHERE of a salient item the **capped**
+border never surfaced (the rare-salient-sub-cap / silent-regression case).
+
+This cross is a **hard firewall (normative)**:
+
+- It carries **LOCATION only** (`level` + `where`-path) — **never** salience back
+  into the cube.
+- It is **read-only and one-way**: cube geometry → item location. It **MUST NOT**
+  read or write salience into a cell, re-rank or alter the emerging border, or feed
+  any emergence back into the reservoir. The two orderings (the bag's salience rank,
+  the cube's emergence rank) remain **separate**; the cross only *annotates* a bag
+  entry with its cube coordinate.
+- `cube_coord` is a **pure function** of the entry's `(level, where-path)` — no new
+  non-determinism, no float.
+- **Regime precondition (D9):** valid **only** while the reservoir and the cube close
+  on the **same window boundary** (the fixed-window regime — true today). Under
+  adaptive window closure the two may close on different boundaries, so the cross
+  would point at a cell of the wrong window; it **MUST** be re-designed before reuse
+  there (reuse unchanged is *out-of-regime*, not a bug).
+
+### 16.7 Two scales — intra-window and compose
+
+The cube exists at two scales, each drawing its WHERE coordinate from a different
+place:
+
+- **Intra-window cube** (within one document): cells aggregate per-event axes; the
+  `where` coordinate is each event's canon **`component`-chain**. This is the v0.6.0
+  block defined above.
+- **Compose cube** (across documents, §12.1): when N per-source documents compose
+  into a fleet / rollup document, each input contributes its **`source`** block
+  (service / fleet / region) as the WHERE coordinate of a higher-level cube — the
+  cross-document organ (env / region / service). Its emerging border lives in a
+  `MetaLogDiff.cube_diff` (§13.6); composition **re-closes** (§12.1).
+
+### 16.8 Clean-kill isolation
+
+The cube is a **self-contained, additive** block. In v0.6.0 it does **not** become
+the source of truth for any categorical marginal and does **not** reshape `stats`,
+`behavior`, or the 1-D `level` fields — those stand unchanged. Removal is therefore a
+**single revert**: delete the `cube` block, the `cube_diff` block (§13.6), and the
+`reservoir[*].cube_coord` field, and bump `canonicalization_version`.
+
+> The "marginals become projections of the cube" reorganization — replacing stored
+> 1-D categorical counts with cube projections to recover the bytes — is
+> **deliberately deferred** until the cube is decided to be *kept*. It is **not** part
+> of the additive v0.6.0 landing, precisely so that the keep/kill decision stays a
+> one-line revert and the size cost stays cleanly *additive* (measurable as the cube's
+> own share of the document).
+
+### 16.9 Determinism
+
+The cube is computed **in batch over the closed window** — a finite, frozen, ordered
+set — so it is a **pure function** of that set and **bit-identical across stdlibs and
+operating systems** (the standing cross-stdlib / cross-OS diagonal). Specifically:
+
+- `count` is integer; the closure and the border are set operations; cells and
+  border cells **MUST** serialise in canonical (coord-sorted) order.
+- The WHERE roll-up is **prefix truncation only** — there is **no float→int** anywhere
+  in the chain.
+- New serialization surfaces (the cube block) are **golden-gated**; the landing
+  carries **one** `canonicalization_version` bump and its golden cascade in the same
+  pass.

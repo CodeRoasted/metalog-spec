@@ -148,6 +148,78 @@
                 "tail_max_rate_delta": { "type": "number" }
             },
             "additionalProperties": false
+        },
+        "cube_diff": {
+            "type": "object",
+            "description": "Emerging-border diff of two cube blocks (SPEC §13.6, §16). Present only when both inputs carried a cube and their axes are equal. Experimental, added in v0.6.0.",
+            "required": ["axes"],
+            "properties": {
+                "axes": {
+                    "type": "array",
+                    "minItems": 1,
+                    "description": "MUST equal both inputs' cube.axes.",
+                    "items": { "$ref": "#/$defs/cube_axis" }
+                },
+                "emerging": {
+                    "description": "Growth region (count_prev <= theta_was AND count_cur >= theta_now): order-convex, a (lower, upper) border pair.",
+                    "$ref": "#/$defs/cube_border"
+                },
+                "vanishing": {
+                    "description": "Disappearance region (the dual): count_prev >= theta_was AND count_cur <= theta_now.",
+                    "$ref": "#/$defs/cube_border"
+                }
+            },
+            "additionalProperties": false
+        }
+    },
+    "$defs": {
+        "cube_axis": {
+            "type": "object",
+            "description": "A cube axis descriptor (SPEC §16.2). Mirrors metalog.v0.schema.json #/$defs/cube_axis.",
+            "required": ["name", "kind"],
+            "properties": {
+                "name": { "type": "string", "minLength": 1 },
+                "kind": { "type": "string", "enum": ["categorical", "chain"] },
+                "chain": {
+                    "type": "array",
+                    "minItems": 1,
+                    "items": { "type": "string", "minLength": 1 }
+                },
+                "floor_depth": { "type": "integer", "minimum": 1 }
+            },
+            "additionalProperties": false,
+            "if": { "properties": { "kind": { "const": "chain" } } },
+            "then": { "required": ["chain", "floor_depth"] }
+        },
+        "cube_coord": {
+            "type": "object",
+            "description": "A cube cell coordinate, generic over axes (SPEC §16.4). Each key is a cube axis NAME; an absent axis means aggregated (*). Categorical value = string; chain value = ordered prefix-path array. Mirrors metalog.v0.schema.json #/$defs/cube_coord.",
+            "additionalProperties": {
+                "oneOf": [
+                    { "type": "string", "minLength": 1 },
+                    { "type": "array", "items": { "type": "string", "minLength": 1 } }
+                ]
+            }
+        },
+        "cube_border": {
+            "type": "object",
+            "description": "An order-convex emerging/vanishing region as a (lower, upper) border pair (SPEC §13.6). lower = most-specific cells (the precise description); upper = most-general cells (the minimal generators = the deterministic headline).",
+            "required": ["lower", "upper"],
+            "properties": {
+                "lower": { "type": "array", "items": { "$ref": "#/$defs/cube_border_cell" } },
+                "upper": { "type": "array", "items": { "$ref": "#/$defs/cube_border_cell" } }
+            },
+            "additionalProperties": false
+        },
+        "cube_border_cell": {
+            "type": "object",
+            "required": ["coord", "previous_count", "current_count"],
+            "properties": {
+                "coord": { "$ref": "#/$defs/cube_coord" },
+                "previous_count": { "type": "integer", "minimum": 0 },
+                "current_count": { "type": "integer", "minimum": 0 }
+            },
+            "additionalProperties": false
         }
     }
 }

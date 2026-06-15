@@ -13,6 +13,49 @@ The spec follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+> **Version → 0.6.0 (Draft) — the cube (EXPERIMENTAL).** Adds the intra-window
+> **joint categorical condensation** to the format. The cube is **additive,
+> provisional, and removable in a single revert** (§16.8): it is integrated now as
+> the test rig for the upcoming causal (do-operator) verdict, not because the
+> standing BGL evidence justified it (that leaned *ornament*, mono-axis). The format
+> is v0.x with zero external consumers, so the landing is explicitly reversible and a
+> future 0.x **MAY** remove it. A **pre-registered kill-criterion** governs the
+> keep/kill decision (recorded in the internal cube spec, not here).
+
+### Added (0.6.0)
+- **§16 `cube` block** — a closed cube over a small fixed set of low-card
+  categorical axes (`level × structural_role × where`-chain). Condensed by closure
+  (lossless where the data correlates), an **attributor/projector** not a detector.
+  Axis set is **fixed, frozen, axis-generic** (a future `status` axis is a config
+  addition, not a schema reshape). `template_id` **MUST NOT** be an axis.
+- **§16.3 WHERE-chain** — a single-parent prefix-tree with a schema-frozen
+  `floor_depth`; roll-up = prefix truncation (count-monotone). Forward-compatible
+  with a future runtime dimensional-shrink (floor shrinks, **no** schema change).
+  The WHICH-leaf below the floor is the (high-card, legitimate) matching key, not
+  cubed.
+- **§16.5 two hard MUSTs** — WHERE = single-parent tree (a DAG breaks border
+  monotonicity); emergence = **absolute thresholds, never a growth ratio**.
+- **§13.6 `cube_diff`** — the emerging border as an order-convex **(lower, upper)
+  border pair** (`upper` = the minimal-generator headline), plus the `vanishing`
+  dual. Emitted only when both inputs carry a cube with **equal axes**.
+- **§16.6 reservoir→cell cross** — `reservoir[*].cube_coord`, a **LOCATION-only,
+  read-only, one-way** annotation restoring the WHERE of a salient item the capped
+  border never surfaced. Hard firewall: no salience flows into the cube; valid only
+  in the fixed-window regime (D9).
+- **§16.7 two scales** — the **intra-window** cube draws WHERE from canon
+  `component`; the **compose** cube draws WHERE from the per-document `source`.
+- **§12.1 `C.cube` re-close** — counts compose by addition (SIMD-friendly) but the
+  **closure does not distribute** → composer expands, adds, and **re-closes**
+  (recompute is the deterministic default).
+- **§16.8 clean-kill isolation** — the cube is additive; the "marginals become
+  cube projections" reorganization is **deferred** until a keep decision, keeping
+  removal a one-line revert and the size cost cleanly additive.
+- Schema: `cube` (top-level), `cube_axis`/`cube_cell`/`cube_coord` (`$defs`) in
+  `metalog.v0.schema.json`; `cube_diff` + cube `$defs` in
+  `metalog_diff.v0.schema.json`. One `canonicalization_version` bump
+  (`component` now propagates into the metalog) + `retention_profile` bump (axis/
+  floor config), with the golden cascade in the same pass.
+
 > **Version → 0.5.0 (Draft).** Phase-3 spec formalization **complete in
 > scope** (still Draft; v1.0 freeze gated on broader criteria — see ROADMAP).
 > 0.5.0 contracts the salience-epic shape end-to-end: §3.7 reservoir, §2.4

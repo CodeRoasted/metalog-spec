@@ -368,6 +368,10 @@
             },
             "additionalProperties": false
         },
+        "cube": {
+            "description": "Intra-window joint categorical condensation (closed cube). Experimental, additive, removable in a single revert (SPEC §16). Added in v0.6.0.",
+            "$ref": "#/$defs/cube"
+        },
         "provenance": {
             "type": "array",
             "description": "Set when this MetaLog was composed from others (SPEC §12).",
@@ -588,9 +592,143 @@
                 "within_window_ordinal": {
                     "type": "integer",
                     "minimum": 0
+                },
+                "cube_coord": {
+                    "description": "LOCATION-only reservoir->cell cross (SPEC §16.6): the cube cell this salient entry occupies. Read-only, one-way (cube geometry -> item location), carries no salience. Present only when a cube block is emitted.",
+                    "$ref": "#/$defs/cube_coord"
                 }
             },
             "additionalProperties": false
+        },
+        "cube": {
+            "type": "object",
+            "description": "A closed cube over a small fixed set of low-card categorical axes (SPEC §16). Additive and experimental.",
+            "required": [
+                "axes",
+                "cells",
+                "cell_count",
+                "raw_cell_count"
+            ],
+            "properties": {
+                "axes": {
+                    "type": "array",
+                    "minItems": 1,
+                    "description": "Ordered axis descriptors. Frozen per (canonicalization_version, retention_profile); never adapted per window (SPEC §16.2).",
+                    "items": {
+                        "$ref": "#/$defs/cube_axis"
+                    }
+                },
+                "cells": {
+                    "type": "array",
+                    "description": "The closed cells (the condensed representation). MUST serialise in canonical coord-sorted order for replay bit-identity (SPEC §16.4/§16.9).",
+                    "items": {
+                        "$ref": "#/$defs/cube_cell"
+                    }
+                },
+                "cell_count": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "description": "Number of closed cells emitted."
+                },
+                "raw_cell_count": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "description": "Raw (pre-closure) populated-cell count. Collapse rate = cell_count / raw_cell_count."
+                },
+                "floor_saturation": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 1,
+                    "description": "Optional WHERE-floor health metric: fraction of emerging borders that hit the floor without descending (SPEC §16.3). Health signal, not a gate."
+                }
+            },
+            "additionalProperties": false
+        },
+        "cube_axis": {
+            "type": "object",
+            "description": "A cube axis descriptor (SPEC §16.2). kind=categorical is a flat low-card category; kind=chain is a single-parent roll-up hierarchy (SPEC §16.3), which additionally carries its ordered chain levels (coarsest first) and frozen floor_depth.",
+            "required": [
+                "name",
+                "kind"
+            ],
+            "properties": {
+                "name": {
+                    "type": "string",
+                    "minLength": 1
+                },
+                "kind": {
+                    "type": "string",
+                    "enum": [
+                        "categorical",
+                        "chain"
+                    ]
+                },
+                "chain": {
+                    "type": "array",
+                    "minItems": 1,
+                    "description": "kind=chain only: the ordered roll-up levels, coarsest first, down to (and including) the floor. The WHICH-leaf below the floor is NOT cubed (SPEC §16.3).",
+                    "items": {
+                        "type": "string",
+                        "minLength": 1
+                    }
+                },
+                "floor_depth": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "description": "kind=chain only: the schema-frozen retained depth (<= len(chain)). A future runtime roll-up shrinks this with no schema change (SPEC §16.3)."
+                }
+            },
+            "additionalProperties": false,
+            "if": {
+                "properties": {
+                    "kind": {
+                        "const": "chain"
+                    }
+                }
+            },
+            "then": {
+                "required": [
+                    "chain",
+                    "floor_depth"
+                ]
+            }
+        },
+        "cube_cell": {
+            "type": "object",
+            "description": "A closed cube cell (SPEC §16.4): a coordinate and its COUNT measure.",
+            "required": [
+                "coord",
+                "count"
+            ],
+            "properties": {
+                "coord": {
+                    "$ref": "#/$defs/cube_coord"
+                },
+                "count": {
+                    "type": "integer",
+                    "minimum": 0
+                }
+            },
+            "additionalProperties": false
+        },
+        "cube_coord": {
+            "type": "object",
+            "description": "A cube cell coordinate, generic over axes (SPEC §16.4). Each key is a cube axis NAME; an ABSENT axis means aggregated (*). A categorical axis value is a string; a chain axis value is an ordered prefix-path array (array[i] = value at chain level i). Open over axis names so a future axis validates with no schema change; every value MUST be a string or an array of strings. coord {} is the fully-aggregated cell (window total).",
+            "additionalProperties": {
+                "oneOf": [
+                    {
+                        "type": "string",
+                        "minLength": 1
+                    },
+                    {
+                        "type": "array",
+                        "items": {
+                            "type": "string",
+                            "minLength": 1
+                        }
+                    }
+                ]
+            }
         },
         "param_histogram": {
             "type": "object",
