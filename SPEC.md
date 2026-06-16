@@ -68,7 +68,7 @@ top-level fields:
 
 | Field | Type | Required | Purpose |
 |---|---|---|---|
-| `metalog_version` | string | yes | Spec version this document conforms to. SemVer string (e.g. `"0.5.0"`). |
+| `metalog_version` | string | yes | Spec version this document conforms to. SemVer string (e.g. `"0.6.0"`). |
 | `producer` | object | yes | Identifies the producing implementation. See §2.1. |
 | `window` | object | yes | The time interval covered. See §2.2. |
 | `source` | object | yes | What was observed (service, host, fleet). See §2.3. |
@@ -93,7 +93,7 @@ top-level fields and **MUST** ignore unknown keys inside
 ```jsonc
 {
   "name": "insight",          // string, required
-  "version": "0.5.0",         // string, required, SemVer
+  "version": "0.6.0",         // string, required, SemVer
   "implementation_uri": "https://github.com/.../insight"  // string, optional
 }
 ```
