@@ -411,7 +411,7 @@ document, not only at the raw scale.
 > treats an absent `param_histograms` as an empty array. Wire emission is **batch-mode**:
 > the §11 streaming envelope cannot afford per-slot value maps, but a full-fidelity
 > (batch) diff can. It lands together with the ordinal **Wasserstein-1** trait
-> ([ROADMAP](../ROADMAP.md) § Next #10) — `js_divergence` over `value_counts` treats a
+> — `js_divergence` over `value_counts` treats a
 > numeric slot's support as **unordered**, so emitting histograms for ordinal slots
 > before that trait exists would surface a magnitude-blind delta. When emitted,
 > `value_counts` **MUST** serialise in a deterministic (key-sorted) order for replay

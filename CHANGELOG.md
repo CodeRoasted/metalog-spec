@@ -57,7 +57,7 @@ The spec follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   floor config), with the golden cascade in the same pass.
 
 > **Version → 0.5.0 (Draft).** Phase-3 spec formalization **complete in
-> scope** (still Draft; v1.0 freeze gated on broader criteria — see ROADMAP).
+> scope** (still Draft; v1.0 freeze gated on broader criteria).
 > 0.5.0 contracts the salience-epic shape end-to-end: §3.7 reservoir, §2.4
 > processing identifiers + compose/diff gating, §15 re-derivation coordinate
 > (raw/composed XOR), and §12.1 reservoir-carry + compose-visible field
