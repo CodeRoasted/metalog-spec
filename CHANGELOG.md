@@ -23,6 +23,16 @@ The spec follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 > keep/kill decision (recorded in the internal cube spec, not here).
 
 ### Added (0.6.0)
+- **§3.7.2.1 reservoir comparability is byte-scoped** — the `template_id` tie-break is
+  content-derived but **meaning-blind** (SHA-256 over the template string), so a
+  semantically neutral rename re-orders **equally-ranked** candidates and changes which
+  tied template holds the last reservoir slot. Reproducibility for byte-identical input
+  is unchanged and is *why* the tie-break exists. New: consumers **MUST NOT** attribute a
+  reservoir-membership difference to behaviour when template texts differ, and the
+  comparability predicate now names **stable template text** beside a matching
+  `retention_profile`. Clarification only — **no schema, encoding or field change**.
+  Measured on the showcase-sample build: a project-token rename moved a regression pair
+  13 → 12 significant changes, with a same-length control ruling out a length effect.
 - **§16 `cube` block** — a closed cube over a small fixed set of low-card
   categorical axes (`level × structural_role × where`-chain). Condensed by closure
   (lossless where the data correlates), an **attributor/projector** not a detector.

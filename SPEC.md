@@ -535,7 +535,39 @@ normative: salience combines the named axes with rarity-modulation, admission is
 salience-ranked + diversity-capped, arithmetic is **integer** with **tie-break by
 `template_id`**, and a given input under a given `retention_profile` **MUST** yield
 a **bit-identical** reservoir. Two documents are comparable (diff, §13) only under
-a **matching** `retention_profile`.
+a **matching** `retention_profile` **and a stable template text** — see §3.7.2.1.
+
+##### 3.7.2.1 The tie-break is content-derived, so comparability is byte-scoped
+
+The tie-break key is `template_id`, which is **SHA-256 over the canonical template
+string** (§3.2). It is therefore **content-derived but meaning-blind**: its ordering
+is pseudo-random with respect to what a template *means*. Two consequences follow,
+and the second is not obvious.
+
+1. **Reproducibility holds, exactly as stated above.** For byte-identical input under
+   a matching `retention_profile`, the retained set is bit-identical. This tie-break
+   is *why* — an implementation-defined or container-iteration-order tie-break at the
+   admit/evict boundary is precisely what this rule exists to forbid.
+2. **A semantically neutral edit to template text is NOT reservoir-neutral.** Renaming
+   a token that survives masking changes the template string, hence `template_id`,
+   hence the order of **equally-ranked** candidates — so a *different* member of a tie
+   is retained once the reservoir is full. The change is invisible in every count:
+   salience, frequency and level are unchanged, and only *which* tied template
+   occupies the last slot moves.
+
+Consumers **MUST NOT** attribute a reservoir-membership difference to a change in
+behaviour when the two documents' template texts differ. "Content-preserving" is a
+human notion; this spec preserves **bytes**, not meaning, and offers no predicate for
+semantic equivalence. A diff (§13) across a rename, a re-word, a version-string change
+or any other template-text edit is **outside the comparability domain** — the
+reservoir delta it reports is re-selection, not signal. Producers **SHOULD** treat a
+template-text change as a re-baseline, in the same way a `retention_profile` change is
+one.
+
+> *Informative.* The failure mode this prevents is a quiet one: because the counts
+> agree, a reservoir re-selection reads as a small, plausible behavioural delta rather
+> than as an incomparable pair. It is the reservoir analogue of the n-gram interleaving
+> noise described in §12.3.1.
 
 #### 3.7.3 Relationship to `tail_summary` and composition
 
