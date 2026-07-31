@@ -1311,6 +1311,14 @@ which is exactly the incident). Each axis is one of two kinds:
 | `categorical` | a flat low-cardinality category | a string |
 | `chain` | a single-parent roll-up hierarchy (§16.3) | an ordered prefix-path (array of strings) |
 
+An axis descriptor additionally carries the **collapse stamps** (§16.10):
+`floor_depth` (chain axes — the window's **effective** retained depth, `≤` the
+schema-frozen floor of §16.3; equal to it when uncollapsed, `0` when the chain was
+dropped) and `band_floor` (the ordinal `level` axis — the applied interval-banding
+floor; **omitted when absent**). The stamps make a collapsed cube
+**self-describing**: a truncated granularity **MUST NOT** be mistakable for a full
+one, and two cubes compare only at their minimal common collapse (§16.10).
+
 The reference producer's grounded axes in v0.6.0 are:
 
 - `level` (`categorical`) — severity.
@@ -1336,25 +1344,26 @@ deployment), declared as the ordered `chain` array (**coarsest first**). A cell'
 `where` coordinate is a **prefix** of that chain — `["test", "auth"]` pins the first
 two levels and aggregates (`*`) below.
 
-- **`floor_depth`** is the schema-frozen retained depth (`≤ len(chain)`). The
+- **The schema floor** is the frozen retained depth (`≤ len(chain)`). The
   hierarchy is **cut at the floor**: levels below it (the **WHICH-leaf** — e.g.
   `file`, an ephemeral `instance.id`) are **not cubed**; they are the matching key
   Sift pairs *along*, consumed below the floor (a key is *allowed* to be
-  high-cardinality — that is its role). The floor is frozen **offline, per regime,
-  once — never per window** (§16.9). The emerging border floats *up* from the floor,
-  **never below it**.
+  high-cardinality — that is its role). The **schema** floor is frozen **offline,
+  per regime, once — never re-chosen per window**. What *can* move per window is
+  the **effective** retained depth, and only **downward**, through the declared
+  budget collapse of §16.10 — stamped on the axis as `floor_depth`. The emerging
+  border floats *up* from the floor, **never below it**.
 - **Roll-up = prefix truncation**, a many-to-one map, so `count` is **monotone under
   roll-up** (`count(coarser) ≥ count(finer)` — generalising unions the row sets).
-  This is what preserves the border structure (§16.5 MUST-1). A future **runtime
-  roll-up** to a coarser frozen floor (the planned dimensional-shrink, to bound
-  per-dimension cardinality) is exactly *prefix truncation of the chain* and requires
-  **no schema change**: `floor_depth` shrinks and the cells roll up. The
-  representation is forward-compatible by construction.
+  This is what preserves the border structure (§16.5 MUST-1). The **runtime
+  roll-up** to a coarser effective floor (§16.10's WHERE step, bounding per-window
+  cardinality) is exactly *prefix truncation of the chain* and requires **no schema
+  change**: `floor_depth` shrinks and the cells roll up.
 - **`floor_saturation`** (optional) = the fraction of emerging borders that hit the
-  floor without being able to descend. High ⇒ the floor is too coarse ⇒ re-freeze it
-  finer **offline on the corpus, never per window**. It is a **health metric, not a
-  gate**: a saturated floor is *real signal at a coarse granularity*, not absence of
-  signal.
+  floor without being able to descend. High ⇒ the **schema** floor is too coarse ⇒
+  re-freeze it finer **offline on the corpus, never per window** (§16.10's
+  per-window step only ever *coarsens*). It is a **health metric, not a gate**: a
+  saturated floor is *real signal at a coarse granularity*, not absence of signal.
 
 A WHERE chain **MUST** be a tree — every node has a **single parent**. A multi-parent
 node (a DAG) breaks the roll-up function (double-counting) and therefore breaks
@@ -1476,3 +1485,59 @@ operating systems** (the standing cross-stdlib / cross-OS diagonal). Specificall
 - New serialization surfaces (the cube block) are **golden-gated**; the landing
   carries **one** `canonicalization_version` bump and its golden cascade in the same
   pass.
+- The §16.10 collapse is **deterministic content**: the trigger reads only the
+  closed window (never wall-clock, never an environment budget); the policy is pure
+  integer (`Δcells / cost` by cross-multiplication — no float); and the fixed
+  candidate order (LEVEL before WHERE) **is** the declared total-order tie-break.
+  The policy is **version-stamped** — changing its budget, costs, steps or
+  tie-break spends `canonicalization_version` — and the collapse path (including
+  compare-at-minimal-common-collapse) is fixture-exercised under the cross-stdlib
+  diagonal.
+
+### 16.10 The per-window budget collapse — bounded, admissible, stamped
+
+An always-on closed cube can explode (`O(B·2ⁿ)`). The bound is a **per-window,
+budget-driven dimensional collapse** — three separated objects:
+
+- **BUDGET** — a static producer constant on the closed-cell count (reference
+  producer: 4096), never adaptive, never read from the environment.
+- **TRIGGER** — a pure function of the closed window's content: closed cells over
+  budget. **Closure-first, collapse-last**: when closure alone fits, nothing
+  degrades — collapse is the rare guard, not the normal path.
+- **POLICY** — while over budget, apply the best **admissible** monotone coarsening
+  of the base and **re-close**, iterating until under budget (or no step reduces
+  the count). Best = maximal `Δcells / cost`, measured by trial re-closure; the
+  step costs are **frozen and window-independent** — the policy can never learn
+  from the data it is bounding.
+
+The admissible steps — and **admissibility is a BARRIER, never a price**:
+inadmissible coarsenings are unreachable by construction, so no explosion can ever
+"justify" an unsafe collapse:
+
+- **LEVEL interval-banding** — floor `f`: levels `[0..f-1]` merge into their top
+  representative `f-1` (`{TRACE, DEBUG}` first — the cheapest, near-lossless band).
+  **The severity frontier is absolute: `{ERROR, FATAL}` are never banded** — the
+  maximum floor stops at `ERROR`'s index, preserving the distinction the failure
+  lexicon, the `Terminator` role and border attribution all read.
+- **WHERE prefix truncation** — one level toward the root (a depth-1 chain
+  degenerates to a drop). Location loss is the **declared last resort**: its frozen
+  cost dominates every banding step.
+
+The applied collapse is **stamped on the axes** (§16.2's `band_floor` / effective
+`floor_depth`) — a collapsed cube is self-describing. Comparability follows from
+the stamps:
+
+- **Diff reads both cubes at their minimal common collapse** — the coarser stamp
+  per axis (maximum `band_floor`, minimum retained depth) — so neither side
+  manufactures a distinction the other collapsed away.
+- **Compose seeds the minimal common collapse of its members, then re-closes** —
+  the merge is never finer than its coarsest member (roll-down-then-re-close).
+- **Expansion never means un-collapse**: a coarsened window is never re-derived
+  finer downstream; finer truth exists only upstream of the collapse, in the raw
+  events.
+
+Neither the axis **set** (§16.2) nor the **schema** floor (§16.3) ever adapts per
+window — the collapse coarsens **values** inside the frozen schema, declares
+itself, and pays in **granularity, never in correctness**: the coarsening is a
+surjection that fuses cells, so counts stay exact at the coarser granularity and
+nothing is dropped.
