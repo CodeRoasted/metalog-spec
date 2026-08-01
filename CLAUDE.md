@@ -37,5 +37,5 @@ happens to be edited here, not a component of a product.
   and nothing outside this repo cites them. Do not "canonicalize" them into the
   registry grammar: the number space is this repo's, and the two series are
   unrelated despite looking alike.
-- The superproject's planning tiers (`WIP` / `ROADMAP` / `DONE`) do **not**
-  extend here. Spec work in flight is an issue or a PR, per `GOVERNANCE.md`.
+- The superproject's planning tiers (`WIP` / `ROADMAP` / `DONE`) do **not** extend here. <!-- docs-lint: allow names the tier only to disclaim it -->
+  Spec work in flight is an issue or a PR, per `GOVERNANCE.md`.
