@@ -4,7 +4,7 @@
 > bounded-size summaries of log streams.
 
 **Status:** Draft v0.6.0 · May 2026
-**Editor:** the InSight project (`insight-metalog` and `insight-eidos`)
+**Editor:** the InSight project (reference implementation: `insight-metalog`)
 **License:** Spec text — [CC-BY-4.0](LICENSE-SPEC). Reference schemas — [MIT](LICENSE).
 
 ---
@@ -82,7 +82,7 @@ ways before v1.
 
 The first stable version (v1.0) will land alongside the InSight
 reference implementation when the `insight-metalog` producer and
-downstream `insight-eidos` consumers have enough compatibility evidence
+downstream consumers have enough compatibility evidence
 to freeze the schema. After v1.0, breaking changes follow semver and
 [GOVERNANCE.md](GOVERNANCE.md).
 
@@ -93,7 +93,6 @@ to freeze the schema. After v1.0, breaking changes follow semver and
 | Implementation | Language | License | Status |
 |---|---|---|---|
 | **insight-metalog** ([repo](https://github.com/CodeRoasted/insight-metalog)) | C++23 | CodeRoast-owned package | MetaLog v0.6.0 producer, compose, and diff |
-| **insight-eidos** ([repo](https://github.com/CodeRoasted/insight-eidos)) | C++23 | CodeRoast-owned package | Detection and explanation consumers |
 | *Your implementation here* | — | — | PRs welcome |
 
 The spec is deliberately implementation-agnostic. Any language that

@@ -3,7 +3,7 @@
     "producer": {
         "name": "insight",
         "version": "0.6.0",
-        "implementation_uri": "https://github.com/CodeRoasted/insight"
+        "implementation_uri": "https://github.com/CodeRoasted/insight-metalog"
     },
     "window": {
         "start": "2026-04-24T10:00:00Z",
