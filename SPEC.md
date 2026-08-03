@@ -1,4 +1,4 @@
-# MetaLog Specification — v0.6.0 (Draft)
+# MetaLog Specification — v0.7.0 (Draft)
 
 > **Status:** Draft. Subject to incompatible change until v1.0.
 > **Cross-reference:** [`RATIONALE.md`](RATIONALE.md) for *why*
@@ -597,6 +597,7 @@ Captures *how* templates follow each other, beyond raw frequency.
     }
   ],
   "top_ngrams_size": 64,                // integer, required
+  "dropped_ngram_observations": 0,      // integer, optional, OMITTED when zero
   "graph_edge_count": 312,              // integer, optional, edges in the transition graph
   "dominant_path": [                    // array, optional, the most-traversed path
     "h:8a3f...", "h:b104...", "h:c977..."
@@ -611,6 +612,26 @@ Captures *how* templates follow each other, beyond raw frequency.
   ]
 }
 ```
+
+**`dropped_ngram_observations` — the accounting bound, distinct from top-k truncation.**
+`top_ngrams` is a RANKING cut: every entry it drops was seen, counted and ranked, and the
+retained set is the top `top_ngrams_size` of them. A producer MAY additionally bound the
+number of distinct n-gram keys it will *account for at all*; past that bound an arriving
+key is refused **before it is ever counted**. That is a different and heavier loss — an
+n-gram that would have ranked first can be absent purely because it arrived late — so it
+is reported rather than inferred, on the same principle as `dropped_edges`.
+
+The field counts **OBSERVATIONS, not distinct keys**, and the noun is normative. How many
+distinct keys were refused is **not knowable** without retaining exactly the unbounded set
+the bound exists to refuse; the number of observations that fell on refused keys is
+knowable, and is what a consumer needs to size the loss.
+
+It is **OMITTED when zero**, so a producer that never hits its bound emits byte-identical
+documents to one that has no bound. Absence is disambiguated by `metalog_version`: in a
+document declaring **0.7.0 or later**, an absent field means **no observations were
+dropped**; in an earlier document it means **unknown**. Consumers **MUST NOT** treat a
+missing field in a pre-0.7.0 document as zero.
+
 
 ### 4.1 `dominant_path`
 
@@ -866,6 +887,8 @@ to a 1-hour MetaLog).
 - `C.stats.entropy_bits` is recomputed from the merged counts.
 - `C.behavior.top_ngrams` is recomputed from the union of per-key
   counts and re-truncated to `top_ngrams_size`.
+- `C.behavior.dropped_ngram_observations` is the SUM of both inputs'
+  values (absent counts as zero); it is omitted when that sum is zero.
 - `C.behavior.graph_edge_count` is the union edge count.
 - `C.behavior.branching` is recomputed from the merged graph.
 - `C.behavior.dominant_path` is re-derived greedily from the merged

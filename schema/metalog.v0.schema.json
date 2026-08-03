@@ -226,6 +226,11 @@
                     "type": "integer",
                     "minimum": 1
                 },
+                "dropped_ngram_observations": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "description": "n-gram OBSERVATIONS (never distinct keys) refused by a producer's accounting bound before being counted — distinct from top_ngrams ranking truncation. OMITTED when zero; in a 0.7.0+ document absence means no drop, in an earlier one it means unknown (SPEC \u00a76)."
+                },
                 "graph_edge_count": {
                     "type": "integer",
                     "minimum": 0

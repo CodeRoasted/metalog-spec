@@ -11,6 +11,31 @@ The spec follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [0.7.0] — 2026-08-03
+
+### Added
+
+- `behavior.dropped_ngram_observations` (integer, optional, omitted when zero) —
+  the count of n-gram **observations** discarded by a producer's accounting bound
+  on distinct keys. Distinct from `top_ngrams` truncation, which is a ranking cut
+  over entries that were counted; this bound refuses a key **before it is ever
+  counted**, so an n-gram that would have ranked first can be absent purely
+  because it arrived late. Reported rather than inferred, on the same principle
+  as `dropped_edges`.
+- The noun is normative: **observations, never distinct keys**. Distinct-key loss
+  is not knowable without retaining exactly the set the bound refuses.
+- Absence is disambiguated by `metalog_version`: in a 0.7.0+ document an absent
+  field means no drop; in an earlier document it means unknown. Consumers MUST
+  NOT read a missing field in a pre-0.7.0 document as zero.
+- `compose()`: the field sums across inputs (absent counts as zero) and is
+  omitted when the sum is zero.
+
+Additive and omitted-when-zero, so **no existing document changes** and no
+producer is obliged to emit it. A 0.6.0 producer stays legal against this spec
+(governance requires only the MAJOR to match).
+
+---
+
 ## [Unreleased]
 
 > **Version → 0.6.0 (Draft) — the cube (EXPERIMENTAL).** Adds the intra-window

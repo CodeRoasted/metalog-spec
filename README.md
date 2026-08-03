@@ -3,7 +3,7 @@
 > A compact, deterministic, vendor-neutral fingerprint format for
 > bounded-size summaries of log streams.
 
-**Status:** Draft v0.6.0 · May 2026
+**Status:** Draft v0.7.0 · August 2026
 **Editor:** the InSight project (reference implementation: `insight-metalog`)
 **License:** Spec text — [CC-BY-4.0](LICENSE-SPEC). Reference schemas — [MIT](LICENSE).
 
