@@ -597,7 +597,7 @@ Captures *how* templates follow each other, beyond raw frequency.
     }
   ],
   "top_ngrams_size": 64,                // integer, required
-  "dropped_ngram_observations": 0,      // integer, optional, OMITTED when zero
+  "dropped_ngram_observations": 1274,   // integer, optional, minimum 1 — OMIT the key entirely when none were dropped (never write 0)
   "graph_edge_count": 312,              // integer, optional, edges in the transition graph
   "dominant_path": [                    // array, optional, the most-traversed path
     "h:8a3f...", "h:b104...", "h:c977..."
