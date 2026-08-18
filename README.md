@@ -47,8 +47,21 @@ because retention is unaffordable, then have no incident forensics.
 
 The industry response has been *more storage, more indexes, more
 dashboards*. The MetaLog response is *compress the meaning, then store
-that*. A 1 GB / hour log stream produces ~4 KB / hour of MetaLog. The
-compression ratio is the value proposition.
+that*. A MetaLog is bounded by the **structure** a window contains —
+its top templates, its n-grams, its cube cells, each capped by a
+declared size (`top_k`, §3.1; `top_ngrams_size`, §4; the cube's closure,
+§16) — and **not** by how many lines the window carried. §11 sets the
+design target that follows from it: **≤ 4 KB per MetaLog covering ≥ 1 M
+log lines**. That is the value proposition: the artifact stops growing
+where the stream does not.
+
+> **That is a target and a bound, not a measured ratio, and no ratio is
+> quoted anywhere in this spec.** A compression ratio is a measurement,
+> and it means nothing without the population it was measured on. This
+> spec has none to cite — which is exactly why §11 asks producers to
+> report `envelope_bytes` "so consumers can track the compression ratio
+> achieved on real workloads". An implementation that publishes a ratio
+> should publish the corpus, the configuration and the run with it.
 
 For this primitive to be useful across vendors — for an SRE to be
 able to switch their log analyzer without re-training their
@@ -92,7 +105,7 @@ to freeze the schema. After v1.0, breaking changes follow semver and
 
 | Implementation | Language | License | Status |
 |---|---|---|---|
-| **insight-metalog** ([repo](https://github.com/CodeRoasted/insight-metalog)) | C++23 | CodeRoast-owned package | MetaLog v0.6.0 producer, compose, and diff |
+| **insight-metalog** ([repo](https://github.com/CodeRoasted/insight-metalog)) | C++23 | CodeRoast-owned package | Targets MetaLog v0.6.0 — producer, compose, and diff. **Does not meet §8 clause 1 today:** it emits three fields inside `additionalProperties: false` objects (`stats.top_k[].component`, `stats.top_k[].ordinal_histograms`, `cube.axes[].band_floor`). Per [GOVERNANCE.md](GOVERNANCE.md) §3 the first two are implementation bugs; `band_floor` is described in §16.2/§16.10 prose and missing from `$defs/cube_axis`, i.e. a schema lag. |
 | *Your implementation here* | — | — | PRs welcome |
 
 The spec is deliberately implementation-agnostic. Any language that
