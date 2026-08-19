@@ -73,11 +73,45 @@ class InstrumentError(RuntimeError):
 # Corpus loading. There is no path through this function that skips a line.
 # --------------------------------------------------------------------------
 
-def load_corpus(path: Path) -> tuple[list[tuple[str, object]], dict]:
+def json_pointer(document, pointer: str, where: str):
+    """RFC 6901, applied to a DOCUMENT rather than a schema.
+
+    A MetaLog or a MetaLogDiff is often carried inside a larger envelope -- a CI
+    report that quotes the diff it was built from, for instance. Pointing at it is
+    better than teaching every producer to publish a bare document.
+
+    A pointer that does not resolve is FATAL, never a skip: silently dropping the
+    file would shrink the corpus, and a corpus that shrank on its own is the one
+    thing this instrument must never do.
+    """
+    node = document
+    for token in pointer.lstrip("/").split("/"):
+        token = token.replace("~1", "/").replace("~0", "~")
+        if isinstance(node, list):
+            if not token.isdigit() or int(token) >= len(node):
+                raise InstrumentError(
+                    f"{where}: pointer {pointer!r} does not resolve — {token!r} is "
+                    f"not an index into a {len(node)}-element array")
+            node = node[int(token)]
+        elif isinstance(node, dict):
+            if token not in node:
+                raise InstrumentError(
+                    f"{where}: pointer {pointer!r} does not resolve — no member "
+                    f"{token!r}. A document the pointer cannot reach is a corpus "
+                    f"this run cannot judge, not one it may skip.")
+            node = node[token]
+        else:
+            raise InstrumentError(
+                f"{where}: pointer {pointer!r} descends into a scalar at {token!r}")
+    return node
+
+
+def load_corpus(path: Path, pointer: str | None = None) -> tuple[list[tuple[str, object]], dict]:
     """Return ([(label, document)], accounting).
 
     Accepts three shapes: a single `.json` document, JSONL, and the sectioned
     `### name ###` + JSONL form the published determinism evidence uses.
+    `pointer` selects the document inside a larger envelope (see json_pointer).
 
     THE DESIGN RULE: every non-blank line is classified as exactly one of
     {section header, document}. A line that parses as neither is fatal. There is
@@ -93,6 +127,8 @@ def load_corpus(path: Path) -> tuple[list[tuple[str, object]], dict]:
             doc = json.loads(text)
         except json.JSONDecodeError as exc:
             raise InstrumentError(f"{path}: not a JSON document — {exc}") from exc
+        if pointer:
+            doc = json_pointer(doc, pointer, str(path))
         return [(path.name, doc)], {"lines": 1, "blank": 0, "sections": 0, "documents": 1}
 
     lines = text.splitlines()
@@ -124,6 +160,8 @@ def load_corpus(path: Path) -> tuple[list[tuple[str, object]], dict]:
                 f"skipping it would shrink the document count silently."
             ) from exc
         ordinal += 1
+        if pointer:
+            doc = json_pointer(doc, pointer, f"{path}:{lineno}")
         docs.append((f"{section}#{ordinal}", doc))
 
     if not docs:
@@ -356,6 +394,8 @@ def render(report: dict, stream) -> None:
     w('metalog-conformance · SPEC §8 clause 1 — "The schema is the test."')
     for path in report["corpus"]:
         w(f"  corpus     : {path}")
+    if report.get("pointer"):
+        w(f"  pointer    : {report['pointer']}  (the document inside the envelope)")
     w(f"  kind       : {report['kind']}  (schema/{report['schema']})")
     acc = report["accounting"]
     plural = lambda n, word: f"{n} {word}" if n == 1 else f"{n} {word}s"
@@ -423,7 +463,7 @@ def render(report: dict, stream) -> None:
 # --------------------------------------------------------------------------
 
 def run(corpora, kind: str, schema_dir: Path, spec_text: str, check_formats: bool,
-        expect_documents: int | None) -> dict:
+        expect_documents: int | None, pointer: str | None = None) -> dict:
     import jsonschema
     from importlib import metadata
 
@@ -440,7 +480,7 @@ def run(corpora, kind: str, schema_dir: Path, spec_text: str, check_formats: boo
     docs: list[tuple[str, object]] = []
     accounting = {"lines": 0, "blank": 0, "sections": 0, "documents": 0}
     for path in corpora:
-        part, acc = load_corpus(Path(path))
+        part, acc = load_corpus(Path(path), pointer)
         docs += part
         for k in accounting:
             accounting[k] += acc[k]
@@ -459,6 +499,7 @@ def run(corpora, kind: str, schema_dir: Path, spec_text: str, check_formats: boo
 
     return {
         "corpus": [str(p) for p in corpora],
+        "pointer": pointer,
         "kind": kind,
         "schema": schema_name,
         "accounting": accounting,
@@ -528,7 +569,7 @@ def selftest(schema_dir: Path, spec_text: str, stream) -> int:
         want = fx["expect"]
         try:
             report = run([path], fx["kind"], schema_dir, spec_text, False,
-                         want.get("documents"))
+                         want.get("documents"), fx.get("pointer"))
             code = 1 if report["findings"] else 0
             got = {
                 "exit": code,
@@ -583,6 +624,11 @@ def main(argv=None) -> int:
                         help="SPEC.md, consulted only for the schema-lag lead")
     parser.add_argument("--expect-documents", type=int, default=None,
                         help="fail with exit 2 unless exactly N documents were parsed")
+    parser.add_argument("--pointer", default=None,
+                        help="RFC 6901 JSON Pointer to the document INSIDE a larger "
+                             "envelope, e.g. --pointer /raw for a CI report that "
+                             "quotes the diff it was built from. A pointer that does "
+                             "not resolve is exit 2, never a skipped file.")
     parser.add_argument("--check-formats", action="store_true",
                         help="assert `format` (date-time, uri). OFF by default: "
                              "Draft 2020-12's default vocabulary makes format an "
@@ -617,7 +663,7 @@ def main(argv=None) -> int:
             parser.error("give at least one corpus path, or --selftest")
 
         report = run(args.corpus, args.kind, args.schema_dir, spec_text,
-                     args.check_formats, args.expect_documents)
+                     args.check_formats, args.expect_documents, args.pointer)
     except InstrumentError as exc:
         print(f"::error::instrument failure — {exc}", file=sys.stderr)
         return 2

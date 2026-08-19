@@ -93,6 +93,28 @@
             }
         },
         {
+            "path": "enveloped/report_with_raw_diff.json",
+            "kind": "diff",
+            "pointer": "/raw",
+            "why": "a document carried INSIDE a larger envelope, the shape a CI report takes when it quotes the diff it was built from. Without this fixture the --pointer path ships untested, and an untested path in a gate is the never-ran failure mode one level down.",
+            "expect": {
+                "exit": 1,
+                "documents": 1,
+                "findings": [
+                    ["current", "additionalProperties", ["region"], 1, 1]
+                ],
+                "undescribed": []
+            }
+        },
+        {
+            "path": "enveloped/report_with_raw_diff.json",
+            "kind": "diff",
+            "pointer": "/no_such_member",
+            "control": "instrument-failure",
+            "why": "the same envelope with a pointer that does not resolve. Exit 2: a document the pointer cannot reach is a corpus this run cannot judge, never one it may quietly skip — a skipped file shrinks the corpus, which is the one thing this instrument must never do.",
+            "expect": { "exit": 2 }
+        },
+        {
             "path": "corrupt/unreadable_line.jsonl",
             "kind": "metalog",
             "control": "instrument-failure",

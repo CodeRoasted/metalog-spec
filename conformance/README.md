@@ -70,7 +70,7 @@ never looked.
 
 ## Why the self-test exists
 
-A validator that cannot fail is decoration. `--selftest` runs ten fixtures whose
+A validator that cannot fail is decoration. `--selftest` runs twelve fixtures whose
 expected results are **hand-authored in `fixtures/manifest.json` from the spec and
 the schemas** — never captured from a run, because an expectation copied out of the
 tool under test makes the tool its own oracle, and the pair then agree forever
@@ -86,14 +86,15 @@ have gone green while blind:
 | `multi-document-section` | The published evidence is `### name ###` sections whose bodies are JSONL — **one document per line**. A reader that takes a section as one document validates its first line and silently ignores the rest, returning a smaller, entirely plausible number. This fixture puts the only violation on the *second* line of a section, so that reader fails twice over: wrong document count and a missed finding. |
 | `undescribed-false-positive` | The schema opens several containers on purpose (`extensions`, `source.tags`, cube coordinates keyed by axis name, `param_histogram.value_counts`). A walker that reports those has invented findings, and a false positive from a prescriptive instrument costs more than a miss: it sends someone to delete a field the schema does describe. This fixture exercises all of them and must report zero. |
 | `closed-object-violation` | The instrument must detect the real defect shape, not a toy one — extra members inside `stats.top_k[]` and `cube.axes[]`, the same two instance paths the reference implementation trips today. |
-| `instrument-failure` | A truncated corpus must exit 2. **There is no code path that skips a line**: every non-blank line is either a section header or a document, and anything else stops the run. A parser bug cannot express itself as a smaller document count — only as a refusal to answer. |
+| `instrument-failure` | A truncated corpus, and a `--pointer` that does not resolve, must both exit 2. **There is no code path that skips a line or a file**: every non-blank line is either a section header or a document, anything else stops the run, and an unreachable pointer refuses rather than dropping the file. A parser bug cannot express itself as a smaller document count — only as a refusal to answer. |
 
-Measured on the committed tool, 2026-08-19: six independent mutations (section-as-
-one-document · offending-member computation blinded · undescribed walker made
-root-only · open-container guard removed · unreadable line downgraded to a skip ·
-empty corpus accepted) each red the self-test, and the unmutated control passes
-10/10. Blinding the offending-member computation reds **three** fixtures, not one —
-that guard is shared, not sole.
+Measured on the committed tool, 2026-08-19: **seven** independent mutations each
+red the self-test — section-as-one-document · offending-member computation blinded ·
+undescribed walker made root-only · open-container guard removed · unreadable line
+downgraded to a skip · empty corpus accepted · unresolved pointer downgraded to a
+skipped file — while the unmutated control passes 12/12. Blinding the
+offending-member computation reds **four** fixtures, not one: that guard is measured
+as shared, not sole. Deleting a `control` tag from the manifest exits 2, as designed.
 
 ---
 
@@ -114,6 +115,13 @@ Declared, because an instrument's silence is read as coverage.
   `--check-formats` to opt in. (Measured on the published determinism evidence,
   2026-08-19: enabling it changes nothing — every format-carrying value is
   well-formed.)
+- **A green on a `MetaLogDiff` corpus says nothing about §13.2.** The prose requires
+  a diff to carry at least one signal field; `metalog_diff.v0.schema.json` requires
+  only `diff_version`, `current` and `previous` and encodes no `anyOf`, so a diff
+  carrying nothing but those three members validates cleanly. Measured 2026-08-19 on
+  two published diff documents: **zero errors, and neither carries a signal field.**
+  This is a limit of what the schema expresses, and the tool reports what the schema
+  says — it does not invent the clause the schema is missing.
 - **Cross-document properties are out of scope.** `compose()` commutativity and
   identity (§12.2) and the `MetaLogDiff` algebra (§13) are properties of *pairs and
   sets* of documents; this tool judges each document against the schema.
@@ -134,9 +142,17 @@ Declared, because an instrument's silence is read as coverage.
   runs the self-test and validates `schema/metalog.v0.example.json`. This is the
   leg that reaches an outside contributor's PR. It cannot see any implementation's
   output.
-- The **CodeRoast superproject** runs the same tool over the published determinism
-  evidence at `coderoast-hub/determinism/`, which is the reference implementation's
-  real output. That leg lives outside this repository because the evidence does.
+- The **CodeRoast superproject** runs the same tool over the reference
+  implementation's *published output* — both surfaces: its determinism evidence (a
+  MetaLog document stream) and its published diff documents, which are carried
+  inside a larger report envelope and reached with `--pointer /raw`. That leg lives
+  outside this repository because the evidence does, and a gate must live where it
+  can open its subject.
+
+A note on the second form, because it is the reason `--pointer` exists: a document
+quoted inside an envelope is still a document, and a conformance tool that can only
+read bare files simply declares that surface out of scope. `--pointer` reads it
+instead, and refuses (exit 2) rather than skipping a file the pointer cannot reach.
 
 ---
 
