@@ -178,6 +178,24 @@ def load_corpus(path: Path, pointer: str | None = None) -> tuple[list[tuple[str,
 # Schema plumbing shared by both species.
 # --------------------------------------------------------------------------
 
+def _declared_formats(schema) -> set[str]:
+    """Every `format` value the schema declares anywhere. Drives the
+    --check-formats teeth check: the set is derived from the artifact, never
+    enumerated, so it cannot lag a schema edit."""
+    found: set[str] = set()
+    stack = [schema]
+    while stack:
+        node = stack.pop()
+        if isinstance(node, dict):
+            value = node.get("format")
+            if isinstance(value, str):
+                found.add(value)
+            stack.extend(node.values())
+        elif isinstance(node, list):
+            stack.extend(node)
+    return found
+
+
 def _resolve_pointer(ref: str, root: dict) -> dict:
     if not ref.startswith("#"):
         raise InstrumentError(
@@ -474,7 +492,26 @@ def run(corpora, kind: str, schema_dir: Path, spec_text: str, check_formats: boo
     schema = json.loads(schema_path.read_text(encoding="utf-8"))
     jsonschema.Draft202012Validator.check_schema(schema)
 
-    fmt = jsonschema.FormatChecker() if check_formats else None
+    fmt = None
+    if check_formats:
+        # jsonschema registers a format checker only when the matching optional
+        # validator is importable (rfc3339-validator for date-time,
+        # rfc3986-validator for uri — see requirements.txt). A bare FormatChecker
+        # silently SKIPS every format it has no checker for, so in a partial
+        # environment this flag would assert nothing while claiming to assert —
+        # measured 2026-08-19: an empty-string date-time read CONFORMANT. The set
+        # to demand is derived from the schema itself, never hand-kept, so a
+        # format added to the schema tomorrow demands its checker on arrival.
+        fmt = jsonschema.FormatChecker()
+        declared = _declared_formats(schema)
+        unenforceable = sorted(declared - set(fmt.checkers))
+        if unenforceable:
+            raise InstrumentError(
+                f"--check-formats was requested but this environment has no "
+                f"checker for format(s) {unenforceable} that the schema declares "
+                f"— `pip install -r conformance/requirements.txt`. An assertion "
+                f"the instrument cannot perform must refuse, never pass silently."
+            )
     validator = jsonschema.Draft202012Validator(schema, format_checker=fmt)
 
     docs: list[tuple[str, object]] = []
@@ -632,7 +669,10 @@ def main(argv=None) -> int:
     parser.add_argument("--check-formats", action="store_true",
                         help="assert `format` (date-time, uri). OFF by default: "
                              "Draft 2020-12's default vocabulary makes format an "
-                             "ANNOTATION, so asserting it is stricter than §8 clause 1.")
+                             "ANNOTATION, so asserting it is stricter than §8 clause 1. "
+                             "Needs the optional format validators from "
+                             "requirements.txt and REFUSES to run (exit 2) without "
+                             "them — a checker-less assertion would pass everything.")
     parser.add_argument("--strict-undescribed", action="store_true",
                         help="also exit 1 on legal-but-undescribed members")
     parser.add_argument("--json", action="store_true", help="machine-readable report")

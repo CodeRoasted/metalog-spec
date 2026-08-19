@@ -112,9 +112,14 @@ Declared, because an instrument's silence is read as coverage.
 - **`format` is an annotation, not an assertion.** Draft 2020-12's default
   vocabulary treats `format` as annotation-only, so `date-time` and `uri` are *not*
   enforced by default — asserting them would be stricter than clause 1 says. Pass
-  `--check-formats` to opt in. (Measured on the published determinism evidence,
-  2026-08-19: enabling it changes nothing — every format-carrying value is
-  well-formed.)
+  `--check-formats` to opt in. The flag needs the optional format validators from
+  `requirements.txt` and REFUSES to run without them (exit 2): jsonschema registers
+  a checker only when the matching validator is importable, so in a bare
+  environment the flag would assert nothing while claiming to assert — measured
+  2026-08-19, an empty-string `date-time` read CONFORMANT under the flag before
+  the refusal existed. (Measured on the published determinism evidence,
+  2026-08-19, with the checkers armed: enabling it adds no findings — every
+  format-carrying value there is well-formed.)
 - **A green on a `MetaLogDiff` corpus says nothing about §13.2.** The prose requires
   a diff to carry at least one signal field; `metalog_diff.v0.schema.json` requires
   only `diff_version`, `current` and `previous` and encodes no `anyOf`, so a diff

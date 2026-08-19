@@ -1,4 +1,4 @@
-# metalog_validate needs one thing: a JSON Schema Draft 2020-12 validator.
+# metalog_validate's oracle: a JSON Schema Draft 2020-12 validator.
 #
 # Pinned to a MAJOR range, not an exact version. The findings this tool reports are
 # a property of the schema and the documents, not of the library — but the library
@@ -6,3 +6,16 @@
 # be a deliberate act. 4.18 is the floor because it is the first release whose
 # reference resolution ($ref via `referencing`) is the one this tool assumes.
 jsonschema>=4.18,<5
+
+# The teeth behind --check-formats. jsonschema registers a format checker only
+# when the matching optional validator is importable: without these, a bare
+# FormatChecker silently skips `date-time` and `uri` — the two formats the
+# shipped schemas declare — and the flag asserted NOTHING (measured 2026-08-19:
+# an empty-string date-time read CONFORMANT under --check-formats). The
+# validator now refuses to run an assertion it cannot perform (exit 2); these
+# two are what make it performable. rfc3986-validator rather than rfc3987 on
+# purpose: jsonschema accepts either for `uri`, but rfc3987 is GPL — the wrong
+# posture for an MIT tool (jsonschema's own `format-nongpl` extra makes the
+# same choice). Both are MIT.
+rfc3339-validator>=0.1.4
+rfc3986-validator>=0.1.1

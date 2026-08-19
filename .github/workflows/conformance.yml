@@ -53,7 +53,7 @@ jobs:
         with:
           python-version: '3.12'
 
-      - name: Install the validator's one dependency
+      - name: Install the validator's dependencies (the oracle + the --check-formats teeth)
         run: |
           set -euo pipefail
           python -m pip install --disable-pip-version-check -r conformance/requirements.txt
