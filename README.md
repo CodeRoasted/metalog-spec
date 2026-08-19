@@ -3,7 +3,8 @@
 > A compact, deterministic, vendor-neutral fingerprint format for
 > bounded-size summaries of log streams.
 
-**Status:** Draft v0.7.0 · August 2026
+**Status:** Draft — the `0.x` line. [`SPEC.md`](SPEC.md) declares the current version on its
+first line and is normative; [`CHANGELOG.md`](CHANGELOG.md) is the dated release history.
 **Editor:** the InSight project (reference implementation: `insight-metalog`)
 **License:** Spec text — [CC-BY-4.0](LICENSE-SPEC). Reference schemas — [MIT](LICENSE).
 
@@ -125,7 +126,7 @@ tool says so on every run.
 
 | Implementation | Language | License | Status |
 |---|---|---|---|
-| **insight-metalog** ([repo](https://github.com/CodeRoasted/insight-metalog)) | C++23 | CodeRoast-owned package | Targets MetaLog v0.6.0 — producer, compose, and diff. **Does not meet §8 clause 1 today**, on one remaining member: it emits `stats.top_k[].ordinal_histograms` inside an `additionalProperties: false` object. Per [GOVERNANCE.md](GOVERNANCE.md) §3 that is an implementation bug — the member's bins ride an unfrozen ladder, so it belongs in `extensions` (§7) until an RFC freezes the ladder. The two other members that failed before v0.8.0 (`stats.top_k[].component`, `cube.axes[].band_floor`) were schema lags, not producer bugs, and v0.8.0 describes both. |
+| **insight-metalog** ([repo](https://github.com/CodeRoasted/insight-metalog)) | C++23 | CodeRoast-owned package | Declares `metalog_version` **0.8.0** — producer, compose, and diff. **Does not meet §8 clause 1 today**, on one remaining member: it emits `stats.top_k[].ordinal_histograms` inside an `additionalProperties: false` object. Per [GOVERNANCE.md](GOVERNANCE.md) §3 that is an implementation bug — the member's bins ride an unfrozen ladder, so it belongs in `extensions` (§7) until an RFC freezes the ladder. The two other members that failed before v0.8.0 (`stats.top_k[].component`, `cube.axes[].band_floor`) were schema lags, not producer bugs, and v0.8.0 describes both. |
 | *Your implementation here* | — | — | PRs welcome |
 
 The spec is deliberately implementation-agnostic. Any language that
