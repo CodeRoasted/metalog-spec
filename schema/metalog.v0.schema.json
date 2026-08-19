@@ -189,6 +189,15 @@
                             "level": {
                                 "type": "string"
                             },
+                            "component": {
+                                "type": "string",
+                                "minLength": 1,
+                                "description": "The functional source (logger / module / unit / subsystem) that dominates this template's occurrences in the window (SPEC §3.8). Same species as `level`: a categorical label the window carries, not a producer-internal state. OMITTED when the format carried no component — never the empty string, which would be an absent location masquerading as a present one. Added in v0.8.0."
+                            },
+                            "extensions": {
+                                "description": "Per-row vendor-specific data (SPEC §7). Same grammar as the top-level `extensions`; placement is per-row because the datum is per-row. Added in v0.8.0.",
+                                "$ref": "#/$defs/extensions"
+                            },
                             "param_histograms": {
                                 "type": "array",
                                 "description": "Per-wildcard-position value-count histograms for this template (SPEC §3.5). Optional, batch-mode emission (see §3.5). MUST NOT be present for entries not in top_k.",
@@ -435,14 +444,19 @@
             "$ref": "#/$defs/coordinate"
         },
         "extensions": {
+            "description": "Document-level vendor-specific data (SPEC §7).",
+            "$ref": "#/$defs/extensions"
+        }
+    },
+    "$defs": {
+        "extensions": {
             "type": "object",
+            "description": "The §7 extension container: reverse-DNS keys, arbitrary payloads, closed to everything else. Defined once and referenced at every object the spec grants one, so the grammar cannot drift between placements. Closure is preserved: a misspelled STANDARD member is still rejected by its object, because it is not inside this container.",
             "patternProperties": {
                 "^[a-z][a-z0-9_-]*(\\.[a-z][a-z0-9_-]*)+$": {}
             },
             "additionalProperties": false
-        }
-    },
-    "$defs": {
+        },
         "coordinate": {
             "type": "object",
             "description": "Re-derivation coordinate (SPEC §15.2). Exactly one of {source_ref + bounds} (raw) or {children} (composed) MUST be present — never both, never neither; consumers discriminate by the presence of children.",
@@ -577,6 +591,11 @@
                 "level": {
                     "type": "string"
                 },
+                "component": {
+                    "type": "string",
+                    "minLength": 1,
+                    "description": "The functional source that dominates this entry's occurrences (SPEC §3.8) — the same member as `stats.top_k[].component`, on the sibling object. Added in v0.8.0."
+                },
                 "structural_role": {
                     "type": "string"
                 },
@@ -681,6 +700,11 @@
                     "type": "integer",
                     "minimum": 1,
                     "description": "kind=chain only: the schema-frozen retained depth (<= len(chain)). A future runtime roll-up shrinks this with no schema change (SPEC §16.3)."
+                },
+                "band_floor": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "description": "Ordinal-axis collapse stamp (SPEC §16.2/§16.10): the applied interval-banding floor f — values [0..f-1] were merged into their top representative f-1. OMITTED when no banding was applied. Makes a collapsed cube self-describing, so a truncated granularity is never mistakable for a full one. Added in v0.8.0."
                 }
             },
             "additionalProperties": false,

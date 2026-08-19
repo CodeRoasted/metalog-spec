@@ -1,5 +1,5 @@
 {
-    "metalog_version": "0.6.0",
+    "metalog_version": "0.8.0",
     "producer": {
         "name": "insight",
         "version": "0.6.0",
@@ -40,7 +40,8 @@
                 "template_id": "h:90585f810bb26f3ccb3193975150dd40",
                 "count": 12453,
                 "frequency": 0.0676,
-                "level": "INFO"
+                "level": "INFO",
+                "component": "auth"
             },
             {
                 "template_id": "h:6c05dc06a24a45a267b3818679e456dd",
@@ -52,13 +53,18 @@
                 "template_id": "h:2c0d325d15f820b8485948ee8c117fd7",
                 "count": 5212,
                 "frequency": 0.0283,
-                "level": "DEBUG"
+                "level": "DEBUG",
+                "component": "db.pool"
             },
             {
                 "template_id": "h:fb7bee89967bc69ed7f5e7008598544b",
                 "count": 42,
                 "frequency": 0.000228,
-                "level": "ERROR"
+                "level": "ERROR",
+                "component": "payments",
+                "extensions": {
+                    "com.example.retry_budget_remaining": 0
+                }
             }
         ],
         "reservoir": [
@@ -67,6 +73,7 @@
                 "count": 1,
                 "frequency": 0.0000054,
                 "level": "FATAL",
+                "component": "payments",
                 "structural_role": "Terminator",
                 "structural_surprise": 73,
                 "novelty": 88,

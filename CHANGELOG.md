@@ -11,6 +11,93 @@ The spec follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [0.8.0] — 2026-08-19
+
+**Additive** under [`GOVERNANCE.md`](GOVERNANCE.md) §2 — new optional fields only.
+No existing field changes type, becomes required, or is removed; **no conformant
+0.7.0 document becomes invalid**, and a 0.7.0 producer stays legal (governance
+requires only the MAJOR to match).
+
+Four of the five members below were **already true of the format and merely
+undescribed**. Two were normative in the prose and absent from the schema (a
+schema lag, `GOVERNANCE.md` §3); two are new descriptions of a real member the
+schema had no way to express. The distinction matters to an implementer: a schema
+lag means the schema was wrong, not the producers.
+
+### Added
+
+- **`stats.top_k[].component` and `stats.reservoir[].component`** (string,
+  optional, `minLength: 1`) — the dominant functional source (logger / module /
+  unit / subsystem / build job) of a template's occurrences, defined once in the
+  new **§3.8** and carried by both entry shapes. Same species as `level`: a
+  low-cardinality categorical label the observed stream carries about itself.
+  Normative points worth reading before emitting it: it **MUST** be derived from
+  the observed events and never from producer state; it **MUST** be omitted rather
+  than emitted empty when the format carried no component; and multi-component
+  ties **MUST** break lexicographically so the field is replay bit-identical.
+  It is a **label, not a key** — equality across documents is not evidence of a
+  shared deployment.
+- **`$defs/cube_axis.band_floor`** (integer ≥ 1, optional) — the ordinal-axis
+  collapse stamp, **normative in §16.2/§16.10 prose since 0.6.0** and missing from
+  the schema. A schema lag: the prose already required a collapsed cube to be
+  self-describing, and the schema rejected the very stamp that makes it so.
+- **`MetaLogDiff.field_histogram_deltas`** — **normative in §3.5.2 prose since
+  0.3.0**, shown in the §13.1 example, and absent from the diff schema's
+  `properties`. The second schema lag, and the more consequential one: it survived
+  only because the diff root is open, so the schema neither described it nor
+  rejected it.
+- **`field_histogram_deltas[].previous_sample_count` / `.current_sample_count`**
+  (integer ≥ 0, optional) — each side's `param_histograms[].total`, i.e. the
+  number of observations the distribution was estimated from. New in this release
+  because encoding `field_histogram_deltas` forced the question and the honest
+  answer is that `js_divergence` is **not interpretable without a sample size**:
+  a JS of 0.9 over eleven observations and over eleven thousand are different
+  claims, and only the second is a regime shift. A producer emitting
+  `js_divergence` **SHOULD** emit both; consumers **SHOULD** apply a
+  minimum-sample floor.
+- **`stats.top_k[].extensions`** — the §7 container, granted at a second
+  placement. See below.
+
+### Changed
+
+- **§7 gains a normative *placement* rule, and the schema gains
+  `$defs/extensions`.** The §7 grammar (reverse-DNS keys, closed to everything
+  else) was defined inline at the document root; it is now defined **once** in
+  `$defs` and referenced, so a second placement cannot drift from the first.
+  The rule itself: `extensions` is **the only** carrier of non-standard members,
+  and a producer **MUST NOT** write vendor data as a bare member of a standard
+  object *at any depth, including objects the schema does not currently close*.
+  Because vendor data is often **per-row** and a document-level container cannot
+  carry a per-row value without inventing a join key, the container is granted
+  per object, and §7 now carries the list (root since 0.1.0; `stats.top_k[]` from
+  0.8.0).
+  The list is **deliberately short and grows on evidence**. Granting the container
+  everywhere in advance would be unwithdrawable — removing a placement is a
+  *breaking* change — while adding one is *additive* and costs a single reviewer.
+  A producer that needs one elsewhere is not stuck and is not silent: §8 clause 1
+  detects the bare member, so the shortfall reports itself.
+  Granting the container **does not re-open the object**. A misspelled standard
+  member is still a violation, because it is not inside `extensions` — which is
+  precisely why the extension point is a named container rather than a key prefix.
+
+### Not in this release
+
+- **The diff document's `additionalProperties: true` root**, the open
+  `provenance[].window` / `current.window` / `previous.window`, and encoding
+  §13.2's "at least one signal field" **MUST** are all **breaking** and require an
+  `rfc:` issue with a 14-day comment window (`GOVERNANCE.md` §2). They are not
+  bundled here, because the reference producer must first stop relying on the open
+  root; closing it in the same release would make the reference implementation
+  loudly non-conformant for the length of the comment window.
+- Encoding §13.2 also needs its satisfying set corrected first. It is a
+  hand-kept enumeration of eight fields that has already drifted from the schema
+  beside it: `cube_diff` and `stability_score` are in the schema and not in the
+  enumeration, and `field_histogram_deltas` (added above) is in neither. A
+  document whose only signal is a field-histogram shift is **correct** and would
+  be rejected by the enumeration as written.
+
+---
+
 ## [0.7.0] — 2026-08-03
 
 ### Added

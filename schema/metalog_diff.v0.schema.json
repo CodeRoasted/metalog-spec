@@ -64,6 +64,38 @@
                 "additionalProperties": false
             }
         },
+        "field_histogram_deltas": {
+            "type": "array",
+            "description": "Per-slot value-distribution change between the two documents' param_histograms (SPEC §3.5.2). MUST be sorted by js_divergence descending — an ordering the schema cannot assert; §3.5.2 owns it. Added to the schema in v0.8.0 (normative in the prose since v0.3.0).",
+            "items": {
+                "type": "object",
+                "required": ["template_id", "param_index"],
+                "properties": {
+                    "template_id": { "type": "string", "pattern": "^[a-z]+:.+$" },
+                    "param_index": { "type": "integer", "minimum": 0 },
+                    "js_divergence": { "type": "number", "minimum": 0, "maximum": 1 },
+                    "previous_entropy_bits": { "type": "number", "minimum": 0 },
+                    "current_entropy_bits": { "type": "number", "minimum": 0 },
+                    "previous_sample_count": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "description": "Observations backing the previous distribution (that slot's param_histogram total). The sample size js_divergence is estimated from — a consumer's min-sample confidence floor. Distinct from cardinality (distinct values) and from the template's stream share. Added in v0.8.0."
+                    },
+                    "current_sample_count": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "description": "Observations backing the current distribution. See previous_sample_count. Added in v0.8.0."
+                    },
+                    "previous_cardinality": { "type": "integer", "minimum": 0 },
+                    "current_cardinality": { "type": "integer", "minimum": 0 },
+                    "cardinality_delta": {
+                        "type": "integer",
+                        "description": "MUST equal current_cardinality - previous_cardinality (SPEC §3.5.2)."
+                    }
+                },
+                "additionalProperties": false
+            }
+        },
         "new_templates": {
             "type": "array",
             "items": { "type": "string", "pattern": "^[a-z]+:.+$" }

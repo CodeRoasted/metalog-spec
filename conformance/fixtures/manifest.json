@@ -34,13 +34,13 @@
             "path": "invalid/closed_object_extra_members.metalog.jsonl",
             "kind": "metalog",
             "control": "closed-object-violation",
-            "why": "the live defect class, pinned: extra members inside stats.top_k[] and cube.axes[], both `additionalProperties: false`. Same two instance paths the reference implementation trips today (README.md, Reference implementations table), so a change that stops detecting the real defect reds here first.",
+            "why": "the closed-object defect class at two instance paths, one of them (cube.axes[]) reachable only by following a two-hop $ref chain — cube -> $defs/cube -> axes.items -> $defs/cube_axis — so a walker that stops at the first $ref reds here. Each object carries a LEGAL member beside the illegal one: `component` and `band_floor` are standard from v0.8.0 and MUST validate, while `vendor_private_counter` is vendor data written bare instead of into `extensions` (SPEC §7) and MUST NOT. Two rejected members on the top_k row prove the report lists EVERY offender, not just the first. `vendor_private_counter` is deliberately a name the standard can never mint: until v0.8.0 this fixture's violations WERE `component` and `band_floor`, and describing them in the schema silently disarmed it — teeth made out of a live defect fall out the day the defect is fixed.",
             "expect": {
                 "exit": 1,
                 "documents": 1,
                 "findings": [
-                    ["cube.axes[]", "additionalProperties", ["band_floor"], 1, 1],
-                    ["stats.top_k[]", "additionalProperties", ["component", "ordinal_histograms"], 1, 1]
+                    ["cube.axes[]", "additionalProperties", ["vendor_private_counter"], 1, 1],
+                    ["stats.top_k[]", "additionalProperties", ["ordinal_histograms", "vendor_private_counter"], 1, 1]
                 ],
                 "undescribed": []
             }
@@ -63,12 +63,12 @@
             "path": "sectioned/violation_on_last_line.txt",
             "kind": "metalog",
             "control": "multi-document-section",
-            "why": "THE green-BLIND antidote. Two `### name ###` sections, three documents, and the ONLY violation sits on the second line of the first section. A reader that treats a section as one document reports 2 documents and 0 findings — a smaller, entirely plausible, silently wrong result. Here that reader fails twice over: wrong document count AND a missed finding.",
+            "why": "THE green-BLIND antidote. Two `### name ###` sections, three documents, and the ONLY violation sits on the second line of the first section. A reader that treats a section as one document reports 2 documents and 0 findings — a smaller, entirely plausible, silently wrong result. Here that reader fails twice over: wrong document count AND a missed finding. The violating member is `vendor_private_counter`, a name the standard can never mint, and that choice is load-bearing: this control's subject is the READER, so it must never go quiet for a reason that has nothing to do with line-reading. It did exactly that once — the violation used to be `component`, and standardising `component` in v0.8.0 left the fixture parsing three documents and finding nothing, i.e. the antidote passing while testing the failure mode it exists to catch.",
             "expect": {
                 "exit": 1,
                 "documents": 3,
                 "findings": [
-                    ["stats.top_k[]", "additionalProperties", ["component"], 1, 1]
+                    ["stats.top_k[]", "additionalProperties", ["vendor_private_counter"], 1, 1]
                 ],
                 "undescribed": []
             }

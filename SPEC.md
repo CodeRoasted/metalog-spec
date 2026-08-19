@@ -1,4 +1,4 @@
-# MetaLog Specification — v0.7.0 (Draft)
+# MetaLog Specification — v0.8.0 (Draft)
 
 > **Status:** Draft. Subject to incompatible change until v1.0.
 > **Cross-reference:** [`RATIONALE.md`](RATIONALE.md) for *why*
@@ -179,7 +179,8 @@ how often*, in bounded space.
       "count":       12453,                 // integer, required
       "frequency":   0.0676,                 // number, required, count / lines_observed
       "template":   "User <*> logged in from <*>",  // string, OPTIONAL — see §3.4
-      "level":       "INFO"                  // string, optional, dominant log level
+      "level":       "INFO",                 // string, optional, dominant log level
+      "component":   "auth"                  // string, optional, dominant source — see §3.8
     }
     // ... up to k entries ...
   ],
@@ -379,6 +380,8 @@ cardinality delta:
     "js_divergence":           0.31,          // number, optional
     "previous_entropy_bits":   0.28,          // number, optional
     "current_entropy_bits":    0.47,          // number, optional
+    "previous_sample_count":   1100,          // integer, optional — new in v0.8.0
+    "current_sample_count":    1315,          // integer, optional — new in v0.8.0
     "previous_cardinality":    1847,          // integer, optional
     "current_cardinality":     183204,        // integer, optional
     "cardinality_delta":       181357         // integer (signed), optional
@@ -389,6 +392,15 @@ cardinality delta:
 
 - `cardinality_delta` **MUST** equal `current_cardinality - previous_cardinality`
   (signed, positive = grew, negative = shrank).
+- `previous_sample_count` / `current_sample_count` (**new in v0.8.0**) are each
+  side's `param_histograms[].total` — the **number of observations the
+  distribution was estimated from**. A producer emitting `js_divergence`
+  **SHOULD** emit them, because without a sample size the divergence is not
+  interpretable: a JS of 0.9 over eleven observations and a JS of 0.9 over eleven
+  thousand are different claims, and only the second is a regime shift. Consumers
+  **SHOULD** apply a minimum-sample floor before acting on `js_divergence`. These
+  are **observation** counts, distinct from `*_cardinality` (distinct values) and
+  from the template's stream share.
 - Consumers detecting high-cardinality injection **SHOULD** alarm when
   `current_cardinality / previous_cardinality > N` (e.g. N = 10) and
   `previous_cardinality < threshold` (baseline was low-cardinality).
@@ -503,6 +515,7 @@ of such entries, retained by **intrinsic salience, not frequency**.
 | `frequency` | number | `count / lines_observed` (§3.3 precision). |
 | `template` | string, optional | omitted in dedup / id-only modes (§3.4). |
 | `level` | string, optional | severity level when known. |
+| `component` | string, optional | dominant functional source (§3.8); omitted when the format carried none. |
 | `structural_role` | string, optional | announced role (e.g. `terminator`); omitted when none. |
 | `structural_surprise` | uint `0..100` | deviation of the template's most-likely incoming transition from the `dominant_path` (§4.1); `0` = on the expected flow. |
 | `novelty` | uint `0..100` | how late the template first appeared within the window (first-seen position over `lines_observed`); `0` = present from the start. The `retention_profile` MAY weight/cap it softer than severity/structure. |
@@ -579,6 +592,36 @@ is **re-derived** over the merged counts (rarity shifts on merge),
 entries remain **excluded from the tail**. A composed reservoir is re-derivable
 for any template that was salient in **at least one** input; it cannot recover a
 template that was pure-tail in every input (the `compose`-lossy-tail limit).
+
+### 3.8 `component` — the dominant functional source of a template (optional)
+
+> **New in v0.8.0.** An optional string on a `top_k` entry (§3) and on a
+> `reservoir` entry (§3.7.1). One definition, two carriers — the member means the
+> same thing in both.
+
+`component` names the **functional source** — logger, module, unit, subsystem,
+build job — that dominates this template's occurrences in the window. It is the
+same species as `level`: a low-cardinality categorical label the observed stream
+carries about itself, condensed to the one value that dominates.
+
+- A producer **MUST** derive `component` from the observed events, never from its
+  own processing state. It answers *where in the emitting system did this
+  template come from*, not *what did the producer do with it*.
+- `component` **MUST** be **omitted** when the format carried no component. An
+  empty string is **forbidden**: an absent location that renders as present is
+  worse than a gap a consumer can see.
+- When several components emitted the template, the producer **MUST** emit the
+  one with the highest occurrence count, and **MUST** break a tie deterministically
+  (lexicographic order over the component strings), so the field is replay
+  bit-identical (§15.6).
+- `component` is a **label, not a key**. Consumers **MUST NOT** treat equality of
+  `component` across two documents as evidence that the two windows observed the
+  same deployment; naming conventions are producer-side and unversioned.
+
+Where a producer also emits a `cube` (§16), the `where` chain axis is grounded in
+the same underlying notion (§16.2). They are not redundant: §16's axis is a
+*window-level joint coordinate* whose values are chain prefixes, and this member is
+a *per-template scalar label*. A consumer holding only `top_k` has no cube to read.
 
 ---
 
@@ -739,6 +782,32 @@ interoperable MetaLogs.
 - Vendors **MUST NOT** put data in `extensions` that *replaces* a
   standard field. If you need a field that doesn't exist in the spec,
   open an issue.
+
+**Placement (new in v0.8.0).** `extensions` is **the only** carrier of
+non-standard members. A producer with vendor data **MUST NOT** write it as a bare
+member of a standard object, at any depth, including objects the schema does not
+currently close.
+
+Vendor data is often **per-row**, and a document-level container cannot carry a
+per-row value without inventing a join key. So the container is granted at each
+object the spec names, with one grammar shared by all of them
+(`$defs/extensions` in the schema — one definition, referenced, never restated):
+
+| object | granted |
+|---|---|
+| the document root | since v0.1.0 |
+| `stats.top_k[]` | v0.8.0 |
+
+A producer needing the container at an object not on this list **MUST** open an
+issue rather than write a bare member: adding a placement is an *additive* change
+under `GOVERNANCE.md` §2 and costs one reviewer, while a bare member is a
+conformance failure §8 clause 1 detects. The list is deliberately short and grows
+on evidence — a container granted everywhere in advance could never be withdrawn,
+because removing one is a *breaking* change.
+
+Granting the container **does not** re-open the object. A misspelled standard
+member is still a violation, because it is not inside `extensions` — which is the
+whole reason the extension point is a named container and not a key prefix.
 
 ---
 
