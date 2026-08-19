@@ -1,0 +1,34 @@
+{
+    "diff_version": "0.6.0",
+    "current": {
+        "window": { "start": "2026-01-01T00:01:00Z", "end": "2026-01-01T00:02:00Z" },
+        "document_id": "window-2"
+    },
+    "previous": {
+        "window": { "start": "2026-01-01T00:00:00Z", "end": "2026-01-01T00:01:00Z" },
+        "document_id": "window-1"
+    },
+    "kl_divergence": 0.02,
+    "js_divergence": 0.01,
+    "stability_score": 0.94,
+    "template_deltas": [
+        {
+            "template_id": "h:0123456789abcdef0123456789abcdef",
+            "previous_count": 4,
+            "current_count": 6,
+            "delta": 2,
+            "previous_frequency": 0.5,
+            "current_frequency": 0.6
+        }
+    ],
+    "new_templates": ["h:aaaabbbbccccddddaaaabbbbccccdddd"],
+    "vanished_templates": [],
+    "ngram_delta": {
+        "ngram_size": 2,
+        "new_ngrams": [
+            ["h:0123456789abcdef0123456789abcdef", "h:aaaabbbbccccddddaaaabbbbccccdddd"]
+        ],
+        "vanished_ngrams": [],
+        "rate_changed": []
+    }
+}

@@ -1,0 +1,79 @@
+name: Conformance
+
+# SPEC.md §8 closes with "The schema is the test." This workflow is the half of that
+# test the STANDARD can run on its own: the validator's self-test, then the shipped
+# example judged by the shipped schema. It is also what makes CONTRIBUTING.md §Process
+# step 2 ("CI runs JSON Schema validation against the example file") a true sentence —
+# it was a promise this repository had no mechanism to keep.
+#
+# WHAT THIS LEG CANNOT SEE, stated because a green here is otherwise read as
+# "MetaLog conformance is gated": no implementation's output. This repository holds a
+# specification and two schemas; the reference implementation's real documents live in
+# another repository, and the leg that judges THOSE runs in the CodeRoast superproject
+# (conformance/README.md § Where it runs). A green below means the standard's own
+# artifacts are self-consistent — nothing about any producer.
+#
+# `runs-on: ubuntu-latest` IS HARDCODED and must stay that way. This is a public,
+# vendor-neutral repository that accepts outside pull requests; routing it onto a
+# self-hosted runner — including via a repository variable that "just" defaults to
+# hosted — would put fork-authored code on a persistent box. The cost side is
+# negligible: two checkout-free steps and a pure-Python run, seconds of hosted time.
+#
+# THE FILENAME IS LOAD-BEARING. It is `conformance.yml`, never `lint.yml`: the
+# superproject's format-sweep job derives its armed repo set from
+# `*/.github/workflows/lint.yml` and then hard-fails any armed repo in which it walks
+# zero C++ files. This repository has none, so a file named `lint.yml` here would red
+# a gate in a different repository for a defect that does not exist.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: conformance-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  conformance:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+
+      - name: Install the validator's one dependency
+        run: |
+          set -euo pipefail
+          python -m pip install --disable-pip-version-check -r conformance/requirements.txt
+          python -c "import importlib.metadata as m; print('jsonschema', m.version('jsonschema'))"
+
+      # ARMING STEP, and it runs FIRST on purpose. It proves the validator still
+      # detects a violation, still refuses an unreadable corpus, and still declines to
+      # invent findings in the containers the schema opens deliberately. Without it the
+      # next step's green is indistinguishable from a validator that reads nothing.
+      # Exit 2 here means "repair the instrument", not "the example is wrong".
+      - name: Self-test the validator (the instrument must have teeth before it judges)
+        run: python3 conformance/metalog_validate.py --selftest
+
+      # §8 clause 1 over the artifact this repository publishes as the canonical shape.
+      # --expect-documents is a tripwire, not decoration: if the example ever becomes a
+      # multi-document file, the count stops reconciling and the run fails loudly rather
+      # than judging a subset of it.
+      - name: Validate the shipped example against the shipped schema (GATING)
+        run: |
+          set -euo pipefail
+          python3 conformance/metalog_validate.py \
+            --expect-documents 1 \
+            schema/metalog.v0.example.json

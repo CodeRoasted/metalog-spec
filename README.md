@@ -80,6 +80,7 @@ That is what this spec is.
 | [`RATIONALE.md`](RATIONALE.md) | Design decisions and the alternatives that were rejected. |
 | [`schema/metalog.v0.schema.json`](schema/metalog.v0.schema.json) | JSON Schema for the v0 MetaLog envelope. |
 | [`schema/metalog.v0.example.json`](schema/metalog.v0.example.json) | Worked example MetaLog. |
+| [`conformance/`](conformance/README.md) | §8 clause 1, made runnable — validate your documents against the shipped schemas. |
 | [`CHANGELOG.md`](CHANGELOG.md) | Versioned history of the spec. |
 | [`GOVERNANCE.md`](GOVERNANCE.md) | How the spec evolves; who can propose changes. |
 | [`adr/0001-v1-freeze-policy.md`](adr/0001-v1-freeze-policy.md) | Conditions for freezing the first stable MetaLog version. |
@@ -98,6 +99,25 @@ reference implementation when the `insight-metalog` producer and
 downstream consumers have enough compatibility evidence
 to freeze the schema. After v1.0, breaking changes follow semver and
 [GOVERNANCE.md](GOVERNANCE.md).
+
+---
+
+## Checking your implementation
+
+§8 says "there is no central conformance authority — the schema is the test".
+[`conformance/`](conformance/README.md) is that test, shipped with the standard so
+you can run it yourself:
+
+```
+pip install -r conformance/requirements.txt
+python3 conformance/metalog_validate.py --selftest        # prove the tool has teeth
+python3 conformance/metalog_validate.py my_metalogs.jsonl  # judge your documents
+```
+
+It reports schema violations separately from members that an *open* container
+permits but no schema describes — the second is legal, and conflating the two
+misprices both. It covers **§8 clause 1 only**; clauses 2–4 are not tested, and the
+tool says so on every run.
 
 ---
 

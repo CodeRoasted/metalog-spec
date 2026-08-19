@@ -1,0 +1,8 @@
+# metalog_validate needs one thing: a JSON Schema Draft 2020-12 validator.
+#
+# Pinned to a MAJOR range, not an exact version. The findings this tool reports are
+# a property of the schema and the documents, not of the library — but the library
+# owns which keywords are evaluated, so a MAJOR bump is a change of oracle and must
+# be a deliberate act. 4.18 is the floor because it is the first release whose
+# reference resolution ($ref via `referencing`) is the one this tool assumes.
+jsonschema>=4.18,<5

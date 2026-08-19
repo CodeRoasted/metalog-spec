@@ -1,0 +1,109 @@
+{
+    "description": "The oracle for metalog_validate's self-test. Every expectation here is HAND-AUTHORED from SPEC.md and the shipped schemas, never captured from a run: an expectation copied out of the tool under test would make the tool its own oracle, and the pair would agree forever while both were wrong. The `control` tag on a fixture names the specific way this validator could have gone green while blind; metalog_validate refuses to run its self-test if any of them is missing from this file.",
+    "findings_encoding": "[instance path, failing keyword, offending member names, error count, documents affected]",
+    "undescribed_encoding": "[instance path, member name, documents affected]",
+    "fixtures": [
+        {
+            "path": "valid/minimal.metalog.jsonl",
+            "kind": "metalog",
+            "why": "the five required blocks and nothing else — the baseline a conformant producer must clear",
+            "expect": { "exit": 0, "documents": 1, "findings": [], "undescribed": [] }
+        },
+        {
+            "path": "valid/rich.metalog.jsonl",
+            "kind": "metalog",
+            "control": "undescribed-false-positive",
+            "why": "exercises EVERY open container the schema opens on purpose — extensions (§7), source.tags, param_histogram.value_counts, cube coordinates keyed by axis name (§16.4), sketch-shaped free objects. All are described BY MECHANISM, so the undescribed walker must report zero. A walker that reports any of these would send a lane to delete a field the schema does describe.",
+            "expect": { "exit": 0, "documents": 1, "findings": [], "undescribed": [] }
+        },
+        {
+            "path": "undescribed/open_containers.metalog.jsonl",
+            "kind": "metalog",
+            "why": "a member at the OPEN root and a second one nested inside provenance[].window, which is also open. Two locations on purpose: a root-only walker finds one of them and looks correct. Neither is a schema violation.",
+            "expect": {
+                "exit": 0,
+                "documents": 1,
+                "findings": [],
+                "undescribed": [
+                    ["<root>", "vendor_side_channel", 1],
+                    ["provenance[].window", "tenant_zone", 1]
+                ]
+            }
+        },
+        {
+            "path": "invalid/closed_object_extra_members.metalog.jsonl",
+            "kind": "metalog",
+            "control": "closed-object-violation",
+            "why": "the live defect class, pinned: extra members inside stats.top_k[] and cube.axes[], both `additionalProperties: false`. Same two instance paths the reference implementation trips today (README.md, Reference implementations table), so a change that stops detecting the real defect reds here first.",
+            "expect": {
+                "exit": 1,
+                "documents": 1,
+                "findings": [
+                    ["cube.axes[]", "additionalProperties", ["band_floor"], 1, 1],
+                    ["stats.top_k[]", "additionalProperties", ["component", "ordinal_histograms"], 1, 1]
+                ],
+                "undescribed": []
+            }
+        },
+        {
+            "path": "invalid/missing_required_and_bad_pattern.metalog.jsonl",
+            "kind": "metalog",
+            "why": "two keywords that are NOT additionalProperties — a missing required member and a template_id that fails §3.2's pattern. Without this the report could be additionalProperties-shaped and nobody would notice.",
+            "expect": {
+                "exit": 1,
+                "documents": 1,
+                "findings": [
+                    ["stats", "required", ["tail_unique"], 1, 1],
+                    ["stats.top_k[].template_id", "pattern", [], 1, 1]
+                ],
+                "undescribed": []
+            }
+        },
+        {
+            "path": "sectioned/violation_on_last_line.txt",
+            "kind": "metalog",
+            "control": "multi-document-section",
+            "why": "THE green-BLIND antidote. Two `### name ###` sections, three documents, and the ONLY violation sits on the second line of the first section. A reader that treats a section as one document reports 2 documents and 0 findings — a smaller, entirely plausible, silently wrong result. Here that reader fails twice over: wrong document count AND a missed finding.",
+            "expect": {
+                "exit": 1,
+                "documents": 3,
+                "findings": [
+                    ["stats.top_k[]", "additionalProperties", ["component"], 1, 1]
+                ],
+                "undescribed": []
+            }
+        },
+        {
+            "path": "valid/minimal.diff.json",
+            "kind": "diff",
+            "why": "the second schema is a first-class subject, not an afterthought — a MetaLogDiff (§13) that conforms, read from a single-document .json file",
+            "expect": { "exit": 0, "documents": 1, "findings": [], "undescribed": [] }
+        },
+        {
+            "path": "invalid/closed_object_extra_member.diff.json",
+            "kind": "diff",
+            "why": "proves the diff leg can FAIL too — an extra member inside `current`, which the diff schema closes",
+            "expect": {
+                "exit": 1,
+                "documents": 1,
+                "findings": [
+                    ["current", "additionalProperties", ["region"], 1, 1]
+                ],
+                "undescribed": []
+            }
+        },
+        {
+            "path": "corrupt/unreadable_line.jsonl",
+            "kind": "metalog",
+            "control": "instrument-failure",
+            "why": "a truncated final line, the shape a crashed writer leaves. Must be exit 2 and never exit 0: a corpus the reader cannot fully read has no verdict, and skipping the bad line would report the remaining documents as clean.",
+            "expect": { "exit": 2 }
+        },
+        {
+            "path": "corrupt/no_documents.jsonl",
+            "kind": "metalog",
+            "why": "a corpus file that exists and carries nothing. Zero documents is exit 2, never exit 0 — a gate with nothing to judge is green for the one reason that matters: it never looked.",
+            "expect": { "exit": 2 }
+        }
+    ]
+}

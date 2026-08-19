@@ -1,0 +1,144 @@
+# conformance — the test `SPEC.md` §8 declares
+
+`SPEC.md` §8 closes with:
+
+> There is no central conformance authority. **The schema is the test.**
+
+This directory is that test, made runnable. It ships **with the standard** rather
+than with any implementation, because a conformance test only an editor can run is
+not a conformance test: an external implementer must be able to check their own
+producer without asking anyone.
+
+```
+pip install -r conformance/requirements.txt
+
+# Prove the instrument has teeth before believing anything it says.
+python3 conformance/metalog_validate.py --selftest
+
+# Judge your own documents.
+python3 conformance/metalog_validate.py my_metalogs.jsonl
+python3 conformance/metalog_validate.py --kind diff my_diff.json
+```
+
+---
+
+## What it reports, and why it reports two things
+
+A single "N errors" number hides two defects with different owners. This tool
+never adds them together.
+
+**SCHEMA-INVALID** — a document violated a *closed* object (`additionalProperties:
+false`), a `required` member is missing, a value failed its `type`/`pattern`/bound.
+This is §8 clause 1 failing. **Exit 1.**
+
+**LEGAL-BUT-UNDESCRIBED** — a member that an *open* container permits and that no
+schema describes. The MetaLog root is open by design, so this is **not** a
+conformance failure and never changes the exit code. It is reported because a
+producer emitting one is doing one of two things, and the distinction matters:
+
+- riding ahead of a schema that lags its own prose (a **schema lag** — GOVERNANCE
+  §3 makes this the spec's problem, not the implementation's), or
+- extending the format outside §7 `extensions`, where vendor data belongs.
+
+To help tell those apart, each reported member is tagged `[in SPEC.md]` or
+`[nowhere]` — does the prose name it *as a member* (a code span or a quoted key)?
+**That tag is a lead, not a verdict.** A member whose name is also a code span for a
+different concept in another section reads `[in SPEC.md]` and is not a schema lag.
+Open the section before acting on it.
+
+The two species are **disjoint by construction**: a member rejected by a closed
+object is never also counted as undescribed.
+
+---
+
+## Exit codes are a contract
+
+| code | meaning |
+|---|---|
+| **0** | conformant against the schema |
+| **1** | findings — at least one document is schema-invalid |
+| **2** | **the instrument could not run honestly** and has no verdict |
+
+Exit 2 is not a softer failure, it is a *different* one: an unreadable line, an
+empty corpus, a document count that did not match `--expect-documents`, a missing
+schema, an unresolvable `$ref`, a failed self-test. A caller that treats 2 as 1
+loses the distinction between "your documents are wrong" and "repair the
+instrument"; a caller that treats 2 as 0 has a gate that goes green because it
+never looked.
+
+---
+
+## Why the self-test exists
+
+A validator that cannot fail is decoration. `--selftest` runs ten fixtures whose
+expected results are **hand-authored in `fixtures/manifest.json` from the spec and
+the schemas** — never captured from a run, because an expectation copied out of the
+tool under test makes the tool its own oracle, and the pair then agree forever
+while both are wrong.
+
+Four of those fixtures are tagged `control`, and the self-test **refuses to run**
+if any tag is missing from the manifest — deleting a fixture cannot quietly widen
+what a green covers. Each control forecloses one specific way this validator could
+have gone green while blind:
+
+| control | the blindness it forecloses |
+|---|---|
+| `multi-document-section` | The published evidence is `### name ###` sections whose bodies are JSONL — **one document per line**. A reader that takes a section as one document validates its first line and silently ignores the rest, returning a smaller, entirely plausible number. This fixture puts the only violation on the *second* line of a section, so that reader fails twice over: wrong document count and a missed finding. |
+| `undescribed-false-positive` | The schema opens several containers on purpose (`extensions`, `source.tags`, cube coordinates keyed by axis name, `param_histogram.value_counts`). A walker that reports those has invented findings, and a false positive from a prescriptive instrument costs more than a miss: it sends someone to delete a field the schema does describe. This fixture exercises all of them and must report zero. |
+| `closed-object-violation` | The instrument must detect the real defect shape, not a toy one — extra members inside `stats.top_k[]` and `cube.axes[]`, the same two instance paths the reference implementation trips today. |
+| `instrument-failure` | A truncated corpus must exit 2. **There is no code path that skips a line**: every non-blank line is either a section header or a document, and anything else stops the run. A parser bug cannot express itself as a smaller document count — only as a refusal to answer. |
+
+Measured on the committed tool, 2026-08-19: six independent mutations (section-as-
+one-document · offending-member computation blinded · undescribed walker made
+root-only · open-container guard removed · unreadable line downgraded to a skip ·
+empty corpus accepted) each red the self-test, and the unmutated control passes
+10/10. Blinding the offending-member computation reds **three** fixtures, not one —
+that guard is shared, not sole.
+
+---
+
+## What this does **not** reach
+
+Declared, because an instrument's silence is read as coverage.
+
+- **§8 clauses 2, 3 and 4 are not tested here.** Clause 2 (every required field
+  populated *according to its definition*) is only covered as far as the schema can
+  express it. Clause 3 (`template_id` computed exactly as §3.2 specifies) needs a
+  pinned cross-implementation vector, and none exists yet — swapping the digest
+  would pass every check in this directory. Clause 4 (`top_k` truthfully bounded at
+  `top_k_size`) is mechanically checkable and simply is not checked yet. The tool
+  prints this limit on every run.
+- **`format` is an annotation, not an assertion.** Draft 2020-12's default
+  vocabulary treats `format` as annotation-only, so `date-time` and `uri` are *not*
+  enforced by default — asserting them would be stricter than clause 1 says. Pass
+  `--check-formats` to opt in. (Measured on the published determinism evidence,
+  2026-08-19: enabling it changes nothing — every format-carrying value is
+  well-formed.)
+- **Cross-document properties are out of scope.** `compose()` commutativity and
+  identity (§12.2) and the `MetaLogDiff` algebra (§13) are properties of *pairs and
+  sets* of documents; this tool judges each document against the schema.
+- **The golden-pair suite `GOVERNANCE.md` §3 anticipates (`test/golden/`) is a
+  different instrument and does not exist.** Input → output pairs any
+  implementation can replay would test clause 3; this directory does not.
+- **`anyOf`/`oneOf` are unioned, not evaluated, by the undescribed walker.** That
+  over-approximates what the schema "describes", which is the conservative
+  direction: the walker may miss an undescribed member, it may never invent one.
+  Schema validation itself is unaffected — that is the `jsonschema` library, at
+  full strictness.
+
+---
+
+## Where it runs
+
+- **`metalog-spec` CI** (`.github/workflows/conformance.yml`, every push and PR)
+  runs the self-test and validates `schema/metalog.v0.example.json`. This is the
+  leg that reaches an outside contributor's PR. It cannot see any implementation's
+  output.
+- The **CodeRoast superproject** runs the same tool over the published determinism
+  evidence at `coderoast-hub/determinism/`, which is the reference implementation's
+  real output. That leg lives outside this repository because the evidence does.
+
+---
+
+*Prose in this file is CC BY 4.0; `metalog_validate.py` and the fixtures are MIT.
+See `LICENSE-SPEC` and `LICENSE` — the split is a rule, not a list.*

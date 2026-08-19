@@ -8,8 +8,12 @@ happens to be edited here, not a component of a product.
 
 ## Arrival
 
-- No build, no tests, no `malf` — the artifacts are `SPEC.md`, `schema/*.json`,
-  and the prose around them. Changing a schema means re-checking the example.
+- No build and no `malf` — the artifacts are `SPEC.md`, `schema/*.json`, and the
+  prose around them. There IS one test, and it is the standard's own: `SPEC.md` §8
+  declares schema validation as conformance clause 1 and closes with "the schema is
+  the test", so `conformance/metalog_validate.py` is that sentence made runnable
+  (`--selftest` first, always — it proves the validator can still fail). Changing a
+  schema means re-running it over the example, which its CI does on every push.
 - `SPEC.md` is **normative**; `RATIONALE.md` holds the *why* behind settled
   choices; `adr/` holds decisions with their argument; `CHANGELOG.md` is the
   version record. `GOVERNANCE.md` rules what a change costs (editorial /
@@ -37,5 +41,13 @@ happens to be edited here, not a component of a product.
   and nothing outside this repo cites them. Do not "canonicalize" them into the
   registry grammar: the number space is this repo's, and the two series are
   unrelated despite looking alike.
+- **The CI file here is `conformance.yml` and must never be renamed `lint.yml`, and
+  it must never take its runner from a repository variable.** Two independent
+  reasons, both measured: the superproject's `format-sweep` job derives its armed
+  repo set from `*/.github/workflows/lint.yml` and then hard-fails any armed repo in
+  which it walks zero C++ files — this repo has none, so that filename would red a
+  gate in a different repository for a defect that does not exist. And this is a
+  PUBLIC repo taking outside pull requests: `runs-on` is hardcoded `ubuntu-latest`
+  so fork-authored code can never land on the shared self-hosted box.
 - The superproject's planning tiers (`WIP` / `ROADMAP` / `DONE`) do **not** extend here. <!-- docs-lint: allow names the tier only to disclaim it -->
   Spec work in flight is an issue or a PR, per `GOVERNANCE.md`.

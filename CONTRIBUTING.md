@@ -64,7 +64,9 @@ merges these on sight.
 ## Process
 
 1. Fork, branch, PR.
-2. CI runs JSON Schema validation against the example file.
+2. CI runs `conformance/metalog_validate.py --selftest` and then
+   validates the example file against the shipped schema. Run both
+   locally first — see [`conformance/README.md`](conformance/README.md).
 3. Editor (or a reviewer) reviews. Additive changes get merged
    after one approval; breaking changes follow the RFC process in
    [`GOVERNANCE.md`](GOVERNANCE.md).
