@@ -16,8 +16,10 @@
 - **Reviewer** — A trusted contributor (added by editor consensus)
   who may approve PRs but not merge breaking changes alone.
 
-The editor list and reviewer list live in [`MAINTAINERS.md`](MAINTAINERS.md)
-once that file is needed (currently a single editor; no file yet).
+[`MAINTAINERS.md`](MAINTAINERS.md) records the current review **areas** and the
+project responsible for each. **It names no individual reviewer, and there is no
+reviewer roster today** — the spec is edited by a single editor. §2 states what
+that means for each change type; a reader should not have to infer it.
 
 ---
 
@@ -26,7 +28,7 @@ once that file is needed (currently a single editor; no file yet).
 | Change type | Examples | Process during 0.x | Process at 1.0+ |
 |---|---|---|---|
 | **Editorial** | Typo, wording clarification, additional example | Editor merges. | Editor merges. |
-| **Additive** | New optional field, new enum value, new extension prefix | Editor merges after 1 reviewer approval. MINOR bump. | Same. MINOR bump. |
+| **Additive** | New optional field, new enum value, new extension prefix | Editor merges. MINOR bump. **The 1-reviewer approval below activates once a reviewer roster exists.** | Editor merges after 1 reviewer approval. MINOR bump. |
 | **Breaking** | Remove a field, change a field type, change `template_id` algorithm | Editor merges after RFC issue + 14-day comment window. MAJOR bump (or MINOR during 0.x). | Requires RFC + 30-day comment window + at least 2 reviewer approvals. MAJOR bump. |
 | **Profile** | "Streaming MetaLog", "Edge MetaLog" subset profiles | Same as breaking. | Same as breaking. |
 
