@@ -127,6 +127,17 @@ Declared, because an instrument's silence is read as coverage.
   two published diff documents: **zero errors, and neither carries a signal field.**
   This is a limit of what the schema expresses, and the tool reports what the schema
   says — it does not invent the clause the schema is missing.
+- **This tool does not know how large its corpus was supposed to be.** Its reader
+  cannot silently skip a line — an unreadable one is fatal, an empty corpus is exit 2 —
+  but a corpus that parses cleanly and simply contains *less* than the caller expected
+  validates cleanly, and the verdict is then truthful about a smaller subject than the
+  caller believes. Measured 2026-08-20 against the reference implementation's evidence:
+  emptying one `### name ###` section, and deleting one section header outright, each
+  read **CONFORMANT, exit 0**. `--expect-documents` closes only half of this — it
+  catches a *reader* that miscounts what is present, never a corpus that genuinely
+  holds less. The roster of what *should* be there is knowable only to the caller, so a
+  caller judging a multi-section corpus has to reconcile that roster itself before
+  trusting the verdict below it.
 - **Cross-document properties are out of scope.** `compose()` commutativity and
   identity (§12.2) and the `MetaLogDiff` algebra (§13) are properties of *pairs and
   sets* of documents; this tool judges each document against the schema.
@@ -147,12 +158,21 @@ Declared, because an instrument's silence is read as coverage.
   runs the self-test and validates `schema/metalog.v0.example.json`. This is the
   leg that reaches an outside contributor's PR. It cannot see any implementation's
   output.
+- The **reference implementation's own release gate** runs it over the document
+  stream it is *about to* publish, before that artifact leaves the build. Same tool,
+  same schema, earlier subject.
 - The **CodeRoast superproject** runs the same tool over the reference
   implementation's *published output* — both surfaces: its determinism evidence (a
   MetaLog document stream) and its published diff documents, which are carried
   inside a larger report envelope and reached with `--pointer /raw`. That leg lives
   outside this repository because the evidence does, and a gate must live where it
   can open its subject.
+
+The last two are not redundant. One asks whether what is about to ship still matches
+the standard; the other asks what a reader is exposed to right now. Only the first can
+stop a drift before it is public, and only the second can notice that something
+already published stopped matching — including bytes released before a schema
+tightened.
 
 A note on the second form, because it is the reason `--pointer` exists: a document
 quoted inside an envelope is still a document, and a conformance tool that can only
