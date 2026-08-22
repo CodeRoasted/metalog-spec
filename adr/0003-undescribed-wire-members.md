@@ -47,7 +47,7 @@ implementation row): **adopt when the member's semantics can be frozen
 vendor-neutrally today; relocate when it rides an unfrozen ladder or a
 vendor-shaped model.**
 
-## Decision (proposed)
+## Decision
 
 ### 1. `run_outcome` — adopt (0.9.0)
 
