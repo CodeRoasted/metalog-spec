@@ -9,11 +9,14 @@ not a list:
     INCLUDING the `adr/` decision records, CONTRIBUTING.md and MAINTAINERS.md --
     is licensed CC BY 4.0 by this file.
 
-  * The JSON SCHEMAS in `schema/`, and any executable code, are licensed
-    separately under the MIT License -- see LICENSE.
+  * EVERYTHING ELSE -- the JSON schemas and examples in `schema/`, executable
+    code, test fixtures, and machine-readable configuration, wherever they
+    sit -- is licensed separately under the MIT License -- see LICENSE. The
+    test is the file's nature, never its directory: if it is not Markdown
+    prose, it is MIT.
 
 Neither file supersedes the other, and nothing in this repository is covered by
-neither: prose is CC BY 4.0, schemas and code are MIT.
+neither: Markdown prose is CC BY 4.0, everything else is MIT.
 
 The rule replaced an enumeration (SPEC.md, RATIONALE.md, GOVERNANCE.md,
 CHANGELOG.md, README.md) on 2026-08-02. That list had silently stopped covering
@@ -23,6 +26,12 @@ this standard's public governance record and outside implementers are expected t
 read it. A list of files has to be revisited every time the repository grows a
 document, and the revisit is what does not happen; a rule covers the next
 document by construction.
+
+The MIT arm was widened on 2026-08-22, for the same reason one category over:
+"schemas and executable code" still left the conformance fixtures, their
+manifest, `requirements.txt` and the CI workflow named by neither licence --
+the defect the rule was written to kill, reborn inside the rule. Two exhaustive
+categories cannot leave a residue.
 
 The full CC BY 4.0 legal code follows in its entirety. It is reproduced
 here rather than referenced by URL: the human-readable deed is a summary

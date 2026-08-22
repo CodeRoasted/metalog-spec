@@ -123,7 +123,7 @@ producer is obliged to emit it. A 0.6.0 producer stays legal against this spec
 
 ---
 
-## [Unreleased]
+## [0.6.0] — 2026-06-16
 
 > **Version → 0.6.0 (Draft) — the cube (EXPERIMENTAL).** Adds the intra-window
 > **joint categorical condensation** to the format. The cube is **additive,
@@ -177,6 +177,10 @@ producer is obliged to emit it. A 0.6.0 producer stays legal against this spec
   `metalog_diff.v0.schema.json`. One `canonicalization_version` bump
   (`component` now propagates into the metalog) + `retention_profile` bump (axis/
   floor config), with the golden cascade in the same pass.
+
+---
+
+## [0.5.0] — 2026-06-01
 
 > **Version → 0.5.0 (Draft).** Phase-3 spec formalization **complete in
 > scope** (still Draft; v1.0 freeze gated on broader criteria).
