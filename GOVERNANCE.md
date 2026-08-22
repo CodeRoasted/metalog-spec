@@ -89,3 +89,30 @@ warrants it.
 - `1.x.y` — additive only. Any breaking change waits for `2.0.0`.
 - The MAJOR field of `metalog_version` in the schema must equal
   the MAJOR of the spec.
+
+---
+
+## 7. Publication surface
+
+The spec's publication surface is the **GitHub Release page**. A version
+is published when its annotated tag `vX.Y.Z` carries a GitHub Release
+whose notes summarise that version's `CHANGELOG.md` delta. **Every MINOR
+and MAJOR version receives one.** PATCH versions receive a tag and MAY
+share the Release notes of their MINOR.
+
+The complements, stated so a reader can price what they are holding:
+
+- `main` is the **editing** surface. Its `SPEC.md` runs ahead of the
+  last Release, and nothing on `main` marks how far.
+- A dated CHANGELOG heading without a Release, or a tag without a
+  Release, is **unpublished work**. The gap is a defect in this
+  repository's process, not a second kind of release.
+
+Each Release ships the repository at the tag, so every published version
+carries both licence files (`LICENSE-SPEC`, `LICENSE`) and the scope
+rule that names a licence for every file in the tree.
+
+This section exists because its absence had a measured cost: with no
+declared publication surface, the Release page fell four months and
+seven minor versions behind the normative text, and no rule said that
+state was wrong. A surface that is not declared cannot be behind.
