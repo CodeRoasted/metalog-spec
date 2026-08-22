@@ -1,6 +1,6 @@
 # ADR 0003 — Disposition of the four undescribed wire members
 
-- **Status:** Proposed
+- **Status:** Accepted — editor (Emmanuel Prunet), 2026-08-22
 - **Date:** 2026-08-22
 - **Spec version affected:** none yet — acceptance lands as a 0.9.0 additive release
 - **Related:** SPEC §7 (placement rule, v0.8.0), §2.4 (processing identifiers),
