@@ -31,6 +31,29 @@ never adds them together.
 false`), a `required` member is missing, a value failed its `type`/`pattern`/bound.
 This is §8 clause 1 failing. **Exit 1.**
 
+**CAP-EXCEEDED** — an array is longer than the cap the *same document* declares
+for it: `stats.top_k` past `stats.top_k_size`, `stats.reservoir` past
+`stats.reservoir_size`, `behavior.branching` past `behavior.branching_size`,
+`cube.cells` past `cube.cell_budget`. This is §8 clause 4 failing. **Exit 1.**
+
+The schema cannot reach this defect, and that is not an oversight in the schema:
+JSON Schema's `maxItems` takes a *constant*, while the bound here is the *value
+of a sibling field*. A document can therefore be perfectly schema-valid and
+still lie about its own bound — which is exactly what the
+`invalid/cap_exceeded.metalog.jsonl` fixture is.
+
+The pair set is **derived from the schema**, never hand-kept: an integer
+property `<x>_size` whose sibling `<x>` is an array is a cap and its array, so a
+pair added to the schema tomorrow is checked on arrival. `cube.cell_budget` is
+the one declared exception, because it is named for §16.10's BUDGET object
+rather than for the array it bounds. Objects under `extensions` are skipped —
+that is vendor space (§7), and a vendor's own `foo_size` is not a claim this
+standard may adjudicate.
+
+**An undeclared cap is not a violation.** A producer that omits
+`behavior.branching_size` declares no cap (§4.2); the tool reads that as a
+posture and says so, rather than assuming a default and going green.
+
 **LEGAL-BUT-UNDESCRIBED** — a member that an *open* container permits and that no
 schema describes. The MetaLog root is open by design, so this is **not** a
 conformance failure and never changes the exit code. It is reported because a
@@ -102,13 +125,17 @@ as shared, not sole. Deleting a `control` tag from the manifest exits 2, as desi
 
 Declared, because an instrument's silence is read as coverage.
 
-- **§8 clauses 2, 3 and 4 are not tested here.** Clause 2 (every required field
+- **§8 clauses 2 and 3 are not tested here.** Clause 2 (every required field
   populated *according to its definition*) is only covered as far as the schema can
   express it. Clause 3 (`template_id` computed exactly as §3.2 specifies) needs a
   pinned cross-implementation vector, and none exists yet — swapping the digest
-  would pass every check in this directory. Clause 4 (`top_k` truthfully bounded at
-  `top_k_size`) is mechanically checkable and simply is not checked yet. The tool
-  prints this limit on every run.
+  would pass every check in this directory. The tool prints this limit on every run.
+- **Clause 4 is tested, but only where a cap is DECLARED.** The check compares an
+  array against the cap in its own document; a producer that declares no cap for a
+  block is unbounded on that block and cannot be caught here. `stats.top_k_size` is
+  required, so `top_k` is always covered; `reservoir_size`, `branching_size` and
+  `cell_budget` are optional, so those three blocks are covered only for producers
+  that declare them. An omission is reported as a posture, never as a pass.
 - **`format` is an annotation, not an assertion.** Draft 2020-12's default
   vocabulary treats `format` as annotation-only, so `date-time` and `uri` are *not*
   enforced by default — asserting them would be stricter than clause 1 says. Pass

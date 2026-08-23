@@ -49,12 +49,15 @@ because retention is unaffordable, then have no incident forensics.
 The industry response has been *more storage, more indexes, more
 dashboards*. The MetaLog response is *compress the meaning, then store
 that*. A MetaLog is bounded by the **structure** a window contains —
-its top templates, its n-grams, its cube cells, each capped by a
-declared size (`top_k`, §3.1; `top_ngrams_size`, §4; the cube's closure,
-§16) — and **not** by how many lines the window carried. §11 sets the
-design target that follows from it: **≤ 4 KB per MetaLog covering ≥ 1 M
-log lines**. That is the value proposition: the artifact stops growing
-where the stream does not.
+its top templates, its salient tail, its n-grams, its branching, its
+cube cells — each capped by a size the producer declares **in the
+document itself** (§11.1) — and **not** by how many lines the window
+carried. §11 sets the design target that follows from it: **≤ 4 KB per
+MetaLog covering ≥ 1 M log lines**, a target scoped to the `stats`-only
+document (§11.5); a document that also carries `behavior` or `cube`
+pays for those blocks, and §11.3 gives the formula that prices them.
+That is the value proposition: the artifact stops growing where the
+stream does not.
 
 > **That is a target and a bound, not a measured ratio, and no ratio is
 > quoted anywhere in this spec.** A compression ratio is a measurement,

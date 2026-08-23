@@ -7,6 +7,12 @@ it without asking anyone: point it at a stream of MetaLog documents (or a
 MetaLogDiff) and it reports, separately:
 
   * SCHEMA-INVALID     a closed object was violated -> §8 clause 1 fails. Exit 1.
+  * CAP-EXCEEDED       an array is longer than the cap the SAME document declares
+                       for it -> §8 clause 4 fails. Exit 1. JSON Schema cannot
+                       express "maxItems equals the value of a sibling field", so
+                       this clause is unreachable from the schema and is checked
+                       here instead. An UNDECLARED cap is not a violation: a
+                       producer that omits the field declares no cap (SPEC §4.2).
   * LEGAL-BUT-UNDESCRIBED
                        a key an OPEN container permits and no schema describes.
                        Not a conformance failure; reported because a producer
@@ -406,10 +412,96 @@ def spec_mentions(names, spec_text: str) -> dict[str, bool]:
 # Reporting.
 # --------------------------------------------------------------------------
 
+# --------------------------------------------------------------------------
+# SPEC §8 clause 4 — an array is truthfully bounded by the cap its own document
+# declares. The schema cannot reach this: `maxItems` takes a constant, and the
+# bound here is the value of a sibling field, so a schema-only test is blind to
+# it by construction. That is why the clause was declared unchecked until now.
+# --------------------------------------------------------------------------
+
+# The pair set is DERIVED FROM THE SCHEMA, never hand-kept: any integer property
+# named `<x>_size` whose sibling `<x>` is an array is a cap and its array. A pair
+# added to the schema tomorrow is checked on arrival; a hand-kept list would not
+# be, and its rot would be silent. `behavior.ngram_size` is correctly excluded —
+# it is the gram width, and no sibling array is named `ngram`.
+#
+# One pair cannot be derived and is declared: the cube's budget is named for
+# §16.10's BUDGET object, not for the array it bounds.
+DECLARED_CAP_PAIRS = {("cell_budget", "cells")}
+
+# `extensions` is vendor space (SPEC §7). A vendor object that happens to carry
+# `foo_size` beside `foo` is not making a claim this standard may adjudicate.
+CAP_WALK_SKIP = {"extensions"}
+
+
+def derive_cap_pairs(schema) -> set[tuple[str, str]]:
+    """Every (cap field, array field) pair the schema declares."""
+    pairs = set(DECLARED_CAP_PAIRS)
+
+    def visit(node):
+        if isinstance(node, dict):
+            props = node.get("properties")
+            if isinstance(props, dict):
+                for name, sub in props.items():
+                    if not name.endswith("_size") or not isinstance(sub, dict):
+                        continue
+                    if sub.get("type") != "integer":
+                        continue
+                    sibling = props.get(name[: -len("_size")])
+                    if isinstance(sibling, dict) and sibling.get("type") == "array":
+                        pairs.add((name, name[: -len("_size")]))
+            for value in node.values():
+                visit(value)
+        elif isinstance(node, list):
+            for value in node:
+                visit(value)
+
+    visit(schema)
+    return pairs
+
+
+def collect_cap_violations(docs, pairs: set[tuple[str, str]]) -> list[dict]:
+    """Where a declared cap is present and the array it names overruns it."""
+    by_class: dict[tuple[str, str, int, int], set[int]] = defaultdict(set)
+
+    def walk(node, path: str, index: int, depth: int):
+        if depth > MAX_INSTANCE_DEPTH:
+            raise InstrumentError(
+                f"instance depth exceeded {MAX_INSTANCE_DEPTH} at {path} — refusing "
+                f"to report on a document this reader cannot have walked fully."
+            )
+        if isinstance(node, dict):
+            for cap_key, array_key in pairs:
+                cap = node.get(cap_key)
+                array = node.get(array_key)
+                if isinstance(cap, bool) or not isinstance(cap, int):
+                    continue
+                if not isinstance(array, list) or len(array) <= cap:
+                    continue
+                by_class[(path or "<root>", cap_key, cap, len(array))].add(index)
+            for key, value in node.items():
+                if key in CAP_WALK_SKIP:
+                    continue
+                walk(value, f"{path}.{key}" if path else key, index, depth + 1)
+        elif isinstance(node, list):
+            for value in node:
+                walk(value, f"{path}[]", index, depth + 1)
+
+    for index, (_, doc) in enumerate(docs):
+        walk(doc, "", index, 0)
+
+    return sorted(
+        ({"path": path, "cap": cap_key, "declared": declared, "actual": actual,
+          "documents": len(indexes)}
+         for (path, cap_key, declared, actual), indexes in by_class.items()),
+        key=lambda v: (v["path"], v["cap"]),
+    )
+
+
 def render(report: dict, stream) -> None:
     w = lambda s="": print(s, file=stream)
     env = report["environment"]
-    w('metalog-conformance · SPEC §8 clause 1 — "The schema is the test."')
+    w('metalog-conformance · SPEC §8 clauses 1 and 4')
     for path in report["corpus"]:
         w(f"  corpus     : {path}")
     if report.get("pointer"):
@@ -444,6 +536,18 @@ def render(report: dict, stream) -> None:
         w("SCHEMA-INVALID — none. Every document validates against the schema.")
     w()
 
+    if report["cap_violations"]:
+        w("CAP-EXCEEDED — an array is longer than the cap its own document declares. "
+          "§8 clause 4 FAILS:")
+        for v in report["cap_violations"]:
+            w(f"  {v['path']} — {v['cap']} declares {v['declared']}, "
+              f"array holds {v['actual']} "
+              f"({v['documents']}/{acc['documents']} documents)")
+    else:
+        w("CAP-EXCEEDED — none. Every DECLARED cap bounds its array. A cap a "
+          "producer does not declare is not checked and is not a violation.")
+    w()
+
     if report["undescribed"]:
         w("LEGAL-BUT-UNDESCRIBED — permitted by an OPEN container, described by no "
           "schema. NOT a conformance failure:")
@@ -466,12 +570,16 @@ def render(report: dict, stream) -> None:
     # machine exits. A tool that lives in `conformance/` and prints a green is read
     # as "conformant"; it tests ONE of §8's four clauses, and saying so here is the
     # difference between an instrument and an instrument's reputation.
-    w("SCOPE — this tests SPEC §8 clause 1 (schema validation) and nothing else.")
+    w("SCOPE — this tests SPEC §8 clause 1 (schema validation) and clause 4 (an")
+    w("  array is truthfully bounded by the cap the same document declares).")
     w("  NOT checked: clause 2 (every required field populated per its definition —")
     w("  only the schema-expressible part of it is), clause 3 (template_id computed")
-    w("  per §3.2 — no pinned cross-implementation vector exists yet), clause 4")
-    w("  (top_k truthfully bounded at top_k_size). A green above says nothing about")
-    w("  those three. See conformance/README.md § What this does not reach.")
+    w("  per §3.2 — no pinned cross-implementation vector exists yet). A green above")
+    w("  says nothing about those two.")
+    w("  Clause 4's own limit: a cap that is not DECLARED cannot be checked. A")
+    w("  producer that omits `behavior.branching_size` declares no cap (§4.2), and")
+    w("  this tool reads that as a posture, never as a pass.")
+    w("  See conformance/README.md § What this does not reach.")
     w()
     w(f"VERDICT: {report['verdict']}")
 
@@ -532,6 +640,7 @@ def run(corpora, kind: str, schema_dir: Path, spec_text: str, check_formats: boo
 
     findings, _ = collect_findings(docs, validator)
     undescribed = collect_undescribed(docs, schema)
+    cap_violations = collect_cap_violations(docs, derive_cap_pairs(schema))
     names = [n for f in findings for n in f["properties"]] + [u["key"] for u in undescribed]
 
     return {
@@ -541,9 +650,10 @@ def run(corpora, kind: str, schema_dir: Path, spec_text: str, check_formats: boo
         "schema": schema_name,
         "accounting": accounting,
         "findings": findings,
+        "cap_violations": cap_violations,
         "undescribed": undescribed,
         "spec_mentions": spec_mentions(names, spec_text),
-        "verdict": "NONCONFORMANT" if findings else "CONFORMANT",
+        "verdict": "NONCONFORMANT" if (findings or cap_violations) else "CONFORMANT",
         "environment": {
             "jsonschema": metadata.version("jsonschema"),
             "python": ".".join(str(v) for v in sys.version_info[:3]),
@@ -562,6 +672,7 @@ REQUIRED_CONTROLS = {
     "undescribed-false-positive",   # forecloses a walker that invents findings
     "closed-object-violation",      # forecloses can't-FAIL on species 1
     "instrument-failure",           # forecloses a corrupt corpus reading as clean
+    "declared-cap-violation",       # forecloses can't-FAIL on §8 clause 4
 }
 
 
@@ -572,6 +683,11 @@ def _tuples(findings):
 
 def _undescribed_tuples(entries):
     return [(u["path"], u["key"], u["documents"]) for u in entries]
+
+
+def _cap_tuples(entries):
+    return [(v["path"], v["cap"], v["declared"], v["actual"], v["documents"])
+            for v in entries]
 
 
 def selftest(schema_dir: Path, spec_text: str, stream) -> int:
@@ -607,22 +723,25 @@ def selftest(schema_dir: Path, spec_text: str, stream) -> int:
         try:
             report = run([path], fx["kind"], schema_dir, spec_text, False,
                          want.get("documents"), fx.get("pointer"))
-            code = 1 if report["findings"] else 0
+            code = 1 if (report["findings"] or report["cap_violations"]) else 0
             got = {
                 "exit": code,
                 "documents": report["accounting"]["documents"],
                 "findings": _tuples(report["findings"]),
+                "cap_violations": _cap_tuples(report["cap_violations"]),
                 "undescribed": _undescribed_tuples(report["undescribed"]),
             }
         except InstrumentError as exc:
             got = {"exit": 2, "documents": None, "findings": None,
-                   "undescribed": None, "why": str(exc)}
+                   "cap_violations": None, "undescribed": None, "why": str(exc)}
 
         expected = {
             "exit": want["exit"],
             "documents": want.get("documents") if want["exit"] != 2 else None,
             "findings": [tuple(t[:2]) + (tuple(t[2]), t[3], t[4])
                          for t in want.get("findings", [])] if want["exit"] != 2 else None,
+            "cap_violations": [tuple(t) for t in want.get("cap_violations", [])]
+                              if want["exit"] != 2 else None,
             "undescribed": [tuple(t) for t in want.get("undescribed", [])]
                            if want["exit"] != 2 else None,
         }
@@ -630,7 +749,7 @@ def selftest(schema_dir: Path, spec_text: str, stream) -> int:
         w(f"  [{'PASS' if ok else 'FAIL'}] {fx['path']}  ({fx['why']})")
         if not ok:
             failures.append(fx["path"])
-            for k in ("exit", "documents", "findings", "undescribed"):
+            for k in ("exit", "documents", "findings", "cap_violations", "undescribed"):
                 if got.get(k) != expected[k]:
                     w(f"        {k}: expected {expected[k]!r}")
                     w(f"        {k}: actual   {got.get(k)!r}")
@@ -713,7 +832,7 @@ def main(argv=None) -> int:
     else:
         render(report, sys.stdout)
 
-    if report["findings"]:
+    if report["findings"] or report["cap_violations"]:
         return 1
     if args.strict_undescribed and report["undescribed"]:
         return 1

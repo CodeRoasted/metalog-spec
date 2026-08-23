@@ -2,6 +2,7 @@
     "description": "The oracle for metalog_validate's self-test. Every expectation here is HAND-AUTHORED from SPEC.md and the shipped schemas, never captured from a run: an expectation copied out of the tool under test would make the tool its own oracle, and the pair would agree forever while both were wrong. The `control` tag on a fixture names the specific way this validator could have gone green while blind; metalog_validate refuses to run its self-test if any of them is missing from this file.",
     "findings_encoding": "[instance path, failing keyword, offending member names, error count, documents affected]",
     "undescribed_encoding": "[instance path, member name, documents affected]",
+    "cap_violations_encoding": "[instance path, cap field, value the document declares, actual array length, documents affected]",
     "fixtures": [
         {
             "path": "valid/minimal.metalog.jsonl",
@@ -88,6 +89,22 @@
                 "documents": 1,
                 "findings": [
                     ["current", "additionalProperties", ["region"], 1, 1]
+                ],
+                "undescribed": []
+            }
+        },
+        {
+            "path": "invalid/cap_exceeded.metalog.jsonl",
+            "kind": "metalog",
+            "control": "declared-cap-violation",
+            "why": "SPEC §8 clause 4 at two locations, in a document that is SCHEMA-VALID — which is the whole point: JSON Schema's `maxItems` takes a constant, the bound here is the value of a sibling field, so no schema-only test can reach this defect and a validator that only validates reports CONFORMANT on it. Two locations because a stats-only checker finds `top_k_size` and looks correct; `branching_size` is reached only by the schema-derived pair rule, so a hand-kept list that was never updated reds here. The vendor object under `extensions` carries `shard_size: 1` beside a three-element `shard` array on purpose: `extensions` is vendor space (§7) and this standard does not adjudicate it — a walker that reports three violations instead of two is claiming an authority it does not have.",
+            "expect": {
+                "exit": 1,
+                "documents": 1,
+                "findings": [],
+                "cap_violations": [
+                    ["behavior", "branching_size", 1, 2, 1],
+                    ["stats", "top_k_size", 2, 3, 1]
                 ],
                 "undescribed": []
             }

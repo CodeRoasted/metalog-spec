@@ -122,6 +122,11 @@
                     "type": "integer",
                     "minimum": 1
                 },
+                "reservoir_size": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "description": "The producer's cap on the reservoir array (SPEC \u00a73.7). Optional; declaring it is what makes the block's envelope contribution computable (SPEC \u00a711.1) and its bound checkable (SPEC \u00a78 clause 4). Added in v0.9.0."
+                },
                 "tail_count": {
                     "type": "integer",
                     "minimum": 0
@@ -234,6 +239,11 @@
                 "top_ngrams_size": {
                     "type": "integer",
                     "minimum": 1
+                },
+                "branching_size": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "description": "The producer's cap on the branching array (SPEC \u00a74.2). OMITTED means the producer declares no cap \u2014 a legal but unbounded posture, not a default. Added in v0.9.0."
                 },
                 "dropped_ngram_observations": {
                     "type": "integer",
@@ -658,6 +668,11 @@
                     "type": "integer",
                     "minimum": 0,
                     "description": "Raw (pre-closure) populated-cell count. Collapse rate = cell_count / raw_cell_count."
+                },
+                "cell_budget": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "description": "The producer's static closed-cell budget (SPEC \u00a716.10). Optional. It dominates every other term of the size formula (SPEC \u00a711.4), so an undeclared budget leaves a consumer unable to price the block. Added in v0.9.0."
                 },
                 "floor_saturation": {
                     "type": "number",
