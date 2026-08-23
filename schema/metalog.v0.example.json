@@ -1,5 +1,5 @@
 {
-    "metalog_version": "0.8.0",
+    "metalog_version": "0.9.0",
     "producer": {
         "name": "insight",
         "version": "0.6.0",
@@ -32,6 +32,7 @@
     "stats": {
         "unique_templates": 87,
         "top_k_size": 64,
+        "reservoir_size": 16,
         "tail_count": 4116,
         "tail_unique": 30,
         "entropy_bits": 5.83,
@@ -89,6 +90,7 @@
     "behavior": {
         "ngram_size": 2,
         "top_ngrams_size": 64,
+        "branching_size": 64,
         "graph_edge_count": 312,
         "dominant_path": [
             "h:90585f810bb26f3ccb3193975150dd40",
@@ -135,6 +137,7 @@
             { "name": "where", "kind": "chain", "chain": ["subsystem", "component"], "floor_depth": 2 }
         ],
         "raw_cell_count": 96,
+        "cell_budget": 4096,
         "cell_count": 4,
         "floor_saturation": 0.12,
         "cells": [

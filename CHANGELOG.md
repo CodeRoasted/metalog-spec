@@ -11,6 +11,66 @@ The spec follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [0.9.0] — unreleased
+
+**Additive** under [`GOVERNANCE.md`](GOVERNANCE.md) §2 — new optional fields only.
+No existing field changes type, becomes required, or is removed; **no conformant
+0.8.0 document becomes invalid**, and a 0.8.0 producer stays legal.
+
+### Added
+
+- **`stats.reservoir_size`, `behavior.branching_size`, `cube.cell_budget`**
+  (uint, optional) — the cap a producer applies to `stats.reservoir` (§3.7),
+  `behavior.branching` (§4.2) and `cube.cells` (§16.10). `stats.top_k_size` and
+  `behavior.top_ngrams_size` already declared theirs; these three blocks were
+  bounded in the prose and undeclarable in the document, so a consumer could
+  neither price them nor check them. `retention_profile` (§2.4) does not cover
+  this: it is opaque, and it answers comparability, not size.
+
+  **`behavior.branching` is the one block this spec still places no cap on.**
+  §4.2 gains the field but keeps the posture explicit: **omitting it means the
+  producer declares no cap**, which is legal, and a size-constrained consumer
+  must read the omission that way rather than assume a default.
+
+### Changed
+
+- **§11 Size budget is now a formula, not a table of numbers** (informative
+  section, no normative effect). The previous table priced `stats.top_k` alone
+  and indexed the whole envelope on `k`, which under-counted every document
+  carrying another block — a `reservoir` entry costs 1.5–2.5× a `top_k` entry,
+  and the cube's closed-cell budget dominates every other term combined. §11 now
+  gives the per-entry costs measured on
+  [`schema/metalog.v0.example.json`](schema/metalog.v0.example.json), the sum
+  over blocks that prices a document, and worked examples at three
+  configurations. Any single figure published here would be a figure for one
+  producer's configuration, and would rot the first time that configuration
+  moved.
+- **§11.5 scopes the "≤ 4 KB per MetaLog covering ≥ 1 M log lines" target to the
+  `stats`-only document** — no `reservoir`, no `behavior`, no `cube`. The target
+  is unchanged and still reached at `top_k_size ≤ 32` inline or `≤ 64` id-only;
+  what changes is that its scope is now stated instead of implied.
+- **§8 clause 4 generalised from `top_k` to every declared cap**, and its
+  testability stated: the clause is *not* reachable from the schema —
+  `maxItems` takes a constant, while the bound is the value of a sibling field —
+  but it is decidable from the document alone.
+
+### Conformance tooling
+
+- **`conformance/metalog_validate.py` now decides §8 clause 4** (`CAP-EXCEEDED`,
+  exit 1), which it previously declared unchecked on every run. The cap/array
+  pair set is **derived from the schema** — an integer `<x>_size` whose sibling
+  `<x>` is an array — so a pair added tomorrow is checked on arrival;
+  `cube.cell_budget` is the single declared exception, named for §16.10's BUDGET
+  rather than for its array. Objects under `extensions` are skipped: vendor space
+  is not this standard's to adjudicate.
+- New self-test control **`declared-cap-violation`**, with a fixture that is
+  **schema-valid and cap-violating** — the case a schema-only validator reports
+  CONFORMANT. It carries violations at two locations (`stats` and `behavior`) so
+  that a `top_k`-only checker reds, and a vendor `shard_size`/`shard` pair under
+  `extensions` that must **not** be reported.
+
+---
+
 ## [0.8.0] — 2026-08-19
 
 **Additive** under [`GOVERNANCE.md`](GOVERNANCE.md) §2 — new optional fields only.

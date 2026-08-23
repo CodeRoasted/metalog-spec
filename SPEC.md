@@ -1,4 +1,4 @@
-# MetaLog Specification — v0.8.0 (Draft)
+# MetaLog Specification — v0.9.0 (Draft)
 
 > **Status:** Draft. Subject to incompatible change until v1.0.
 > **Cross-reference:** [`RATIONALE.md`](RATIONALE.md) for *why*
@@ -479,8 +479,9 @@ document, not only at the raw scale.
 
 #### 3.6.1 Why a summary instead of a longer `top_k`?
 
-Doubling `top_k` from 64 to 128 grows the envelope by ~10 KB per window in
-inline mode (§11). `tail_summary` provides three of the four signals that
+Doubling `top_k` from 64 to 128 adds 64 entries — roughly **9 KB** per
+window in id-only mode and **13–14 KB** inline, at §11.2's measured
+per-entry costs. `tail_summary` provides three of the four signals that
 matter most for downstream detection — *how many* templates are in the tail
 (`tail_template_count`), *how spread* they are (`tail_entropy_bits`), and
 *how loud* the loudest one is (`tail_max_rate`) — for an envelope cost of
@@ -541,6 +542,14 @@ benign, contentless template scores `0` and **MUST NOT** be admitted (rarity alo
 never promotes a template). Admission is **salience-ranked**, subject to a
 **per-class diversity cap** (the reservoir covers *distinct* salient kinds, not
 many variants of one), and **bounded** by the configured reservoir size.
+
+A producer that emits `reservoir` **SHOULD** report the cap it applied
+in **`stats.reservoir_size`** (uint, optional, added in v0.9.0). The
+`retention_profile` identifier gates *comparability*; it is opaque, so
+it cannot tell a consumer how many entries the block can reach.
+`reservoir_size` is what makes the block's contribution to the
+envelope computable (§11.1) and its bound checkable (§8 clause 4).
+Absent, the consumer knows only that some cap was applied.
 
 The exact weights, reservoir size, and diversity caps are the producer's
 **`retention_profile`** (§9), not fixed by this spec. Their **mechanism** is
@@ -709,6 +718,16 @@ nodes that appear in `top_ngrams` and `dominant_path`; emitting it
 for *every* node is **NOT REQUIRED** (and may exceed the size
 budget).
 
+A producer that caps `branching` **SHOULD** report the cap in
+**`behavior.branching_size`** (uint, optional, added in v0.9.0).
+`branching` is the one variable-length block this spec places no cap
+on: an uncapped producer grows it with the window's distinct node
+count. Declaring the cap makes the block's contribution to the
+envelope computable (§11.1); **omitting the field means the producer
+declares no cap**, which is a legal but unbounded posture, and a
+size-constrained consumer should read the omission that way rather
+than assume a default.
+
 Producers that cannot compute sequence information (e.g. a streaming
 producer with no buffering) **MUST** omit the `behavior` object
 entirely rather than emit empty fields.
@@ -821,13 +840,27 @@ A producer is **conformant** with this spec at version *X.Y.Z* if:
 2. Every required field is populated according to its definition
    above.
 3. `template_id` values are computed exactly as specified in §3.2.
-4. `top_k` is truthfully bounded at `top_k_size`.
+4. Every array is truthfully bounded by the cap the **same document**
+   declares for it: `stats.top_k` by `stats.top_k_size` (required),
+   and — where the producer declares them — `stats.reservoir` by
+   `stats.reservoir_size`, `behavior.top_ngrams` by
+   `behavior.top_ngrams_size`, `behavior.branching` by
+   `behavior.branching_size`, `cube.cells` by `cube.cell_budget`.
+   A cap a producer does **not** declare is not a claim, and its
+   absence is not a violation.
 
 A consumer is conformant if it accepts any document that validates
 against the schema, ignoring unknown fields and unknown extensions,
 and resolves template strings according to §3.4.
 
-There is no central conformance authority. The schema is the test.
+There is no central conformance authority. **The schema is the test
+for clause 1.** Clause 4 is not reachable from the schema — JSON
+Schema's `maxItems` takes a constant, while the bound here is the
+value of a sibling field — but it *is* decidable from the document
+alone, and [`conformance/metalog_validate.py`](conformance/metalog_validate.py)
+decides it. Clauses 2 and 3 are not mechanically decidable today:
+clause 2 only as far as the schema expresses it, and clause 3 not
+until a pinned cross-implementation digest vector exists.
 
 ---
 
@@ -877,53 +910,144 @@ them; see §2.4 for the comparability gate.
 
 ## 11. Size budget
 
-This section is **informative**. It explains how the spec achieves
-the headline "bounded-size" property and gives implementers an
-honest picture of what envelopes to expect.
+This section is **informative**. It gives an implementer a way to
+**compute** the envelope a MetaLog can reach, rather than a number to
+trust. The distinction matters: the parameters below are the
+producer's, not this spec's, so any single figure published here would
+be a figure for one producer's configuration and would silently rot
+the first time that configuration moved.
 
-### Per-entry cost
+### 11.1 What is bounded, and by what
 
-A single `top_k` entry, JSON-encoded with no whitespace, costs
-roughly:
+§3.1's guarantee is about **input cardinality**: however many distinct
+templates a window contains, `stats` retains `top_k_size` of them and
+summarises the rest into `tail_count` / `tail_unique`. That guarantee
+is exact, and its subject is `stats`.
 
-| Field | Bytes (inline mode) | Bytes (id-only mode) |
+A document's *size* is a different quantity: the sum over **every**
+variable-length block it carries. Each such block is capped by a
+parameter the producer fixes before window start, so the whole
+document is bounded — but by a **set** of parameters, not by `k` alone:
+
+| Block | Bounded by | Declared in the document as |
 |---|---|---|
-| `template_id` (`"h:"` + 32 hex) | ~40 | ~40 |
-| `template` (typical skeleton, 40–80 chars) | ~50–100 | 0 |
-| `count` + `frequency` + optional `level` | ~30 | ~30 |
-| JSON syntax overhead (quotes, commas, braces) | ~30 | ~20 |
-| **Total per entry** | **~150–200** | **~90** |
+| `stats.top_k` | top-k size | `stats.top_k_size` (required) |
+| `stats.reservoir` (§3.7) | reservoir size | `stats.reservoir_size` |
+| `stats.top_k[].param_histograms` (§3.5) | per-template histogram cap, and the `value_counts` cap within each | *not declared* — see §11.5 |
+| `behavior.top_ngrams` (§4) | n-gram retention size | `behavior.top_ngrams_size` (required when `behavior` is present) |
+| `behavior.branching` (§4.2) | branching size | `behavior.branching_size` |
+| `cube.cells` (§16) | the closed-cell budget of §16.10 | `cube.cell_budget` |
 
-### Envelope size by `k`
+`retention_profile` (§2.4) is **not** a substitute for these fields. It
+is an opaque identifier and it answers *"were these two documents
+produced under the same regime?"* — a comparability question. It
+cannot answer *"how large can a document from this producer get?"*,
+because a consumer cannot read a size out of an opaque string. The two
+jobs are separate and both are needed.
 
-With the fixed envelope (~400 bytes for `metalog_version`,
-`producer`, `window`, `source`, the optional blocks' framing) plus
-`k` entries, in inline mode:
+### 11.2 Per-entry cost
 
-| `k` | Approx envelope (inline) | Approx envelope (id-only) | Recommended for |
-|---|---|---|---|
-| 16  | ~3 KB    | ~1.8 KB | Edge / ultra-compact deployments |
-| 32  | ~5 KB    | ~3 KB | Compact deployments |
-| **64**  | **~10 KB**   | **~6 KB** | **Default — covers ~95% of Zipfian log streams** |
-| 128 | ~20 KB   | ~12 KB | Wide services |
-| 256 | ~40 KB   | ~25 KB | High-cardinality / forensic use |
+Measured on [`schema/metalog.v0.example.json`](schema/metalog.v0.example.json),
+JSON-encoded with no whitespace. That document is in **id-only** mode
+(§3.4): template strings live in the top-level `templates` dedup map,
+so the entry costs below exclude them. **Inline mode adds the skeleton
+string — typically 50–100 bytes — to every `top_k` and `reservoir`
+entry.**
+
+| Entry | Measured bytes (id-only) | Notes |
+|---|---|---|
+| `top_k` entry | **99–177** | 99 with `level` only; 122 with `component`; 177 with a per-row `extensions` object |
+| `reservoir` entry | **165–296** | 165 for the required fields alone; 235 with `level`/`component`/`structural_role`; **296** with §16.6's `cube_coord` cross |
+| `top_ngrams` entry | **~121** | at `ngram_size` 2; each additional gram adds one `template_id` (~40) |
+| `branching` entry | **~107** | |
+| `cube` cell | **27–99** | grows with the number of pinned axes in `coord` and with WHERE-chain depth |
+| Fixed envelope | **~460** | `metalog_version`, `producer`, `window`, `source`, and the optional blocks' framing |
+| `templates` dedup map | **~370** for 4 entries | id-only mode only; ~90 per distinct template |
+
+A `reservoir` entry costs roughly **1.5× to 2.5×** a `top_k` entry: it
+carries the salience axes (`salience`, `structural_surprise`,
+`novelty`, `within_window_ordinal`) that justify its admission, and
+optionally the `cube_coord` cross. Pricing the reservoir at the
+`top_k` rate under-counts it.
+
+### 11.3 The envelope, as a formula
+
+```
+envelope  ≈  fixed_envelope
+           + top_k_size        × cost(top_k entry)
+           + reservoir_size    × cost(reservoir entry)
+           + top_ngrams_size   × cost(n-gram entry)
+           + branching_size    × cost(branching entry)
+           + cell_budget       × cost(cube cell)
+           + templates_map                       (id-only mode)
+           + param_histograms                    (§11.5)
+```
+
+Every term is a **declared cap × a measured per-entry cost**, and each
+cap is either required in the document or optional-and-declarable
+(§11.1). A consumer that wants a bound for a specific producer reads
+the caps out of one of that producer's documents and applies its own
+measured costs; it never has to trust a table.
+
+### 11.4 Worked examples
+
+Three configurations, in id-only mode with the `templates` map shared
+across documents (§3.4), using the midpoints of §11.2:
+
+| Configuration | Caps | Approx envelope |
+|---|---|---|
+| **Edge** — `stats` only | `top_k_size` 16, no reservoir, no `behavior`, no `cube` | **~2.7 KB** |
+| **Default** — `stats` + `behavior` | `top_k_size` 64, `top_ngrams_size` 64, `branching_size` 64 | **~23 KB** |
+| **Wide service** — all blocks | `top_k_size` 128, `reservoir_size` 64, `top_ngrams_size` 64, `branching_size` 64, `cell_budget` 4096 | **~298 KB**, of which **~252 KB is the cube** |
+
+An unshared `templates` map adds roughly 90 bytes per distinct
+template on top (~1.4 KB, ~5.8 KB and ~17 KB respectively).
+
+**These are ceilings, not typical sizes.** Every cap is an upper
+bound: a window containing fewer distinct templates than `top_k_size`
+emits fewer entries, and a producer that omits `behavior` or `cube`
+drops those terms entirely. The formula answers *"how large can this
+get?"*; only `extensions.org.metalog.envelope_bytes` (§11.5)
+answers *"how large was it?"*.
+
+The third row is the one worth reading twice. The cube's closed-cell
+budget dominates every other term combined, and a producer that
+enables §16 without pricing that budget will be surprised by an
+envelope one to two orders of magnitude above the `stats`-only figure
+it started from. §16.10's budget is a **static producer constant**
+precisely so that this number is knowable in advance; declaring it in
+`cube.cell_budget` is what makes it knowable to the *consumer*.
+
+Conversely: the `stats`-only envelope really is small — ~9 KB at
+`top_k_size` 64 — and adding `behavior` multiplies it by roughly 2.5.
+Both facts are recoverable from the formula; neither is recoverable
+from a table indexed on `k`.
+
+### 11.5 Reaching the 4 KB / 1M-lines target
+
+The headline "≤ 4 KB per MetaLog covering ≥ 1 M log lines" target is a
+statement about the **`stats`-only** document — no `reservoir`, no
+`behavior`, no `cube`. Under that scope it is reached at:
+
+1. `top_k_size ≤ 32` in inline mode, **or**
+2. `top_k_size ≤ 64` in id-only mode (§3.4) with template strings
+   shipped out-of-band or via a `templates` dedup map shared across
+   many MetaLogs.
 
 Real log streams follow a Zipfian distribution: the top 64 templates
-typically account for 95–99% of all observations.
+typically account for 95–99% of all observations, which is why the
+target is reachable at all.
 
-### Reaching the 4 KB / 1M-lines target
-
-The headline "≤ 4 KB per MetaLog covering ≥ 1 M log lines" target
-is reached at:
-
-1. `k ≤ 32` in inline mode, **or**
-2. `k ≤ 64` in id-only mode (§3.4) with template strings shipped
-   out-of-band or via a top-level `templates` dedup map shared
-   across many MetaLogs.
-
-Producers **SHOULD** report their actual envelope size in
-`extensions.org.metalog.envelope_bytes` (or equivalent) so consumers
-can track the compression ratio achieved on real workloads.
+**Two residuals, stated rather than hidden.** `param_histograms`
+(§3.5) is bounded by two producer parameters — a per-template
+histogram cap and the `value_counts` cap (§3.5 recommends a default of
+256) — and **neither is declared in the document today**. And the
+per-entry costs above are *this* document's; a producer whose
+templates, components or extension payloads are larger will measure
+larger costs. For both reasons producers **SHOULD** report their
+actual envelope size in
+`extensions.org.metalog.envelope_bytes` (or equivalent), which is the
+only figure that is exact rather than estimated.
 
 ---
 
@@ -1387,6 +1511,7 @@ it does **not** decide what is interesting.
   "cells": [ /* closed cells — §16.4 */ ],
   "cell_count": 5,          // number of closed cells emitted
   "raw_cell_count": 142,    // raw (pre-closure) populated-cell count; collapse rate = cell_count / raw_cell_count
+  "cell_budget": 4096,      // optional — the producer's static closed-cell budget (§16.10)
   "floor_saturation": 0.18  // optional WHERE-floor health metric — §16.3
 }
 ```
@@ -1592,7 +1717,12 @@ An always-on closed cube can explode (`O(B·2ⁿ)`). The bound is a **per-window
 budget-driven dimensional collapse** — three separated objects:
 
 - **BUDGET** — a static producer constant on the closed-cell count (reference
-  producer: 4096), never adaptive, never read from the environment.
+  producer: 4096), never adaptive, never read from the environment. A producer
+  **SHOULD** report it in `cube.cell_budget` (uint, optional, added in v0.9.0):
+  the budget is static precisely so that it is knowable in advance, and
+  declaring it is what makes it knowable to the **consumer**. It dominates every
+  other term of the size formula (§11.4), so an undeclared budget leaves the
+  consumer unable to price the block at all.
 - **TRIGGER** — a pure function of the closed window's content: closed cells over
   budget. **Closure-first, collapse-last**: when closure alone fits, nothing
   degrades — collapse is the rare guard, not the normal path.
