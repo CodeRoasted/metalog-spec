@@ -99,6 +99,20 @@ No existing field changes type, becomes required, or is removed; **no conformant
   CONFORMANT. It carries violations at two locations (`stats` and `behavior`) so
   that a `top_k`-only checker reds, and a vendor `shard_size`/`shard` pair under
   `extensions` that must **not** be reported.
+- New self-test fixture **`invalid/unprefixed_extension_key.diff.json`** for the
+  diff-root grant, proving it in both directions inside one document: an
+  unprefixed key *inside* `extensions` is rejected (the container's grammar is
+  enforced at this root now that the root describes it), a reverse-DNS key beside
+  it validates, and a bare vendor member at the root itself is reported
+  legal-but-undescribed — the limit the grant does not close. Measured: reverting
+  the grant reds **exactly this fixture, 1 of 14**, in all three directions;
+  granting the property without wiring it to `$defs/extensions` reds it too.
+- `conformance/README.md` catches up with the fixture set it describes: fourteen
+  fixtures, six of them carrying five distinct `control` tags, and
+  `declared-cap-violation` — added in this release's tooling entry above — gains
+  the control-table row it never got. The instrument's declared limits gain the
+  one this release makes relevant: a bare vendor member at either **document
+  root** is reported, never failed.
 
 ---
 
