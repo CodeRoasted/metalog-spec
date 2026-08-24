@@ -4,7 +4,9 @@
     "title": "MetaLogDiff v0",
     "description": "Pair-wise difference between two MetaLog documents (SPEC §13).",
     "type": "object",
-    "additionalProperties": true,
+    "additionalProperties": {
+        "description": "Open, and NOT by design: this root admits any member, including a bare vendor member §7 forbids beside the `extensions` container it grants, so an unknown key here validates and is reported legal-but-undescribed rather than rejected. Closing it is a breaking change under GOVERNANCE.md §2 and is not in this release."
+    },
     "required": ["diff_version", "current", "previous"],
     "properties": {
         "diff_version": {
@@ -22,7 +24,9 @@
                         "start": { "type": "string", "format": "date-time" },
                         "end": { "type": "string", "format": "date-time" }
                     },
-                    "additionalProperties": true
+                    "additionalProperties": {
+                        "description": "Open, and NOT by design: this window object names `start` and `end` and admits anything else, while the document-level `window` (§2.2) is closed. Closing it is a breaking change under GOVERNANCE.md §2 and is not in this release."
+                    }
                 },
                 "document_id": { "type": "string" }
             },
@@ -39,7 +43,9 @@
                         "start": { "type": "string", "format": "date-time" },
                         "end": { "type": "string", "format": "date-time" }
                     },
-                    "additionalProperties": true
+                    "additionalProperties": {
+                        "description": "Open, and NOT by design: this window object names `start` and `end` and admits anything else, while the document-level `window` (§2.2) is closed. Closing it is a breaking change under GOVERNANCE.md §2 and is not in this release."
+                    }
                 },
                 "document_id": { "type": "string" }
             },
@@ -240,7 +246,7 @@
             "additionalProperties": false
         },
         "extensions": {
-            "description": "Document-level vendor-specific data on a MetaLogDiff (SPEC §7). This placement was granted in v0.9.0. The root itself is open (additionalProperties: true), so a bare vendor member written beside this container validates while violating §7: the container is where such data belongs, and at an open root the schema does not tell the two apart.",
+            "description": "Document-level vendor-specific data on a MetaLogDiff (SPEC §7). This placement was granted in v0.9.0. The root itself is open — its `additionalProperties` declares the openness and constrains nothing — so a bare vendor member written beside this container validates while violating §7: the container is where such data belongs, and at an open root the schema does not tell the two apart.",
             "$ref": "#/$defs/extensions"
         }
     },

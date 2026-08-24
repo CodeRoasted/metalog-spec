@@ -108,7 +108,7 @@ have gone green while blind:
 | control | the blindness it forecloses |
 |---|---|
 | `multi-document-section` | The published evidence is `### name ###` sections whose bodies are JSONL — **one document per line**. A reader that takes a section as one document validates its first line and silently ignores the rest, returning a smaller, entirely plausible number. This fixture puts the only violation on the *second* line of a section, so that reader fails twice over: wrong document count and a missed finding. |
-| `undescribed-false-positive` | The schema opens several containers on purpose (`extensions`, `source.tags`, cube coordinates keyed by axis name, `param_histogram.value_counts`). A walker that reports those has invented findings, and a false positive from a prescriptive instrument costs more than a miss: it sends someone to delete a field the schema does describe. This fixture exercises all of them and must report zero. |
+| `undescribed-false-positive` | The schema opens several containers on purpose (`extensions`, `source.tags`, cube coordinates keyed by axis name, `param_histogram.value_counts`, `attribution.sketch_params`, `provenance[].source`). A walker that reports those has invented findings, and a false positive from a prescriptive instrument costs more than a miss: it sends someone to delete a field the schema does describe. This fixture exercises all of them and must report zero. The last two were added on 2026-08-24, and their absence was not cosmetic: the fixture carried no `attribution` block at all while its own entry claimed "sketch-shaped free objects", so the two positions whose disposition the closure walk had to rule on were the two this control could not see. |
 | `closed-object-violation` | The instrument must detect the real defect shape, not a toy one — extra members inside `stats.top_k[]` and `cube.axes[]`, the same two instance paths the reference implementation trips today. |
 | `declared-cap-violation` | §8 clause 4 is unreachable from the schema — `maxItems` takes a constant, the bound is the value of a sibling field — so a document can be **schema-valid and cap-violating**, which is exactly what a schema-only validator reports `CONFORMANT`. This fixture is that document, violating at two locations (`stats` and `behavior`) so a `top_k`-only checker reds, and carrying a vendor `shard_size`/`shard` pair under `extensions` that must **not** be reported. |
 | `instrument-failure` | A truncated corpus, and a `--pointer` that does not resolve, must both exit 2. **There is no code path that skips a line or a file**: every non-blank line is either a section header or a document, anything else stops the run, and an unreachable pointer refuses rather than dropping the file. A parser bug cannot express itself as a smaller document count — only as a refusal to answer. |
@@ -138,6 +138,45 @@ diff schema while both of its inputs validated** (§13.6 requires `cube_diff.axe
 equal both inputs' `cube.axes`; §16.10 stamps a collapsed axis with `band_floor`).
 A drift is **exit 2**, not exit 1: the standard's own artifacts disagree, and no
 verdict about anyone's documents is honest until they don't.
+
+**Then it walks every object position in both schemas and requires each one to
+declare its own closure.** Three dispositions are legal and there is no fourth:
+`additionalProperties: false` (closed — the members are named), a **constraining**
+value schema (a map: closed over its VALUES, never over its key set), or
+`{"description": "<why it is open>"}` (open, with its reason attached). An
+**absent** `additionalProperties` is a defect, because absence is not a disposition
+— it is the lack of one, and two positions can share a byte-identical
+`{"type": "object"}` while meaning opposite things: `provenance[].source` is a
+standard object whose members §12.4 names, and `attribution.sketch_params` is a map
+whose keys are data. Nothing in the schema text separates them; only the prose
+does. A census of what is open therefore cannot be maintained by reading
+`additionalProperties`, and a hand-kept list of exemptions beside the schemas would
+rot on the next release — so the rule is enforced instead, and the position set is
+derived from the artifacts. A position added tomorrow is checked on arrival.
+
+A bare `true` is refused, and the reason is measured rather than stylistic: it is
+the one spelling with nowhere to put the *why*. Accepting it against a
+**node-level** `description` would pass both document roots vacuously, on sentences
+that describe the document type ("Pair-wise difference between two MetaLog
+documents") and say nothing about why the root admits unknown members — a check
+that goes green on the two positions it exists to interrogate.
+`{"description": ...}` is the same schema as `true` in Draft 2020-12, so this costs
+no document its validity; it costs an author one sentence, at the only place a
+reader will look for it.
+
+Run against the shipped v0.9.0 pair before this control landed, it reds at **7 of
+49** positions: both document roots, `provenance[].window`, the diff's
+`current.window` and `previous.window` (all five open with no reason attached), and
+`attribution.sketch_params` and `provenance[].source` (both absent). Exit 2, for the
+same reason a `$defs` drift is.
+
+**In-place applicators are not positions, and the exclusion is load-bearing.** An
+`if`, `then`, `else`, `not`, or a branch of `allOf`/`anyOf`/`oneOf` constrains the
+position it sits in rather than being one: `additionalProperties: false` inside an
+`if` changes the *condition*, and inside a `then` it closes the object. Demanding a
+declaration there would order an author to break his own schema. Nine such fragments
+carry `required` or `properties` and no `type` in the shipped pair; a walk blind to
+the distinction censuses 58 positions instead of 49 and reds on all nine.
 
 ---
 
@@ -176,8 +215,8 @@ Declared, because an instrument's silence is read as coverage.
   says — it does not invent the clause the schema is missing.
 - **A bare vendor member at either document root is reported, never failed.** §7 makes
   `extensions` the only carrier of non-standard members, at any depth. The schema
-  enforces that wherever the object is closed; both document roots are
-  `additionalProperties: true`, so a bare vendor member there validates, appears under
+  enforces that wherever the object is closed; both document roots are **open**, so a
+  bare vendor member there validates, appears under
   LEGAL-BUT-UNDESCRIBED, and changes no exit code. Granting the container at a root —
   as v0.9.0 does for `MetaLogDiff` — gives that data a legal home and makes the
   container's own reverse-DNS grammar enforceable; it does **not** make the placement
