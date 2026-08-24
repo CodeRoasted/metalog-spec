@@ -80,6 +80,8 @@ top-level fields:
 | `stability` | object | no | Divergence from the previous window. See §5. |
 | `attribution` | object | no | Distribution of templates across sub-sources. See §6. |
 | `cube` | object | no | Joint categorical condensation (closed cube). **Experimental.** See §16. |
+| `coordinate` | object | no | Re-derivation coordinate: `raw(window) = replay(source, bounds)`. See §15. |
+| `run_outcome` | string | no | Terminal verdict of the run this window covers, when the stream stated one. See §2.5. |
 | `provenance` | array | no | When this document was composed from others. See §12. |
 | `extensions` | object | no | Vendor-specific data. See §7. |
 
@@ -162,6 +164,55 @@ The `cube` block (§16) is part of these contracts: its **axis set**, each axis'
 `canonicalization_version` (WHERE grounding) and `retention_profile` (axis/floor
 configuration). Two cubes are diffable into a `cube_diff` (§13.6) **only** when both
 identifiers match **and** their `axes` are equal.
+
+### 2.5 `run_outcome` — terminal verdict of the run the window covers (optional)
+
+> **New in v0.9.0.** A string at the document root.
+
+A window often covers a bounded **run** — a CI job, a batch, a deployment step —
+that ends by stating a verdict about itself. `run_outcome` carries that verdict as
+a **closed**, low-cardinality label:
+
+| value | meaning |
+|---|---|
+| `success` | the run completed and stated no failure |
+| `failure` | the run failed as a whole |
+| `unstable` | the run completed and stated a *partial* failure — not the same claim as `failure` |
+| `aborted` | the run did **not** complete: cancelled, timed out, or killed. **The observed stream is truncated**, and every count in the document is a count over a stream that stopped early. |
+
+**The enum is closed.** A producer whose source system publishes a verdict outside
+these four **MUST NOT** widen it; that verdict is vendor data and belongs in
+`extensions` (§7). The values are lower-case and **case-sensitive**, as for every
+other vocabulary this spec *mints* (`sketch_type` §6, `cube.axes[].kind` §16.2).
+This is deliberately unlike `level` (§3), whose values are the observed stream's
+own tokens and are not minted here.
+
+**Normative points.**
+
+- `run_outcome` **MUST** be derived from the **observed events** — the stream's own
+  terminal statement — and **MUST NOT** be taken from producer state or an
+  out-of-band control plane. Same species as `level` and `component` (§3.8): a
+  label the observed stream carries about itself. A field sourced from outside the
+  window's bytes is not re-derivable from them, which is the guarantee §15 exists
+  to make.
+- It **MUST** be **omitted** when no verdict was observed. There is **no** wire
+  value meaning "unknown", so absence carries the same meaning in every version of
+  this spec, including documents produced before v0.9.0.
+- Consumers **MUST NOT** read absence as `success`. Absence means **this document
+  asserts no verdict** — because none was observed, because the producer predates
+  the field, or because a composition could not agree on one.
+- **Composition (§12).** A composed document **MUST NOT** carry a `run_outcome`
+  unless every input that carries one carries the **same** value; when they agree
+  it **MAY** carry that value. A composed window spanning a green run and a red one
+  has no single verdict, and asserting either would be a claim no input made.
+  Omitting is the safe direction precisely because absence asserts nothing.
+
+**Why a consumer reads it before reading the deltas.** Whether two windows straddle
+a `success` → `failure` boundary changes how every delta in a `MetaLogDiff` (§13)
+should be read: a large divergence across a green→red pair is the finding, while
+the same divergence between two failed runs may be the difference between two
+unrelated failures. And an `aborted` window is truncated by construction — a
+template that appears to have *vanished* may simply never have been reached.
 
 ---
 
@@ -1275,6 +1326,14 @@ not directly comparable.
     "previous_tail_entropy_bits": 4.0,  "current_tail_entropy_bits": 1.0,  "tail_entropy_bits_delta": -3.0,
     "previous_tail_max_rate": 0.001,    "current_tail_max_rate": 0.02,     "tail_max_rate_delta": 0.019
   },
+  "reservoir_delta": {                 // object, optional — see §13.7 (new in v0.9.0)
+    "new_salient": [
+      { "template_id": "h:9aa...", "count": 3, "salience": 87, "level": "ERROR", "structural_role": "terminator" }
+    ],
+    "frontier_crossings": [
+      { "template_id": "h:8a3f...", "direction": "up", "previous_level": "WARN", "current_level": "ERROR" }
+    ]
+  },
   "extensions": {                      // object, optional — vendor data, §7 (placement granted in v0.9.0)
     "com.example.deploy_window": "2026-01-14.3"
   }
@@ -1287,8 +1346,9 @@ not directly comparable.
 - All other fields are **OPTIONAL** but at least one of
   `kl_divergence`, `js_divergence`, `template_deltas`,
   `new_templates`, `vanished_templates`, `branching_delta`,
-  `ngram_delta`, or `tail_delta` **MUST** be present (an empty diff
-  is a no-op document and should not be emitted).
+  `ngram_delta`, `tail_delta`, or `reservoir_delta` **MUST** be
+  present (an empty diff is a no-op document and should not be
+  emitted).
 - `template_deltas` **SHOULD** be capped at the larger of the two
   inputs' `top_k_size`. Producers **MAY** report the cap in
   `extensions.org.metalog.deltas_truncated_at` — the §7 container is
@@ -1381,6 +1441,106 @@ disappearance). Each border cell carries `coord` + `previous_count` +
   evidence. Consumers decide significance.
 
 ---
+
+### 13.7 `reservoir_delta` — rare-salient membership change (new in v0.9.0)
+
+`reservoir_delta` is the pair-wise difference of the two documents' `stats.reservoir`
+blocks (§3.7). §13 already carries a delta for every other `stats` block —
+`template_deltas` for `top_k`, `tail_delta` for `tail_summary` (§13.5),
+`field_histogram_deltas` for the per-slot histograms (§3.5.2). Without this one, a
+consumer cannot see change in the block that exists precisely to keep the
+rare-but-important **single**: a lone fatal that starts appearing, or one that stops,
+moves no count large enough to surface anywhere else in a diff.
+
+```jsonc
+"reservoir_delta": {
+  "new_salient":       [ /* entries, §13.7.1 */ ],   // array, optional — omitted when empty
+  "vanished_salient":  [ /* entries, §13.7.1 */ ],   // array, optional — omitted when empty
+  "frontier_crossings":[ /* crossings, §13.7.2 */ ]  // array, optional — omitted when empty
+}
+```
+
+The block is **omitted** when all three lists are empty; an emitted block **MUST**
+carry at least one non-empty list. Every list **MUST** be sorted by `template_id`
+ascending — the diff is a deterministic document, and a set difference has no
+intrinsic order to inherit.
+
+**Membership is decided over `top_k` ∪ `reservoir`, never over `reservoir` alone.**
+This is the rule that makes the block readable, and it is not the obvious one:
+
+- `new_salient` — entries in `current`'s `reservoir` whose `template_id` appears in
+  **neither** `previous.stats.top_k` **nor** `previous.stats.reservoir`.
+- `vanished_salient` — entries in `previous`'s `reservoir` whose `template_id`
+  appears in **neither** of `current`'s two blocks.
+
+A template that was frequent enough for `top_k` last window and only salient enough
+for the `reservoir` this one has **not** appeared or disappeared — it moved between
+two retention mechanisms. Differencing the reservoirs alone would report that
+migration as a birth *and* a death, and both would be false. The union is what the
+two blocks jointly retain, and membership in it is the fact worth reporting.
+
+The two blocks are disjoint by construction (§3.7.1: a `reservoir` entry **MUST NOT**
+also appear in `top_k`), so the union is a plain set with no precedence rule.
+
+#### 13.7.1 Entry shape
+
+Every field means exactly what it means on the §3.7.1 reservoir entry it is copied
+from, and an entry carries a **subset** of that shape:
+
+| field | type | required | meaning |
+|---|---|---|---|
+| `template_id` | string | **yes** | as in §3.2. |
+| `count` | uint | **yes** | occurrences in the window the entry belongs to — `current`'s for `new_salient`, `previous`'s for `vanished_salient`. |
+| `salience` | uint | **yes** | the §3.7.2 admission score the entry carried in that document. |
+| `level` | string | no | as in §3.7.1; omitted when the entry carried none. |
+| `structural_role` | string | no | as in §3.7.1; omitted when the entry carried none. |
+
+`count` and `salience` **MUST** be copied from the document the entry comes from and
+**MUST NOT** be re-derived at diff time. A diff is a statement about two documents,
+not a third computation over them.
+
+`salience` is comparable across the pair **only** because §2.4's comparability gate
+already requires a matching `retention_profile` for the diff to be produced at all —
+salience is that profile's arithmetic (§3.7.2), and across profiles the two numbers
+are not on one scale.
+
+**A membership change is not always a behaviour change.** §3.7.2.1 applies here in
+full: the reservoir's tie-break is `template_id`, which is content-derived and
+meaning-blind, so a template-text edit re-orders equally-ranked candidates and
+changes *which* tied entry occupies the last slot. Consumers **MUST NOT** attribute a
+`reservoir_delta` to changed behaviour when the two documents' template texts differ;
+across such a pair the delta is re-selection, not signal.
+
+#### 13.7.2 `frontier_crossings` — a template that crossed the failure frontier
+
+A crossing reports a template present in **both** documents' `top_k` ∪ `reservoir`
+whose `level` moved **across the failure frontier** between them. A template on only
+one side is not a crossing — it is a membership change, and it is already reported as
+one.
+
+| field | type | required | meaning |
+|---|---|---|---|
+| `template_id` | string | **yes** | as in §3.2. |
+| `direction` | string | **yes** | `"up"` — crossed **into** the frontier; `"down"` — crossed **out** of it. Oriented `previous` → `current`. |
+| `previous_level` | string | no | the `level` in `previous`; omitted when it carried none. |
+| `current_level` | string | no | the `level` in `current`; omitted when it carried none. |
+
+**The failure frontier is the `level` set `{ERROR, FATAL}`** — the same absolute
+frontier §16.10 forbids interval-banding across. Membership in it **MUST** be decided
+as a **set test**, never as an ordinal comparison against `ERROR`: a producer whose
+`level` ladder places any value above `FATAL` would otherwise classify it as a
+failure by accident of ordering.
+
+A producer whose `level` vocabulary does not use these tokens **MUST** map its values
+onto that frontier, or **MUST** omit `frontier_crossings` entirely. It **MUST NOT**
+report crossings against a private frontier: the member's whole meaning is that two
+producers name the same boundary.
+
+`direction` is **signed and polarity-mute**. It states which way the boundary was
+crossed and makes no claim about whether that is an escalation or a recovery — a
+template leaving `ERROR` because the code path stopped running is not a repair, and
+this spec has no way to tell the two apart. That reading belongs to the consumer.
+
 
 ## 14. Sessions
 

@@ -54,6 +54,75 @@ No existing field changes type, becomes required, or is removed; **no conformant
   closing that root, which is a *breaking* change under `GOVERNANCE.md` §2 and is
   not in this release.
 
+- **`run_outcome`** (string, optional, MetaLog root) — the terminal verdict of the
+  run a window covers, described in the new **§2.5**: a **closed** enum of
+  `success` / `failure` / `unstable` / `aborted`. This is an **adoption, not a
+  relocation** — the member is standard-shaped and stays exactly where it is. Same
+  species as `level` and §3.8's `component`: a low-cardinality label the observed
+  stream carries *about itself*, freezable vendor-neutrally today because a
+  terminal verdict is what CI and batch systems publish about their own runs.
+
+  Normative points worth reading before emitting it. It **MUST** be derived from
+  the **observed events**, never from producer state or an out-of-band control
+  plane — a field sourced from outside the window's bytes is not re-derivable from
+  them. It **MUST** be **omitted** when no verdict was observed: there is **no**
+  wire value for "unknown", which is exactly what makes absence mean the same
+  thing in every version of this spec, including documents written before this
+  one. Consumers **MUST NOT** read absence as `success`. Under `compose()` (§12) a
+  composed document **MUST NOT** carry a verdict unless every input that carries
+  one carries the same value — a window spanning a green run and a red one has no
+  single verdict, and omitting is the safe direction precisely because absence
+  asserts nothing.
+
+  `aborted` is the value with a consequence attached: it says the observed stream
+  is **truncated**, so every count in that document is a count over a stream that
+  stopped early, and a template that appears to have vanished may simply never
+  have been reached.
+
+  **The values are lower-case and case-sensitive**, like every other vocabulary
+  this spec *mints* (`sketch_type` §6, `cube.axes[].kind` §16.2) and deliberately
+  unlike `level`, whose values are the observed stream's own tokens and are not
+  minted here.
+
+- **`MetaLogDiff.reservoir_delta`** (object, optional, diff root) — rare-salient
+  membership change between the two documents' `stats.reservoir` blocks, described
+  in the new **§13.7**. The second **adoption**, not a relocation: it diffs a block
+  this spec owns (§3.7), and §13 already carries a delta for every other `stats`
+  block — `template_deltas` for `top_k`, `tail_delta` for `tail_summary`,
+  `field_histogram_deltas` for the per-slot histograms. Without it a consumer
+  cannot see change in the block that exists precisely to keep the
+  rare-but-important **single**: a lone fatal that starts appearing, or stops, moves
+  no count large enough to surface anywhere else in a diff. Structurally the same
+  gap `field_histogram_deltas` closed in 0.8.0.
+
+  Three optional lists — `new_salient`, `vanished_salient`, `frontier_crossings` —
+  each omitted when empty, the block omitted when all three are, every list sorted
+  by `template_id`.
+
+  **The rule worth reading before implementing it: membership is decided over
+  `top_k` ∪ `reservoir`, never over `reservoir` alone.** A template that was
+  frequent enough for `top_k` in one window and only salient enough for the
+  `reservoir` in the other has not appeared or disappeared — it moved between two
+  retention mechanisms. Differencing the reservoirs alone reports that migration as
+  a birth *and* a death, and both are false. The two blocks are disjoint by
+  construction (§3.7.1), so the union needs no precedence rule.
+
+  `frontier_crossings` reports a template present on **both** sides whose `level`
+  crossed the `{ERROR, FATAL}` failure frontier — the same absolute frontier §16.10
+  forbids banding across. Frontier membership **MUST** be a **set test**, never an
+  ordinal compare against `ERROR`: a `level` ladder with any value above `FATAL`
+  would otherwise classify it as a failure by accident of ordering. `direction`
+  (`up` / `down`) is oriented `previous` → `current` and is **polarity-mute** — a
+  template leaving `ERROR` because its code path stopped running is not a repair,
+  and this spec cannot tell the two apart, so the escalation/recovery reading stays
+  the consumer's.
+
+  `count` and `salience` **MUST** be copied from the document the entry comes from,
+  never re-derived at diff time; `salience` is comparable across the pair only
+  because §2.4's gate already requires a matching `retention_profile`. And §3.7.2.1
+  applies in full: across a template-text change the delta is **re-selection, not
+  signal**, and consumers **MUST NOT** read it as changed behaviour.
+
 - **`MetaLogDiff.cube_diff.axes[].band_floor`** — the ordinal-axis collapse stamp,
   **standard in `metalog.v0.schema.json` since v0.8.0** and absent from the diff
   schema's mirror of `$defs/cube_axis`. A schema lag (`GOVERNANCE.md` §3), and a
@@ -88,6 +157,13 @@ No existing field changes type, becomes required, or is removed; **no conformant
   testability stated: the clause is *not* reachable from the schema —
   `maxItems` takes a constant, while the bound is the value of a sibling field —
   but it is decidable from the document alone.
+- **§13.2's satisfying set gains `reservoir_delta`.** The clause requires a diff to
+  carry at least one signal field, and the new member is one — omitting it would
+  have made a diff whose only finding is a reservoir membership change formally
+  non-conformant. The enumeration is loosened, never tightened, so no document
+  changes verdict. It stays a hand-kept list and still lags the schema by three
+  members (`stability_score`, `field_histogram_deltas`, `cube_diff`) — that
+  correction belongs with the clause's rewrite, not with this adoption.
 - **§7's claim about what enforces its placement rule is corrected.** The
   paragraph said a bare vendor member "is a conformance failure §8 clause 1
   detects". That holds inside a **closed** object and is false at either
@@ -120,6 +196,20 @@ No existing field changes type, becomes required, or is removed; **no conformant
   legal-but-undescribed — the limit the grant does not close. Measured: reverting
   the grant reds **exactly this fixture, 1 of 14**, in all three directions;
   granting the property without wiring it to `$defs/extensions` reds it too.
+- **Two self-test fixtures for the two adoptions**, each proving its member in both
+  directions and each mutation-measured at 1 of 16.
+  `invalid/run_outcome_vocabulary.metalog.jsonl` carries two documents because one
+  document carries one verdict: `failure` must validate and must not be reported
+  undescribed, `SUCCESS` must be rejected. It is the only fixture in the set that
+  exercises an `enum` violation at all — every other finding here is
+  `additionalProperties`, `required` or `pattern` — and `SUCCESS` is not an invented
+  mistake but exactly what the reference implementation emits today.
+  `invalid/reservoir_delta_direction.diff.json` puts a fully conformant
+  `new_salient` entry beside a `frontier_crossings` entry spelling `direction` as
+  `increased`, so the report must discriminate rather than reject the block.
+  Measured on all four ways a wrong adoption could look right: removing either
+  property, or granting it as an unconstrained `string`/`object`, reds exactly the
+  matching fixture and nothing else.
 - **`--selftest` now asserts the two schemas' shared `$defs` agree**, before any
   fixture runs. Both files are independently consumable and the validator resolves
   only in-document pointers, so a grammar both need is *duplicated* rather than

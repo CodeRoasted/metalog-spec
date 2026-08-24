@@ -159,6 +159,7 @@
         "canonicalization_version": "canon-1.5.3-cube",
         "config_hash": "sha256:8f14e45fceea167a5a36dedd4bea2543c7b6e5f1a2d3c4b5a6978f0e1d2c3b4a5"
     },
+    "run_outcome": "failure",
     "extensions": {
         "org.insight.compression_ratio": {
             "input_bytes": 41827654,

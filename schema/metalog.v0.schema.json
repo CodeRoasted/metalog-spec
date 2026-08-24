@@ -453,6 +453,11 @@
             "description": "Re-derivation coordinate addressing this window back to its source: raw(window) = replay(source, bounds) (SPEC §15). A raw coordinate XOR a composed coordinate. Added in v0.5.0.",
             "$ref": "#/$defs/coordinate"
         },
+        "run_outcome": {
+            "type": "string",
+            "enum": ["success", "failure", "unstable", "aborted"],
+            "description": "Terminal verdict of the run this window covers (SPEC §2.5). MUST be derived from the OBSERVED events, never from producer state or an out-of-band control plane. OMITTED when no verdict was observed — there is no wire value for unknown, and a consumer MUST NOT read absence as success. The enum is closed: a verdict outside it is vendor data and belongs in extensions (§7). Added in v0.9.0."
+        },
         "extensions": {
             "description": "Document-level vendor-specific data (SPEC §7).",
             "$ref": "#/$defs/extensions"

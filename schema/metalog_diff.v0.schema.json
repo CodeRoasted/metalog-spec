@@ -203,12 +203,61 @@
             },
             "additionalProperties": false
         },
+        "reservoir_delta": {
+            "type": "object",
+            "description": "Rare-salient membership change between the two documents' stats.reservoir blocks (SPEC §13.7). Membership is decided over top_k UNION reservoir on each side, never over reservoir alone: a template that moved between the two retention mechanisms has not appeared or disappeared. Omitted entirely when all three lists are empty; every list MUST be sorted by template_id ascending — an ordering the schema cannot assert. Added in v0.9.0.",
+            "properties": {
+                "new_salient": {
+                    "type": "array",
+                    "description": "Entries in current.stats.reservoir whose template_id is in neither of previous's two blocks. count and salience are current's (SPEC §13.7.1).",
+                    "items": { "$ref": "#/$defs/reservoir_delta_entry" }
+                },
+                "vanished_salient": {
+                    "type": "array",
+                    "description": "Entries in previous.stats.reservoir whose template_id is in neither of current's two blocks. count and salience are previous's (SPEC §13.7.1).",
+                    "items": { "$ref": "#/$defs/reservoir_delta_entry" }
+                },
+                "frontier_crossings": {
+                    "type": "array",
+                    "description": "Templates present on BOTH sides whose level crossed the {ERROR, FATAL} failure frontier (SPEC §13.7.2). Frontier membership is a SET test, never an ordinal compare against ERROR.",
+                    "items": {
+                        "type": "object",
+                        "required": ["template_id", "direction"],
+                        "properties": {
+                            "template_id": { "type": "string", "pattern": "^[a-z]+:.+$" },
+                            "direction": {
+                                "type": "string",
+                                "enum": ["up", "down"],
+                                "description": "Oriented previous -> current: up = crossed INTO the frontier, down = crossed OUT. Signed and polarity-mute — whether that is an escalation or a recovery is the consumer's reading, not this document's claim."
+                            },
+                            "previous_level": { "type": "string" },
+                            "current_level": { "type": "string" }
+                        },
+                        "additionalProperties": false
+                    }
+                }
+            },
+            "additionalProperties": false
+        },
         "extensions": {
             "description": "Document-level vendor-specific data on a MetaLogDiff (SPEC §7). This placement was granted in v0.9.0. The root itself is open (additionalProperties: true), so a bare vendor member written beside this container validates while violating §7: the container is where such data belongs, and at an open root the schema does not tell the two apart.",
             "$ref": "#/$defs/extensions"
         }
     },
     "$defs": {
+        "reservoir_delta_entry": {
+            "type": "object",
+            "description": "One rare-salient membership change (SPEC §13.7.1). A SUBSET of the §3.7.1 reservoir entry, and every field means there what it means here. count and salience MUST be copied from the document the entry comes from, never re-derived at diff time; salience is comparable across the pair only because §2.4's gate already requires a matching retention_profile.",
+            "required": ["template_id", "count", "salience"],
+            "properties": {
+                "template_id": { "type": "string", "pattern": "^[a-z]+:.+$" },
+                "count": { "type": "integer", "minimum": 0 },
+                "salience": { "type": "integer", "minimum": 0 },
+                "level": { "type": "string" },
+                "structural_role": { "type": "string" }
+            },
+            "additionalProperties": false
+        },
         "extensions": {
             "type": "object",
             "description": "The §7 extension container: reverse-DNS keys, arbitrary payloads, closed to everything else. Mirrors metalog.v0.schema.json #/$defs/extensions — DUPLICATED rather than cross-referenced, because each schema file is independently consumable and a cross-file $ref cannot be resolved offline. conformance/metalog_validate.py --selftest asserts that every $defs name the two files share is identical, so the duplicate cannot drift. Closure is preserved: a misspelled STANDARD member is still rejected by its object, because it is not inside this container.",
