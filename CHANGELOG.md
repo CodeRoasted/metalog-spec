@@ -54,6 +54,19 @@ No existing field changes type, becomes required, or is removed; **no conformant
   closing that root, which is a *breaking* change under `GOVERNANCE.md` §2 and is
   not in this release.
 
+- **`MetaLogDiff.cube_diff.axes[].band_floor`** — the ordinal-axis collapse stamp,
+  **standard in `metalog.v0.schema.json` since v0.8.0** and absent from the diff
+  schema's mirror of `$defs/cube_axis`. A schema lag (`GOVERNANCE.md` §3), and a
+  live one: §13.6 requires `cube_diff.axes` to **equal** both inputs' `cube.axes`,
+  and §16.10 stamps a collapsed cube's axes with `band_floor` — so a diff of two
+  collapsed cubes was **rejected by the diff schema while both of its inputs
+  validated**. Measured against the shipped v0.8.0 pair: the axis
+  `{"name": "level", "kind": "categorical", "band_floor": 2}` is accepted by
+  `metalog.v0.schema.json` and rejected by `metalog_diff.v0.schema.json` on
+  `additionalProperties`. Nothing becomes invalid — the mirror only begins
+  admitting what its source already admits — and no published document hit it,
+  because no published diff carries a `cube_diff`.
+
 ### Changed
 
 - **§11 Size budget is now a formula, not a table of numbers** (informative
