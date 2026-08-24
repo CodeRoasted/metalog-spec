@@ -196,6 +196,20 @@ No existing field changes type, becomes required, or is removed; **no conformant
   legal-but-undescribed — the limit the grant does not close. Measured: reverting
   the grant reds **exactly this fixture, 1 of 14**, in all three directions;
   granting the property without wiring it to `$defs/extensions` reds it too.
+- **Two self-test fixtures for the two adoptions**, each proving its member in both
+  directions and each mutation-measured at 1 of 16.
+  `invalid/run_outcome_vocabulary.metalog.jsonl` carries two documents because one
+  document carries one verdict: `failure` must validate and must not be reported
+  undescribed, `SUCCESS` must be rejected. It is the only fixture in the set that
+  exercises an `enum` violation at all — every other finding here is
+  `additionalProperties`, `required` or `pattern` — and `SUCCESS` is not an invented
+  mistake but exactly what the reference implementation emits today.
+  `invalid/reservoir_delta_direction.diff.json` puts a fully conformant
+  `new_salient` entry beside a `frontier_crossings` entry spelling `direction` as
+  `increased`, so the report must discriminate rather than reject the block.
+  Measured on all four ways a wrong adoption could look right: removing either
+  property, or granting it as an unconstrained `string`/`object`, reds exactly the
+  matching fixture and nothing else.
 - **`--selftest` now asserts the two schemas' shared `$defs` agree**, before any
   fixture runs. Both files are independently consumable and the validator resolves
   only in-document pointers, so a grammar both need is *duplicated* rather than

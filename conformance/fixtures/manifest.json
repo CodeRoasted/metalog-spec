@@ -94,6 +94,32 @@
             }
         },
         {
+            "path": "invalid/run_outcome_vocabulary.metalog.jsonl",
+            "kind": "metalog",
+            "why": "the v0.9.0 `run_outcome` adoption (SPEC §2.5), both directions in ONE corpus — two documents, because one document can carry only one value. Line 1 spells it `failure` and MUST validate AND MUST NOT be reported undescribed: describing the member is what takes it out of the open root's shadow. Line 2 spells it `SUCCESS` and MUST be rejected — the enum is closed and case-sensitive, and lower case is what this spec mints (`sketch_type`, `cube.axes[].kind`) as against `level`, whose tokens come from the observed stream. `SUCCESS` is not an invented mistake: it is exactly what the reference implementation emits today, so this fixture is the executable form of the divergence GOVERNANCE §3 resolves in the spec's favour. It is also the ONLY fixture in this set that exercises an `enum` violation at all — every other finding here is `additionalProperties`, `required` or `pattern`. Revert the adoption and it reds three ways: the finding disappears, the exit drops to 0, and `run_outcome` joins the undescribed list on BOTH documents.",
+            "expect": {
+                "exit": 1,
+                "documents": 2,
+                "findings": [
+                    ["run_outcome", "enum", [], 1, 1]
+                ],
+                "undescribed": []
+            }
+        },
+        {
+            "path": "invalid/reservoir_delta_direction.diff.json",
+            "kind": "diff",
+            "why": "the v0.9.0 `reservoir_delta` adoption (SPEC §13.7), with a legal sibling beside the illegal member so the report has to discriminate. The `new_salient` entry is fully conformant — required `template_id`/`count`/`salience` plus the two optional §3.7.1 members — and MUST validate; the `frontier_crossings` entry spells `direction` as `increased`, which the closed `up`/`down` enum MUST reject. Direction is the right member to put teeth in: it is the one place in this block where a plausible synonym changes meaning, and the enum is what stops a producer inventing `escalated`/`recovered` and shipping the polarity reading §13.7.2 refuses to make. Revert the adoption and this reds three ways — the finding disappears, the exit drops to 0, and `reservoir_delta` joins the undescribed list.",
+            "expect": {
+                "exit": 1,
+                "documents": 1,
+                "findings": [
+                    ["reservoir_delta.frontier_crossings[].direction", "enum", [], 1, 1]
+                ],
+                "undescribed": []
+            }
+        },
+        {
             "path": "invalid/unprefixed_extension_key.diff.json",
             "kind": "diff",
             "why": "the v0.9.0 diff-root `extensions` grant (SPEC §7), proved in both directions inside ONE document. The container is now DESCRIBED, so its reverse-DNS grammar is enforced at this root: `topology_delta` written bare inside `extensions` is rejected, while `com.example.topology_delta` beside it MUST validate — a legal member next to the illegal one, so the report has to discriminate rather than reject the object wholesale. These teeth cannot fall out the way a fixture built on a live defect can: no future standardisation can make an unprefixed key legal INSIDE `extensions`, whatever the standard mints elsewhere. `vendor_private_counter` sits bare at the diff ROOT to hold the limit the grant does NOT close — that root is `additionalProperties: true`, so the member is legal-but-undescribed and changes no exit code. Revert the grant and this fixture reds three ways: the finding disappears, the exit drops to 0, and `extensions` itself joins the undescribed list.",

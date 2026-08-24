@@ -1,0 +1,36 @@
+{
+    "diff_version": "0.9.0",
+    "current": {
+        "window": {
+            "start": "2026-01-01T00:01:00Z",
+            "end": "2026-01-01T00:02:00Z"
+        },
+        "document_id": "window-2"
+    },
+    "previous": {
+        "window": {
+            "start": "2026-01-01T00:00:00Z",
+            "end": "2026-01-01T00:01:00Z"
+        },
+        "document_id": "window-1"
+    },
+    "reservoir_delta": {
+        "new_salient": [
+            {
+                "template_id": "h:9aa0bbb1ccc2ddd39aa0bbb1ccc2ddd3",
+                "count": 3,
+                "salience": 87,
+                "level": "ERROR",
+                "structural_role": "terminator"
+            }
+        ],
+        "frontier_crossings": [
+            {
+                "template_id": "h:8a3f0011223344558a3f001122334455",
+                "direction": "increased",
+                "previous_level": "WARN",
+                "current_level": "ERROR"
+            }
+        ]
+    }
+}

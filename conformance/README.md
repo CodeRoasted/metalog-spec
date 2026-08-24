@@ -93,7 +93,7 @@ never looked.
 
 ## Why the self-test exists
 
-A validator that cannot fail is decoration. `--selftest` runs fourteen fixtures whose
+A validator that cannot fail is decoration. `--selftest` runs sixteen fixtures whose
 expected results are **hand-authored in `fixtures/manifest.json` from the spec and
 the schemas** — never captured from a run, because an expectation copied out of the
 tool under test makes the tool its own oracle, and the pair then agree forever
