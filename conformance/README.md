@@ -121,6 +121,24 @@ skipped file — while the unmutated control passes 12/12. Blinding the
 offending-member computation reds **four** fixtures, not one: that guard is measured
 as shared, not sole. Deleting a `control` tag from the manifest exits 2, as designed.
 
+**Before any fixture runs, the self-test compares the two schemas' shared `$defs`.**
+Each schema file is independently consumable — `SPEC.md` §8 invites downloading one
+alone — and this tool resolves only in-document pointers, so a grammar both files
+need is *duplicated* rather than cross-referenced. A duplicate that can drift is
+worse than no duplicate: it publishes one name with two meanings, and whoever
+downloaded a single file has no way to notice. So every `$defs` name present in both
+files must agree in **every keyword but `description`**, which is excluded so that a
+copy can name its source. The set is derived from the artifacts, never enumerated —
+a mirror added tomorrow is checked on arrival.
+
+This is not a hypothetical guard. Run it against the shipped v0.8.0 pair and it reds:
+`band_floor` joined `$defs/cube_axis` in `metalog.v0.schema.json` and not in
+`metalog_diff.v0.schema.json`, so a diff of two collapsed cubes was **rejected by the
+diff schema while both of its inputs validated** (§13.6 requires `cube_diff.axes` to
+equal both inputs' `cube.axes`; §16.10 stamps a collapsed axis with `band_floor`).
+A drift is **exit 2**, not exit 1: the standard's own artifacts disagree, and no
+verdict about anyone's documents is honest until they don't.
+
 ---
 
 ## What this does **not** reach

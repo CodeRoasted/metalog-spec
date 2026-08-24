@@ -813,7 +813,9 @@ object the spec names, with one grammar shared by all of them —
 `$defs/extensions`, defined once per schema file and referenced, never restated
 inline. Each of the two schema files carries that definition rather than
 cross-referencing the other: both are independently consumable, and a cross-file
-`$ref` cannot be resolved offline.
+`$ref` cannot be resolved offline. The copies are asserted identical by
+`conformance/metalog_validate.py --selftest`, so the duplication cannot quietly
+become a divergence.
 
 | object | granted |
 |---|---|

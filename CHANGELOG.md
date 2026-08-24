@@ -120,6 +120,16 @@ No existing field changes type, becomes required, or is removed; **no conformant
   legal-but-undescribed — the limit the grant does not close. Measured: reverting
   the grant reds **exactly this fixture, 1 of 14**, in all three directions;
   granting the property without wiring it to `$defs/extensions` reds it too.
+- **`--selftest` now asserts the two schemas' shared `$defs` agree**, before any
+  fixture runs. Both files are independently consumable and the validator resolves
+  only in-document pointers, so a grammar both need is *duplicated* rather than
+  cross-referenced — and a duplicate that can drift publishes one name with two
+  meanings, invisibly to whoever downloaded a single file. Every name present in
+  both files must agree in every keyword but `description` (excluded so a copy can
+  name its source); the set is derived from the artifacts, never enumerated. A
+  drift is **exit 2**, not exit 1: the standard's own artifacts disagree, and no
+  verdict about anyone's documents is honest until they don't. Run against the
+  shipped v0.8.0 pair, it reds — which is how the `band_floor` lag above was found.
 - `conformance/README.md` catches up with the fixture set it describes: fourteen
   fixtures, six of them carrying five distinct `control` tags, and
   `declared-cap-violation` — added in this release's tooling entry above — gains
