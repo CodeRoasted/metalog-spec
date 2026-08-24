@@ -22,10 +22,10 @@ python3 conformance/metalog_validate.py --kind diff my_diff.json
 
 ---
 
-## What it reports, and why it reports two things
+## What it reports, and why it never reports one number
 
-A single "N errors" number hides two defects with different owners. This tool
-never adds them together.
+A single "N errors" number hides three findings with different owners — and one of
+them is not a failure at all. This tool never adds them together.
 
 **SCHEMA-INVALID** — a document violated a *closed* object (`additionalProperties:
 false`), a `required` member is missing, a value failed its `type`/`pattern`/bound.
@@ -93,13 +93,14 @@ never looked.
 
 ## Why the self-test exists
 
-A validator that cannot fail is decoration. `--selftest` runs twelve fixtures whose
+A validator that cannot fail is decoration. `--selftest` runs fourteen fixtures whose
 expected results are **hand-authored in `fixtures/manifest.json` from the spec and
 the schemas** — never captured from a run, because an expectation copied out of the
 tool under test makes the tool its own oracle, and the pair then agree forever
 while both are wrong.
 
-Four of those fixtures are tagged `control`, and the self-test **refuses to run**
+Six of those fixtures carry a `control` tag, naming **five** distinct blindnesses
+(`instrument-failure` is carried by two), and the self-test **refuses to run**
 if any tag is missing from the manifest — deleting a fixture cannot quietly widen
 what a green covers. Each control forecloses one specific way this validator could
 have gone green while blind:
@@ -109,6 +110,7 @@ have gone green while blind:
 | `multi-document-section` | The published evidence is `### name ###` sections whose bodies are JSONL — **one document per line**. A reader that takes a section as one document validates its first line and silently ignores the rest, returning a smaller, entirely plausible number. This fixture puts the only violation on the *second* line of a section, so that reader fails twice over: wrong document count and a missed finding. |
 | `undescribed-false-positive` | The schema opens several containers on purpose (`extensions`, `source.tags`, cube coordinates keyed by axis name, `param_histogram.value_counts`). A walker that reports those has invented findings, and a false positive from a prescriptive instrument costs more than a miss: it sends someone to delete a field the schema does describe. This fixture exercises all of them and must report zero. |
 | `closed-object-violation` | The instrument must detect the real defect shape, not a toy one — extra members inside `stats.top_k[]` and `cube.axes[]`, the same two instance paths the reference implementation trips today. |
+| `declared-cap-violation` | §8 clause 4 is unreachable from the schema — `maxItems` takes a constant, the bound is the value of a sibling field — so a document can be **schema-valid and cap-violating**, which is exactly what a schema-only validator reports `CONFORMANT`. This fixture is that document, violating at two locations (`stats` and `behavior`) so a `top_k`-only checker reds, and carrying a vendor `shard_size`/`shard` pair under `extensions` that must **not** be reported. |
 | `instrument-failure` | A truncated corpus, and a `--pointer` that does not resolve, must both exit 2. **There is no code path that skips a line or a file**: every non-blank line is either a section header or a document, anything else stops the run, and an unreachable pointer refuses rather than dropping the file. A parser bug cannot express itself as a smaller document count — only as a refusal to answer. |
 
 Measured on the committed tool, 2026-08-19: **seven** independent mutations each
@@ -118,6 +120,24 @@ downgraded to a skip · empty corpus accepted · unresolved pointer downgraded t
 skipped file — while the unmutated control passes 12/12. Blinding the
 offending-member computation reds **four** fixtures, not one: that guard is measured
 as shared, not sole. Deleting a `control` tag from the manifest exits 2, as designed.
+
+**Before any fixture runs, the self-test compares the two schemas' shared `$defs`.**
+Each schema file is independently consumable — `SPEC.md` §8 invites downloading one
+alone — and this tool resolves only in-document pointers, so a grammar both files
+need is *duplicated* rather than cross-referenced. A duplicate that can drift is
+worse than no duplicate: it publishes one name with two meanings, and whoever
+downloaded a single file has no way to notice. So every `$defs` name present in both
+files must agree in **every keyword but `description`**, which is excluded so that a
+copy can name its source. The set is derived from the artifacts, never enumerated —
+a mirror added tomorrow is checked on arrival.
+
+This is not a hypothetical guard. Run it against the shipped v0.8.0 pair and it reds:
+`band_floor` joined `$defs/cube_axis` in `metalog.v0.schema.json` and not in
+`metalog_diff.v0.schema.json`, so a diff of two collapsed cubes was **rejected by the
+diff schema while both of its inputs validated** (§13.6 requires `cube_diff.axes` to
+equal both inputs' `cube.axes`; §16.10 stamps a collapsed axis with `band_floor`).
+A drift is **exit 2**, not exit 1: the standard's own artifacts disagree, and no
+verdict about anyone's documents is honest until they don't.
 
 ---
 
@@ -154,6 +174,15 @@ Declared, because an instrument's silence is read as coverage.
   two published diff documents: **zero errors, and neither carries a signal field.**
   This is a limit of what the schema expresses, and the tool reports what the schema
   says — it does not invent the clause the schema is missing.
+- **A bare vendor member at either document root is reported, never failed.** §7 makes
+  `extensions` the only carrier of non-standard members, at any depth. The schema
+  enforces that wherever the object is closed; both document roots are
+  `additionalProperties: true`, so a bare vendor member there validates, appears under
+  LEGAL-BUT-UNDESCRIBED, and changes no exit code. Granting the container at a root —
+  as v0.9.0 does for `MetaLogDiff` — gives that data a legal home and makes the
+  container's own reverse-DNS grammar enforceable; it does **not** make the placement
+  rule decidable. Only closing the root would, and that is a *breaking* change under
+  `GOVERNANCE.md` §2.
 - **This tool does not know how large its corpus was supposed to be.** Its reader
   cannot silently skip a line — an unreadable one is fatal, an empty corpus is exit 2 —
   but a corpus that parses cleanly and simply contains *less* than the caller expected

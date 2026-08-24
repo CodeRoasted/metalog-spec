@@ -32,6 +32,41 @@ No existing field changes type, becomes required, or is removed; **no conformant
   producer declares no cap**, which is legal, and a size-constrained consumer
   must read the omission that way rather than assume a default.
 
+- **`MetaLogDiff.extensions`** — the §7 container, granted at a **third
+  placement**: the `MetaLogDiff` document root. The diff document type carried no
+  `extensions` member at all, so vendor data on a diff had **no legal home** — §7
+  forbids the bare member at any depth, and the only placements its table named
+  were on the other document type. Two consequences were already live in the text:
+  §13.2 tells producers they **MAY** report a truncation cap in
+  `extensions.org.metalog.deltas_truncated_at` **at this root**, a MAY naming a
+  placement the spec had not granted; and a producer with any per-diff vendor datum
+  had to choose between a bare member (forbidden) and dropping the datum.
+
+  The grammar is **duplicated** into `metalog_diff.v0.schema.json`'s `$defs`
+  rather than `$ref`-ed across files. Both schema files are independently
+  consumable — §8 invites downloading one alone — and a cross-file reference
+  cannot be resolved offline.
+
+  **What this does not do, stated because a grant reads like enforcement.** The
+  diff root is `additionalProperties: true`, so a bare vendor member *beside* the
+  container still validates; the grant fixes where vendor data **belongs**, not
+  what the schema **detects**. Making §7's placement rule decidable at a root means
+  closing that root, which is a *breaking* change under `GOVERNANCE.md` §2 and is
+  not in this release.
+
+- **`MetaLogDiff.cube_diff.axes[].band_floor`** — the ordinal-axis collapse stamp,
+  **standard in `metalog.v0.schema.json` since v0.8.0** and absent from the diff
+  schema's mirror of `$defs/cube_axis`. A schema lag (`GOVERNANCE.md` §3), and a
+  live one: §13.6 requires `cube_diff.axes` to **equal** both inputs' `cube.axes`,
+  and §16.10 stamps a collapsed cube's axes with `band_floor` — so a diff of two
+  collapsed cubes was **rejected by the diff schema while both of its inputs
+  validated**. Measured against the shipped v0.8.0 pair: the axis
+  `{"name": "level", "kind": "categorical", "band_floor": 2}` is accepted by
+  `metalog.v0.schema.json` and rejected by `metalog_diff.v0.schema.json` on
+  `additionalProperties`. Nothing becomes invalid — the mirror only begins
+  admitting what its source already admits — and no published document hit it,
+  because no published diff carries a `cube_diff`.
+
 ### Changed
 
 - **§11 Size budget is now a formula, not a table of numbers** (informative
@@ -53,6 +88,15 @@ No existing field changes type, becomes required, or is removed; **no conformant
   testability stated: the clause is *not* reachable from the schema —
   `maxItems` takes a constant, while the bound is the value of a sibling field —
   but it is decidable from the document alone.
+- **§7's claim about what enforces its placement rule is corrected.** The
+  paragraph said a bare vendor member "is a conformance failure §8 clause 1
+  detects". That holds inside a **closed** object and is false at either
+  **document root**: both are `additionalProperties: true`, so a bare member there
+  validates, and `conformance/metalog_validate.py` reports it as
+  *legal-but-undescribed* — a report, not a verdict. §7 now separates the two
+  cases and names closing a root as the breaking change it would be. **No
+  normative effect:** the MUST is unchanged; what changes is the spec's claim
+  about what enforces it.
 
 ### Conformance tooling
 
@@ -68,6 +112,30 @@ No existing field changes type, becomes required, or is removed; **no conformant
   CONFORMANT. It carries violations at two locations (`stats` and `behavior`) so
   that a `top_k`-only checker reds, and a vendor `shard_size`/`shard` pair under
   `extensions` that must **not** be reported.
+- New self-test fixture **`invalid/unprefixed_extension_key.diff.json`** for the
+  diff-root grant, proving it in both directions inside one document: an
+  unprefixed key *inside* `extensions` is rejected (the container's grammar is
+  enforced at this root now that the root describes it), a reverse-DNS key beside
+  it validates, and a bare vendor member at the root itself is reported
+  legal-but-undescribed — the limit the grant does not close. Measured: reverting
+  the grant reds **exactly this fixture, 1 of 14**, in all three directions;
+  granting the property without wiring it to `$defs/extensions` reds it too.
+- **`--selftest` now asserts the two schemas' shared `$defs` agree**, before any
+  fixture runs. Both files are independently consumable and the validator resolves
+  only in-document pointers, so a grammar both need is *duplicated* rather than
+  cross-referenced — and a duplicate that can drift publishes one name with two
+  meanings, invisibly to whoever downloaded a single file. Every name present in
+  both files must agree in every keyword but `description` (excluded so a copy can
+  name its source); the set is derived from the artifacts, never enumerated. A
+  drift is **exit 2**, not exit 1: the standard's own artifacts disagree, and no
+  verdict about anyone's documents is honest until they don't. Run against the
+  shipped v0.8.0 pair, it reds — which is how the `band_floor` lag above was found.
+- `conformance/README.md` catches up with the fixture set it describes: fourteen
+  fixtures, six of them carrying five distinct `control` tags, and
+  `declared-cap-violation` — added in this release's tooling entry above — gains
+  the control-table row it never got. The instrument's declared limits gain the
+  one this release makes relevant: a bare vendor member at either **document
+  root** is reported, never failed.
 
 ---
 

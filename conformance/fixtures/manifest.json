@@ -94,6 +94,21 @@
             }
         },
         {
+            "path": "invalid/unprefixed_extension_key.diff.json",
+            "kind": "diff",
+            "why": "the v0.9.0 diff-root `extensions` grant (SPEC §7), proved in both directions inside ONE document. The container is now DESCRIBED, so its reverse-DNS grammar is enforced at this root: `topology_delta` written bare inside `extensions` is rejected, while `com.example.topology_delta` beside it MUST validate — a legal member next to the illegal one, so the report has to discriminate rather than reject the object wholesale. These teeth cannot fall out the way a fixture built on a live defect can: no future standardisation can make an unprefixed key legal INSIDE `extensions`, whatever the standard mints elsewhere. `vendor_private_counter` sits bare at the diff ROOT to hold the limit the grant does NOT close — that root is `additionalProperties: true`, so the member is legal-but-undescribed and changes no exit code. Revert the grant and this fixture reds three ways: the finding disappears, the exit drops to 0, and `extensions` itself joins the undescribed list.",
+            "expect": {
+                "exit": 1,
+                "documents": 1,
+                "findings": [
+                    ["extensions", "additionalProperties", ["topology_delta"], 1, 1]
+                ],
+                "undescribed": [
+                    ["<root>", "vendor_private_counter", 1]
+                ]
+            }
+        },
+        {
             "path": "invalid/cap_exceeded.metalog.jsonl",
             "kind": "metalog",
             "control": "declared-cap-violation",

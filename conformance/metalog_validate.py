@@ -676,6 +676,72 @@ REQUIRED_CONTROLS = {
 }
 
 
+def _grammar(node):
+    """A subschema with its prose stripped — what two mirrored `$defs` must share.
+
+    `description` is the only exclusion, and it is deliberate: a copy has to be able
+    to say that it IS one, and the sentence naming its source is what keeps the
+    duplication maintainable.
+    """
+    if isinstance(node, dict):
+        return {k: _grammar(v) for k, v in node.items() if k != "description"}
+    if isinstance(node, list):
+        return [_grammar(item) for item in node]
+    return node
+
+
+def _drift_detail(key: str, left: str, right: str, loaded: dict) -> str:
+    """A lead a reader can act on, not just the word `differ`."""
+    left_props = set(loaded[left]["$defs"][key].get("properties", {}))
+    right_props = set(loaded[right]["$defs"][key].get("properties", {}))
+    only_left, only_right = sorted(left_props - right_props), sorted(right_props - left_props)
+    if only_left or only_right:
+        return (f"$defs/{key}: properties only in {left}: {only_left or '[]'} · "
+                f"only in {right}: {only_right or '[]'}")
+    return f"$defs/{key}: same property names, different grammar ({left} vs {right})"
+
+
+def mirrored_defs(loaded: dict[str, dict]) -> list[str]:
+    """A `$defs` name defined in more than one shipped schema must define the SAME
+    grammar in each. Exit 2 when it does not.
+
+    The schema files are independently consumable published artifacts — SPEC §8
+    invites downloading one alone — and this validator resolves only in-document
+    pointers, so a grammar both files need is DUPLICATED rather than
+    cross-referenced. A duplicate that can drift is worse than no duplicate: it
+    publishes one name with two meanings, and whoever downloaded a single file has
+    no way to notice. Measured once already: `band_floor` joined `$defs/cube_axis`
+    in one file in v0.8.0 and not in the other, and a diff of two collapsed cubes
+    was rejected by the diff schema while both of its inputs validated.
+
+    Derived from the artifacts, never enumerated: a mirror added tomorrow is checked
+    on arrival, and one deleted stops being checked with no list left to prune.
+    """
+    homes: dict[str, list[str]] = defaultdict(list)
+    for name, schema in loaded.items():
+        for key in schema.get("$defs", {}):
+            homes[key].append(name)
+
+    checked: list[str] = []
+    drifted: list[str] = []
+    for key, names in sorted(homes.items()):
+        if len(names) < 2:
+            continue
+        checked.append(key)
+        first = names[0]
+        for other in names[1:]:
+            if _grammar(loaded[first]["$defs"][key]) != _grammar(loaded[other]["$defs"][key]):
+                drifted.append(_drift_detail(key, first, other, loaded))
+    if drifted:
+        raise InstrumentError(
+            "the shipped schemas define one name two ways — mirrored $defs have "
+            "drifted: " + " · ".join(drifted) + ". A file downloaded on its own "
+            "cannot notice this, so the copies must agree in every keyword but "
+            "`description`."
+        )
+    return checked
+
+
 def _tuples(findings):
     return [(f["path"], f["keyword"], tuple(f["properties"]), f["errors"], f["documents"])
             for f in findings]
@@ -708,13 +774,19 @@ def selftest(schema_dir: Path, spec_text: str, stream) -> int:
         )
 
     import jsonschema
+    loaded: dict[str, dict] = {}
     for kind, name in sorted(SCHEMAS.items()):
         path = schema_dir / name
         if not path.is_file():
             raise InstrumentError(f"shipped schema missing: {path}")
-        jsonschema.Draft202012Validator.check_schema(
-            json.loads(path.read_text(encoding="utf-8")))
+        schema = json.loads(path.read_text(encoding="utf-8"))
+        jsonschema.Draft202012Validator.check_schema(schema)
+        loaded[name] = schema
         w(f"  schema {name}: valid Draft 2020-12")
+
+    mirrors = mirrored_defs(loaded)
+    w(f"  mirrored $defs agree across the shipped schemas: "
+      f"{', '.join(mirrors) if mirrors else 'no name is defined twice'}")
 
     failures: list[str] = []
     for fx in fixtures:

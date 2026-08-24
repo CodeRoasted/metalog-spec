@@ -809,20 +809,35 @@ currently close.
 
 Vendor data is often **per-row**, and a document-level container cannot carry a
 per-row value without inventing a join key. So the container is granted at each
-object the spec names, with one grammar shared by all of them
-(`$defs/extensions` in the schema — one definition, referenced, never restated):
+object the spec names, with one grammar shared by all of them —
+`$defs/extensions`, defined once per schema file and referenced, never restated
+inline. Each of the two schema files carries that definition rather than
+cross-referencing the other: both are independently consumable, and a cross-file
+`$ref` cannot be resolved offline. The copies are asserted identical by
+`conformance/metalog_validate.py --selftest`, so the duplication cannot quietly
+become a divergence.
 
 | object | granted |
 |---|---|
-| the document root | since v0.1.0 |
-| `stats.top_k[]` | v0.8.0 |
+| the MetaLog document root | v0.1.0 |
+| `stats.top_k[]` (MetaLog) | v0.8.0 |
+| the `MetaLogDiff` document root (§13) | v0.9.0 |
 
 A producer needing the container at an object not on this list **MUST** open an
 issue rather than write a bare member: adding a placement is an *additive* change
-under `GOVERNANCE.md` §2 and costs one reviewer, while a bare member is a
-conformance failure §8 clause 1 detects. The list is deliberately short and grows
-on evidence — a container granted everywhere in advance could never be withdrawn,
-because removing one is a *breaking* change.
+under `GOVERNANCE.md` §2 and costs one reviewer. The list is deliberately short
+and grows on evidence — a container granted everywhere in advance could never be
+withdrawn, because removing one is a *breaking* change.
+
+**What detects a bare member, and what does not.** Inside a **closed** object the
+schema rejects it, and §8 clause 1 reports it. At either **document root** it does
+not: both roots are `additionalProperties: true`, so a bare vendor member there
+validates, and the MUST above is the only thing forbidding it. That is a property
+of the schema, not a softening of the rule. The gap is not silent either —
+`conformance/metalog_validate.py` reports such a member as
+**legal-but-undescribed**, which is a report and not a verdict. Closing a root
+would make the rule decidable there; it is a *breaking* change under
+`GOVERNANCE.md` §2, and granting a placement neither performs it nor waits on it.
 
 Granting the container **does not** re-open the object. A misspelled standard
 member is still a violation, because it is not inside `extensions` — which is the
@@ -1259,6 +1274,9 @@ not directly comparable.
     "previous_tail_template_count": 40, "current_tail_template_count": 38, "tail_template_count_delta": -2,
     "previous_tail_entropy_bits": 4.0,  "current_tail_entropy_bits": 1.0,  "tail_entropy_bits_delta": -3.0,
     "previous_tail_max_rate": 0.001,    "current_tail_max_rate": 0.02,     "tail_max_rate_delta": 0.019
+  },
+  "extensions": {                      // object, optional — vendor data, §7 (placement granted in v0.9.0)
+    "com.example.deploy_window": "2026-01-14.3"
   }
 }
 ```
@@ -1273,7 +1291,9 @@ not directly comparable.
   is a no-op document and should not be emitted).
 - `template_deltas` **SHOULD** be capped at the larger of the two
   inputs' `top_k_size`. Producers **MAY** report the cap in
-  `extensions.org.metalog.deltas_truncated_at`.
+  `extensions.org.metalog.deltas_truncated_at` — the §7 container is
+  granted at this root from **v0.9.0**, which is the release that gave
+  this MAY a placement to name.
 
 ### 13.3 Direction and sign
 

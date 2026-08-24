@@ -1,0 +1,17 @@
+{
+    "diff_version": "0.9.0",
+    "current": {
+        "window": { "start": "2026-01-01T00:01:00Z", "end": "2026-01-01T00:02:00Z" },
+        "document_id": "window-2"
+    },
+    "previous": {
+        "window": { "start": "2026-01-01T00:00:00Z", "end": "2026-01-01T00:01:00Z" },
+        "document_id": "window-1"
+    },
+    "stability_score": 0.94,
+    "vendor_private_counter": 7,
+    "extensions": {
+        "com.example.topology_delta": { "emerged": [["checkout", "payments"]] },
+        "topology_delta": { "emerged": [["checkout", "payments"]] }
+    }
+}
