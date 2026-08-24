@@ -202,9 +202,21 @@
                 }
             },
             "additionalProperties": false
+        },
+        "extensions": {
+            "description": "Document-level vendor-specific data on a MetaLogDiff (SPEC §7). The placement was granted at this root in v0.9.0. This root is still open (additionalProperties: true), so a bare vendor member beside this container validates while violating §7 — the container is where such data belongs, and the schema cannot yet say so.",
+            "$ref": "#/$defs/extensions"
         }
     },
     "$defs": {
+        "extensions": {
+            "type": "object",
+            "description": "The §7 extension container: reverse-DNS keys, arbitrary payloads, closed to everything else. Mirrors metalog.v0.schema.json #/$defs/extensions — DUPLICATED rather than cross-referenced, because each schema file is independently consumable and a cross-file $ref cannot be resolved offline. Closure is preserved: a misspelled STANDARD member is still rejected by its object, because it is not inside this container.",
+            "patternProperties": {
+                "^[a-z][a-z0-9_-]*(\\.[a-z][a-z0-9_-]*)+$": {}
+            },
+            "additionalProperties": false
+        },
         "cube_axis": {
             "type": "object",
             "description": "A cube axis descriptor (SPEC §16.2). Mirrors metalog.v0.schema.json #/$defs/cube_axis.",
