@@ -54,6 +54,36 @@ No existing field changes type, becomes required, or is removed; **no conformant
   closing that root, which is a *breaking* change under `GOVERNANCE.md` §2 and is
   not in this release.
 
+- **`run_outcome`** (string, optional, MetaLog root) — the terminal verdict of the
+  run a window covers, described in the new **§2.5**: a **closed** enum of
+  `success` / `failure` / `unstable` / `aborted`. This is an **adoption, not a
+  relocation** — the member is standard-shaped and stays exactly where it is. Same
+  species as `level` and §3.8's `component`: a low-cardinality label the observed
+  stream carries *about itself*, freezable vendor-neutrally today because a
+  terminal verdict is what CI and batch systems publish about their own runs.
+
+  Normative points worth reading before emitting it. It **MUST** be derived from
+  the **observed events**, never from producer state or an out-of-band control
+  plane — a field sourced from outside the window's bytes is not re-derivable from
+  them. It **MUST** be **omitted** when no verdict was observed: there is **no**
+  wire value for "unknown", which is exactly what makes absence mean the same
+  thing in every version of this spec, including documents written before this
+  one. Consumers **MUST NOT** read absence as `success`. Under `compose()` (§12) a
+  composed document **MUST NOT** carry a verdict unless every input that carries
+  one carries the same value — a window spanning a green run and a red one has no
+  single verdict, and omitting is the safe direction precisely because absence
+  asserts nothing.
+
+  `aborted` is the value with a consequence attached: it says the observed stream
+  is **truncated**, so every count in that document is a count over a stream that
+  stopped early, and a template that appears to have vanished may simply never
+  have been reached.
+
+  **The values are lower-case and case-sensitive**, like every other vocabulary
+  this spec *mints* (`sketch_type` §6, `cube.axes[].kind` §16.2) and deliberately
+  unlike `level`, whose values are the observed stream's own tokens and are not
+  minted here.
+
 - **`MetaLogDiff.cube_diff.axes[].band_floor`** — the ordinal-axis collapse stamp,
   **standard in `metalog.v0.schema.json` since v0.8.0** and absent from the diff
   schema's mirror of `$defs/cube_axis`. A schema lag (`GOVERNANCE.md` §3), and a

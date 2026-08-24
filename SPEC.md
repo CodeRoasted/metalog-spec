@@ -80,6 +80,8 @@ top-level fields:
 | `stability` | object | no | Divergence from the previous window. See §5. |
 | `attribution` | object | no | Distribution of templates across sub-sources. See §6. |
 | `cube` | object | no | Joint categorical condensation (closed cube). **Experimental.** See §16. |
+| `coordinate` | object | no | Re-derivation coordinate: `raw(window) = replay(source, bounds)`. See §15. |
+| `run_outcome` | string | no | Terminal verdict of the run this window covers, when the stream stated one. See §2.5. |
 | `provenance` | array | no | When this document was composed from others. See §12. |
 | `extensions` | object | no | Vendor-specific data. See §7. |
 
@@ -162,6 +164,55 @@ The `cube` block (§16) is part of these contracts: its **axis set**, each axis'
 `canonicalization_version` (WHERE grounding) and `retention_profile` (axis/floor
 configuration). Two cubes are diffable into a `cube_diff` (§13.6) **only** when both
 identifiers match **and** their `axes` are equal.
+
+### 2.5 `run_outcome` — terminal verdict of the run the window covers (optional)
+
+> **New in v0.9.0.** A string at the document root.
+
+A window often covers a bounded **run** — a CI job, a batch, a deployment step —
+that ends by stating a verdict about itself. `run_outcome` carries that verdict as
+a **closed**, low-cardinality label:
+
+| value | meaning |
+|---|---|
+| `success` | the run completed and stated no failure |
+| `failure` | the run failed as a whole |
+| `unstable` | the run completed and stated a *partial* failure — not the same claim as `failure` |
+| `aborted` | the run did **not** complete: cancelled, timed out, or killed. **The observed stream is truncated**, and every count in the document is a count over a stream that stopped early. |
+
+**The enum is closed.** A producer whose source system publishes a verdict outside
+these four **MUST NOT** widen it; that verdict is vendor data and belongs in
+`extensions` (§7). The values are lower-case and **case-sensitive**, as for every
+other vocabulary this spec *mints* (`sketch_type` §6, `cube.axes[].kind` §16.2).
+This is deliberately unlike `level` (§3), whose values are the observed stream's
+own tokens and are not minted here.
+
+**Normative points.**
+
+- `run_outcome` **MUST** be derived from the **observed events** — the stream's own
+  terminal statement — and **MUST NOT** be taken from producer state or an
+  out-of-band control plane. Same species as `level` and `component` (§3.8): a
+  label the observed stream carries about itself. A field sourced from outside the
+  window's bytes is not re-derivable from them, which is the guarantee §15 exists
+  to make.
+- It **MUST** be **omitted** when no verdict was observed. There is **no** wire
+  value meaning "unknown", so absence carries the same meaning in every version of
+  this spec, including documents produced before v0.9.0.
+- Consumers **MUST NOT** read absence as `success`. Absence means **this document
+  asserts no verdict** — because none was observed, because the producer predates
+  the field, or because a composition could not agree on one.
+- **Composition (§12).** A composed document **MUST NOT** carry a `run_outcome`
+  unless every input that carries one carries the **same** value; when they agree
+  it **MAY** carry that value. A composed window spanning a green run and a red one
+  has no single verdict, and asserting either would be a claim no input made.
+  Omitting is the safe direction precisely because absence asserts nothing.
+
+**Why a consumer reads it before reading the deltas.** Whether two windows straddle
+a `success` → `failure` boundary changes how every delta in a `MetaLogDiff` (§13)
+should be read: a large divergence across a green→red pair is the finding, while
+the same divergence between two failed runs may be the difference between two
+unrelated failures. And an `aborted` window is truncated by construction — a
+template that appears to have *vanished* may simply never have been reached.
 
 ---
 
