@@ -62,13 +62,52 @@ SECTION_RE = re.compile(r"^###\s(.+?)\s###$")
 MAX_INSTANCE_DEPTH = 64
 MAX_APPLICATOR_DEPTH = 32
 
-# Object-shaping keywords. A subschema carrying NONE of them constrains nothing
-# about an object's members, which is a deliberate "anything goes" (SPEC §7
-# extension payloads, §16.4 cube coordinates, sketch_params). Descending into one
-# would report every key inside it as undescribed -- a false positive on a surface
-# the schema opened on purpose.
-OBJECT_KEYWORDS = ("properties", "patternProperties", "additionalProperties",
-                   "unevaluatedProperties")
+# Annotation keywords assert nothing about an instance. `{"description": "..."}`
+# and `true` are THE SAME SCHEMA in Draft 2020-12, and an instrument that reads
+# them differently is reading its own formatting rather than the standard.
+ANNOTATION_KEYWORDS = frozenset((
+    "description", "title", "$comment", "examples", "default",
+    "deprecated", "readOnly", "writeOnly",
+))
+
+
+def constrains(node) -> bool:
+    """Does this subschema assert ANYTHING about an instance?
+
+    `false` does (it rejects everything). `true`, `{}` and `{"description": ...}`
+    do not, and they are interchangeable spellings of the same schema — which is
+    exactly what this predicate exists to stop the walkers below from confusing
+    with a constraint. Measured 2026-08-24 on the shipped v0.9.0 pair: spelling
+    `attribution.sketch_params`'s openness as `additionalProperties: true` instead
+    of leaving it absent made the undescribed walker report every sketch parameter
+    of a fully conformant document, five invented findings on one document, while
+    `additionalProperties: {}` — the same schema — reported none.
+    """
+    if node is True:
+        return False
+    if node is False:
+        return True
+    if isinstance(node, dict):
+        return any(keyword not in ANNOTATION_KEYWORDS for keyword in node)
+    return True
+
+
+def member_silent(subschema: dict) -> bool:
+    """True when this subschema says NOTHING about which members an object carries.
+
+    A deliberate "anything goes" (SPEC §7 extension payloads, §16.4 cube
+    coordinates, `attribution.sketch_params`). Descending into one would report
+    every key inside it as undescribed — a false positive on a surface the schema
+    opened on purpose. Silence is read from the MEANING of the declaration, never
+    from whether a keyword is spelled out: an author who writes the openness down
+    instead of leaving it absent must not thereby arm a walker against himself.
+    """
+    if subschema.get("properties") or subschema.get("patternProperties"):
+        return False
+    for keyword in ("additionalProperties", "unevaluatedProperties"):
+        if keyword in subschema and constrains(subschema[keyword]):
+            return False
+    return True
 
 
 class InstrumentError(RuntimeError):
@@ -325,13 +364,17 @@ def _walk_undescribed(instance, subschemas: list[dict], root: dict,
         )
 
     if isinstance(instance, dict):
-        if not any(kw in s for s in subschemas for kw in OBJECT_KEYWORDS):
-            return  # unconstrained by design — see OBJECT_KEYWORDS
+        if all(member_silent(s) for s in subschemas):
+            return  # unconstrained by design — see member_silent
         closed = any(s.get("additionalProperties") is False for s in subschemas)
+        # Only a CONSTRAINING value schema describes the extras. An open
+        # declaration carrying nothing but its reason (`{"description": ...}`)
+        # describes nothing, and treating it as a describer would silence the
+        # undescribed species at exactly the two open roots.
         fallback: list[dict] = []
         for s in subschemas:
             extra = s.get("additionalProperties")
-            if isinstance(extra, dict):
+            if isinstance(extra, dict) and constrains(extra):
                 fallback += applicable(extra, root)
 
         for key in sorted(instance):
@@ -742,6 +785,150 @@ def mirrored_defs(loaded: dict[str, dict]) -> list[str]:
     return checked
 
 
+# In-place applicators constrain the position they sit in; they are not positions
+# of their own. `additionalProperties: false` inside an `if` changes the CONDITION,
+# and inside a `then` it closes the object — so demanding a declaration on one of
+# these fragments would order an author to break his own schema. Measured on the
+# shipped v0.9.0 pair: seven such fragments carry `required`/`properties` and no
+# `type` (`$defs/coordinate`'s two `oneOf` branches and their three `not`s,
+# `$defs/cube_axis`'s `if` and `then`, in each file).
+IN_PLACE_APPLICATORS = ("allOf", "anyOf", "oneOf", "if", "then", "else", "not",
+                        "dependentSchemas")
+
+# The keywords that carry a subschema to a DOCUMENT LOCATION — a place an instance
+# value actually sits. Walking only these is what keeps the census honest in both
+# directions: it reaches every position, and it invents none.
+LOCATION_SUBSCHEMA = ("additionalProperties", "items", "contains",
+                      "unevaluatedProperties")
+LOCATION_MAP = ("properties", "patternProperties", "$defs")
+LOCATION_LIST = ("prefixItems",)
+
+
+def _is_object_position(node: dict) -> bool:
+    """Can an OBJECT sit here?
+
+    Two arms, and the second is the one that closes the hole the first leaves.
+    A subschema declaring `type: object` is a position. So is a subschema that
+    declares NO type at all while naming members — that is an object position
+    whose author forgot to say so, and a census keyed on `type` alone would skip
+    exactly the sloppiest node in the file.
+    """
+    declared = node.get("type")
+    if declared == "object" or (isinstance(declared, list) and "object" in declared):
+        return True
+    if declared is not None:
+        return False
+    return bool(node.get("properties") or node.get("patternProperties")
+                or node.get("required"))
+
+
+def object_positions(schema: dict) -> list[tuple[str, dict]]:
+    """Every object position in one shipped schema, as (JSON Pointer, subschema).
+
+    Derived from the artifact, never enumerated. A position added tomorrow is
+    checked on arrival and one deleted stops being checked with no list to prune —
+    which is the whole reason this exists rather than a census somebody re-derives.
+    """
+    found: list[tuple[str, dict]] = []
+    seen: set[int] = set()
+
+    def escape(token: str) -> str:
+        return token.replace("~", "~0").replace("/", "~1")
+
+    def visit(node, pointer: str, in_place: bool) -> None:
+        if not isinstance(node, dict) or id(node) in seen:
+            return
+        seen.add(id(node))
+        if not in_place and _is_object_position(node):
+            found.append((pointer, node))
+        for keyword in LOCATION_SUBSCHEMA:
+            if isinstance(node.get(keyword), dict):
+                visit(node[keyword], f"{pointer}/{keyword}", False)
+        for keyword in LOCATION_MAP:
+            for name, sub in (node.get(keyword) or {}).items():
+                visit(sub, f"{pointer}/{keyword}/{escape(name)}", False)
+        for keyword in LOCATION_LIST:
+            for index, sub in enumerate(node.get(keyword) or []):
+                visit(sub, f"{pointer}/{keyword}/{index}", False)
+        # An in-place applicator's subschema shares its parent's location, so we
+        # keep walking (a `then` can carry `properties` whose values are real
+        # positions) while refusing to CENSUS the fragment itself.
+        for keyword in IN_PLACE_APPLICATORS:
+            branch = node.get(keyword)
+            if isinstance(branch, dict):
+                visit(branch, f"{pointer}/{keyword}", True)
+            elif isinstance(branch, list):
+                for index, sub in enumerate(branch):
+                    visit(sub, f"{pointer}/{keyword}/{index}", True)
+
+    visit(schema, "#", False)
+    return found
+
+
+def declared_closure(loaded: dict[str, dict]) -> int:
+    """Every object position in every shipped schema must DECLARE its closure.
+
+    Three legal dispositions, and no fourth:
+
+      `additionalProperties: false`               closed — the members are named
+      a CONSTRAINING value schema                 a map: closed over its VALUES,
+                                                  never over its key set
+      `{"description": "<why it is open>"}`       open, with its reason attached
+
+    An **absent** `additionalProperties` is the defect this exists to catch,
+    because absence is not a disposition — it is the lack of one. Two positions in
+    the shipped v0.9.0 metalog schema are byte-identical `{"type": "object"}` and
+    mean opposite things: `provenance[].source` is a standard object whose members
+    §12.4 names, and `attribution.sketch_params` is a map whose keys are data. No
+    property of the schema text separates them; only the prose does. So the census
+    of what is open cannot be maintained by reading the schema, and a hand-kept
+    list of exemptions beside it would rot on the next release — which is how a
+    literal execution of "close every open object" nearly shipped
+    `additionalProperties: false` onto a REQUIRED map, invalidating every document
+    carrying `attribution`.
+
+    **A bare `true` is refused, and the reason is measured, not stylistic.** `true`
+    is the one spelling with nowhere to put the why. Accepting it against a
+    node-level `description` would have passed both document roots vacuously on
+    sentences that describe the DOCUMENT TYPE ("Pair-wise difference between two
+    MetaLog documents") and say nothing about why the root admits unknown members —
+    a check that goes green on the two positions it exists to interrogate.
+    `{"description": ...}` is the same schema as `true` in Draft 2020-12, so this
+    costs no document its validity; it costs an author one sentence, at the only
+    place a reader will look for it.
+
+    Exit 2, like a `$defs` drift: this is the standard's own artifacts failing to
+    say what they mean, and no verdict about anyone's documents is honest
+    underneath it.
+    """
+    defects: list[str] = []
+    counted = 0
+    for name, schema in sorted(loaded.items()):
+        for pointer, node in object_positions(schema):
+            counted += 1
+            if "additionalProperties" not in node:
+                defects.append(
+                    f"{name} {pointer}: no `additionalProperties` — absence is not a "
+                    f"disposition. Declare `false`, a value schema, or "
+                    f'`{{"description": "<why it is open>"}}`.')
+                continue
+            extra = node["additionalProperties"]
+            if constrains(extra):
+                continue
+            if extra is True or "description" not in extra:
+                defects.append(
+                    f"{name} {pointer}: open, with no reason attached. An open "
+                    f'position declares `{{"description": "<why>"}}`; bare `true` '
+                    f"leaves the reason nowhere, and a description on the node "
+                    f"itself describes the node, not its openness.")
+    if defects:
+        raise InstrumentError(
+            f"the shipped schemas do not declare their own closure at "
+            f"{len(defects)} of {counted} object position(s): "
+            + " · ".join(defects))
+    return counted
+
+
 def _tuples(findings):
     return [(f["path"], f["keyword"], tuple(f["properties"]), f["errors"], f["documents"])
             for f in findings]
@@ -787,6 +974,9 @@ def selftest(schema_dir: Path, spec_text: str, stream) -> int:
     mirrors = mirrored_defs(loaded)
     w(f"  mirrored $defs agree across the shipped schemas: "
       f"{', '.join(mirrors) if mirrors else 'no name is defined twice'}")
+
+    positions = declared_closure(loaded)
+    w(f"  every object position declares its closure: {positions} position(s) walked")
 
     failures: list[str] = []
     for fx in fixtures:

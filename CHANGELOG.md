@@ -48,7 +48,8 @@ No existing field changes type, becomes required, or is removed; **no conformant
   cannot be resolved offline.
 
   **What this does not do, stated because a grant reads like enforcement.** The
-  diff root is `additionalProperties: true`, so a bare vendor member *beside* the
+  diff root is **open** (it declares an `additionalProperties` that constrains
+  nothing), so a bare vendor member *beside* the
   container still validates; the grant fixes where vendor data **belongs**, not
   what the schema **detects**. Making §7's placement rule decidable at a root means
   closing that root, which is a *breaking* change under `GOVERNANCE.md` §2 and is
@@ -167,7 +168,7 @@ No existing field changes type, becomes required, or is removed; **no conformant
 - **§7's claim about what enforces its placement rule is corrected.** The
   paragraph said a bare vendor member "is a conformance failure §8 clause 1
   detects". That holds inside a **closed** object and is false at either
-  **document root**: both are `additionalProperties: true`, so a bare member there
+  **document root**: both are **open**, so a bare member there
   validates, and `conformance/metalog_validate.py` reports it as
   *legal-but-undescribed* — a report, not a verdict. §7 now separates the two
   cases and names closing a root as the breaking change it would be. **No
@@ -220,6 +221,63 @@ No existing field changes type, becomes required, or is removed; **no conformant
   drift is **exit 2**, not exit 1: the standard's own artifacts disagree, and no
   verdict about anyone's documents is honest until they don't. Run against the
   shipped v0.8.0 pair, it reds — which is how the `band_floor` lag above was found.
+- **`--selftest` now requires every object position in both schemas to declare its
+  own closure**, immediately after the `$defs` mirror check and before any fixture
+  runs. Three dispositions are legal and there is no fourth: `additionalProperties:
+  false`, a **constraining** value schema (a map — closed over its values, never
+  over its key set), or `{"description": "<why it is open>"}`. An **absent**
+  `additionalProperties` is a defect, because absence is not a disposition:
+  `provenance[].source` and `attribution.sketch_params` are byte-identical
+  `{"type": "object"}` and mean opposite things — the first is a standard object
+  whose members §12.4 names, the second a map whose keys are data. Nothing in the
+  schema separates them; only the prose does, so the census of what is open cannot
+  be maintained by reading the schema and is enforced instead. A bare `true` is
+  refused because it is the one spelling with nowhere to put the reason, and
+  accepting a **node-level** `description` in its place would have passed both
+  document roots on sentences that describe the document type and say nothing about
+  its openness. Position set derived from the artifacts; in-place applicators
+  (`if`/`then`/`else`/`not`, `allOf`/`anyOf`/`oneOf` branches) are excluded because
+  they constrain the position they sit in rather than being one — closing an `if`
+  would change the condition. Run against the shipped v0.9.0 pair before the
+  declarations below, it reds at **7 of 49** positions. Exit 2, like a `$defs`
+  drift.
+
+- **All seven positions now declare their closure, and nothing closes.** Both
+  document roots, `provenance[].window`, and the diff's `current.window` and
+  `previous.window` were spelled `additionalProperties: true` and now carry the
+  same openness with its reason attached; `attribution.sketch_params` declares that
+  it is a **map** (§6 makes the parameter set depend on `sketch_type`, and
+  `additionalProperties: false` on it would admit only the empty object while §6
+  makes the field **required** — every document carrying `attribution` would become
+  invalid); `provenance[].source` declares that it is a standard **object** whose
+  members are not yet declared here, so closing it bare would forbid the `service`
+  and `host` that §12.4's own example carries. **No conformant document changes
+  validity:** `{"description": ...}` and `true` are the same schema in Draft
+  2020-12, and an absent `additionalProperties` already meant open.
+
+- **The undescribed walker now reads what an open declaration MEANS, not whether
+  the keyword is spelled out** — and this correction is what makes the declarations
+  above safe. It decided "unconstrained by design" from the *absence* of every
+  object keyword, so writing an openness down instead of leaving it absent armed the
+  walker against the author: measured on `valid/rich.metalog.jsonl`, spelling
+  `attribution.sketch_params` and `provenance[].source` open produced **six invented
+  findings on a fully conformant document**, while `additionalProperties: {}` — the
+  same schema — produced none. The mirror-image defect was live in the other
+  direction: any non-empty value schema was treated as *describing* the extras, so
+  moving the two roots from `true` to `{"description": ...}` would have silenced the
+  legal-but-undescribed species at both of them. Both halves are mutation-measured:
+  reverting the first reds `valid/rich.metalog.jsonl` with the six findings,
+  reverting the second reds `undescribed/open_containers.metalog.jsonl` and
+  `invalid/unprefixed_extension_key.diff.json` by going **quiet**.
+
+- **`valid/rich.metalog.jsonl` now carries the two positions it claimed to
+  exercise.** Its manifest entry named "sketch-shaped free objects" while the
+  document had no `attribution` block at all, and its `provenance[]` entry carried no
+  `source` — so the `undescribed-false-positive` control was blind to exactly the
+  two positions whose disposition this release had to rule on. It now carries
+  `attribution` with §6's three sketch parameters and a `provenance[].source` with
+  §12.4's `service`/`host` plus `fleet`.
+
 - `conformance/README.md` catches up with the fixture set it describes: fourteen
   fixtures, six of them carrying five distinct `control` tags, and
   `declared-cap-violation` — added in this release's tooling entry above — gains

@@ -882,7 +882,7 @@ withdrawn, because removing one is a *breaking* change.
 
 **What detects a bare member, and what does not.** Inside a **closed** object the
 schema rejects it, and §8 clause 1 reports it. At either **document root** it does
-not: both roots are `additionalProperties: true`, so a bare vendor member there
+not: both roots are **open**, so a bare vendor member there
 validates, and the MUST above is the only thing forbidding it. That is a property
 of the schema, not a softening of the rule. The gap is not silent either —
 `conformance/metalog_validate.py` reports such a member as

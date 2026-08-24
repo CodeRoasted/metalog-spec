@@ -4,7 +4,9 @@
     "title": "MetaLog v0",
     "description": "A bounded-size statistical fingerprint of a window of log behaviour. Tracks the MetaLog v0.x line; pin a concrete version via the document's metalog_version, not this schema URI (SPEC §9). See https://github.com/CodeRoasted/metalog-spec/blob/main/SPEC.md",
     "type": "object",
-    "additionalProperties": true,
+    "additionalProperties": {
+        "description": "Open, and NOT by design: this root admits any member, including a bare vendor member §7 forbids, so an unknown key here validates and is reported legal-but-undescribed rather than rejected. Closing it is a breaking change under GOVERNANCE.md §2 and is not in this release."
+    },
     "required": [
         "metalog_version",
         "producer",
@@ -383,7 +385,10 @@
                     ]
                 },
                 "sketch_params": {
-                    "type": "object"
+                    "type": "object",
+                    "additionalProperties": {
+                        "description": "A MAP, not a leak: §6 makes the parameter set depend on `sketch_type`, so the keys (`width`, `depth`, `hash_seed`, …) are DATA this vendor-neutral standard does not enumerate. `additionalProperties: false` here would admit ONLY the empty object, and §6 makes the field required — every document carrying `attribution` would become invalid."
+                    }
                 },
                 "encoded": {
                     "type": "string",
@@ -421,10 +426,15 @@
                                 "format": "date-time"
                             }
                         },
-                        "additionalProperties": true
+                        "additionalProperties": {
+                            "description": "Open, and NOT by design: this window object names `start` and `end` and admits anything else, while the document-level `window` (§2.2) is closed. Closing it is a breaking change under GOVERNANCE.md §2 and is not in this release."
+                        }
                     },
                     "source": {
-                        "type": "object"
+                        "type": "object",
+                        "additionalProperties": {
+                            "description": "Open, and NOT by design: §12.4's own example carries `service` and `host` here and this position declares neither, so closing it bare would forbid the members the spec itself shows. It is a standard OBJECT, not a map — what it needs is its members declared, which is a breaking change under GOVERNANCE.md §2 and is not in this release."
+                        }
                     },
                     "lines_observed": {
                         "type": "integer",
