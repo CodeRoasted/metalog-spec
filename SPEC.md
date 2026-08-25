@@ -466,19 +466,28 @@ cardinality delta:
 remain visible in a `MetaLogDiff` taken against a composed (pyramid-baseline)
 document, not only at the raw scale.
 
-> **Wire-emission status (reference producer, v0.5.0).** `param_histograms` is an
-> **optional** wire field. The reference producer (`insight-metalog`) computes the
-> histograms and carries them through `compose()` in its **internal representation**,
-> but does **not yet emit them on the wire** (and `MetaLogDiff.field_histogram_deltas`
-> is likewise computed but not yet serialised) — a conformant choice, since a consumer
-> treats an absent `param_histograms` as an empty array. Wire emission is **batch-mode**:
-> the §11 streaming envelope cannot afford per-slot value maps, but a full-fidelity
-> (batch) diff can. It lands together with the ordinal **Wasserstein-1** trait
-> — `js_divergence` over `value_counts` treats a
-> numeric slot's support as **unordered**, so emitting histograms for ordinal slots
-> before that trait exists would surface a magnitude-blind delta. When emitted,
-> `value_counts` **MUST** serialise in a deterministic (key-sorted) order for replay
-> bit-identity (§15.6).
+> **Wire-emission status (reference producer, v0.9.0).** `param_histograms` is an
+> **optional** wire field and the reference producer (`insight-metalog`) **emits it**:
+> the block reaches the wire inside every `top_k` entry that has tracked slots.
+> Emission is governed by the producer's per-template slot-tracking cap, and that cap
+> is **off by default** — so a producer left at its defaults emits none, and the §3.5
+> rule that a consumer treats an absent array as an empty one is the rule that governs,
+> not an assumption that the block is always there. The default is **batch-mode**
+> reasoning: the §11 streaming envelope cannot afford per-slot value maps, but a
+> full-fidelity (batch) document can, and the configurations that produce batch
+> documents turn the cap on. A slot the producer has declared **ordinal** is not
+> carried here at all — `js_divergence` over `value_counts` treats a numeric slot's
+> support as **unordered**, so an ordinal slot's drift would be magnitude-blind in this
+> block, and it rides a magnitude-aware carrier instead. When emitted, `value_counts`
+> **MUST** serialise in a deterministic (key-sorted) order for replay bit-identity
+> (§15.6).
+>
+> **`MetaLogDiff.field_histogram_deltas` is the half that has not landed.** The
+> reference producer computes it on every diff and does **not** serialise it. That is a
+> conformant choice and not a defect: §13.2 makes the member optional, so a diff
+> carrying any other signal field satisfies the clause without it, and a consumer that
+> holds no `field_histogram_deltas` is holding a document the standard admits. It lands
+> with the full-fidelity (batch) diff surface, for the §11 reason above.
 
 ---
 

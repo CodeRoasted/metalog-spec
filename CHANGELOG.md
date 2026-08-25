@@ -174,6 +174,22 @@ No existing field changes type, becomes required, or is removed; **no conformant
   cases and names closing a root as the breaking change it would be. **No
   normative effect:** the MUST is unchanged; what changes is the spec's claim
   about what enforces it.
+- **§3.5.2's wire-emission note was half wrong, and the wrong half was the one a
+  reader prices a document by.** It said the reference producer computes
+  `param_histograms` but does **not emit them on the wire**. It does — the block is
+  serialised inside every `top_k` entry with tracked slots whenever the producer's
+  per-template slot-tracking cap is above zero, and the shipped batch configurations
+  set it there, so published documents carry it. The note also gated emission on a
+  magnitude-aware ordinal metric arriving first; that concern was answered by routing
+  declared-ordinal slots to a different carrier, not by withholding the block, and a
+  status note in this spec should not be gated on any one implementation's delivery
+  schedule in the first place. §11's own size budget already priced
+  `param_histograms` as a live wire cost, so the two sections disagreed. The other
+  half stands and is now stated separately: `MetaLogDiff.field_histogram_deltas` is
+  computed on every diff and **not** serialised — a conformant choice, since §13.2
+  makes the member optional. **No normative effect:** the key-sorted `value_counts`
+  MUST is unchanged and no field's status changes; what changes is the spec's
+  description of what the reference producer puts on the wire.
 
 ### Conformance tooling
 
