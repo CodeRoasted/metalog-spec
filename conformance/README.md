@@ -18,6 +18,11 @@ python3 conformance/metalog_validate.py --selftest
 # Judge your own documents.
 python3 conformance/metalog_validate.py my_metalogs.jsonl
 python3 conformance/metalog_validate.py --kind diff my_diff.json
+
+# Judge documents carried inside an envelope — one, or every element of an array.
+python3 conformance/metalog_validate.py --kind diff --pointer /raw my_report.json
+python3 conformance/metalog_validate.py --kind diff --pointer /raw/-/diff \
+        --expect-documents 40 report_a.json report_b.json
 ```
 
 ---
@@ -93,14 +98,14 @@ never looked.
 
 ## Why the self-test exists
 
-A validator that cannot fail is decoration. `--selftest` runs sixteen fixtures whose
+A validator that cannot fail is decoration. `--selftest` runs twenty-two fixtures whose
 expected results are **hand-authored in `fixtures/manifest.json` from the spec and
 the schemas** — never captured from a run, because an expectation copied out of the
 tool under test makes the tool its own oracle, and the pair then agree forever
 while both are wrong.
 
-Six of those fixtures carry a `control` tag, naming **five** distinct blindnesses
-(`instrument-failure` is carried by two), and the self-test **refuses to run**
+Ten of those fixtures carry a `control` tag, naming **eight** distinct blindnesses
+(`instrument-failure` is carried by three), and the self-test **refuses to run**
 if any tag is missing from the manifest — deleting a fixture cannot quietly widen
 what a green covers. Each control forecloses one specific way this validator could
 have gone green while blind:
@@ -111,7 +116,10 @@ have gone green while blind:
 | `undescribed-false-positive` | The schema opens several containers on purpose (`extensions`, `source.tags`, cube coordinates keyed by axis name, `param_histogram.value_counts`, `attribution.sketch_params`, `provenance[].source`). A walker that reports those has invented findings, and a false positive from a prescriptive instrument costs more than a miss: it sends someone to delete a field the schema does describe. This fixture exercises all of them and must report zero. The last two were added on 2026-08-24, and their absence was not cosmetic: the fixture carried no `attribution` block at all while its own entry claimed "sketch-shaped free objects", so the two positions whose disposition the closure walk had to rule on were the two this control could not see. |
 | `closed-object-violation` | The instrument must detect the real defect shape, not a toy one — extra members inside `stats.top_k[]` and `cube.axes[]`, the same two instance paths the reference implementation trips today. |
 | `declared-cap-violation` | §8 clause 4 is unreachable from the schema — `maxItems` takes a constant, the bound is the value of a sibling field — so a document can be **schema-valid and cap-violating**, which is exactly what a schema-only validator reports `CONFORMANT`. This fixture is that document, violating at two locations (`stats` and `behavior`) so a `top_k`-only checker reds, and carrying a vendor `shard_size`/`shard` pair under `extensions` that must **not** be reported. |
-| `instrument-failure` | A truncated corpus, and a `--pointer` that does not resolve, must both exit 2. **There is no code path that skips a line or a file**: every non-blank line is either a section header or a document, anything else stops the run, and an unreachable pointer refuses rather than dropping the file. A parser bug cannot express itself as a smaller document count — only as a refusal to answer. |
+| `instrument-failure` | A truncated corpus, a `--pointer` that does not resolve, and a pointer whose envelope changed shape underneath it must all exit 2. **There is no code path that skips a line or a file**: every non-blank line is either a section header or a document, anything else stops the run, and an unreachable pointer refuses rather than dropping the file. A parser bug cannot express itself as a smaller document count — only as a refusal to answer. Each of these fixtures also pins the *reason*, not only the number: exit 2 is a class, and an instrument refusing for a reason nobody intended would otherwise satisfy a fixture that reads the code alone. |
+| `pointer-array-every-element` | An envelope carries as many documents as its producer performed comparisons, and the shape it takes is a **list**. A pointer that resolves to one document judges the first and prints the same confident verdict over the rest — not a smaller check, a green covering a subject nobody chose. This fixture is a four-entry envelope whose violation sits at entry **2**, and its `/raw/0/diff` twin in the same manifest pins what the single-document reading does with those exact bytes: **exit 0, CONFORMANT**. The contrast is executable rather than remembered. |
+| `pointer-empty-selection` | The other way a corpus reaches zero, and the only one no exception-shaped guard can see: the pointer resolves perfectly onto an array that is **empty**. Every path taken is correct and the subject is nothing. Exit 2 — a verdict over zero documents is green for the one reason that matters, that it never looked. |
+| `pointer-token-literal-in-object` | The extension must not swallow the standard it extends. `-` means *every element* where an **array** sits, because RFC 6901 gives that token no resolvable meaning there; where an **object** sits it is a literal member name and stays one. This fixture is an envelope carrying a member spelled `-` beside a second member, so a reading that wildcards the token everywhere judges two documents where one was addressed. |
 
 Measured on the committed tool, 2026-08-19: **seven** independent mutations each
 red the self-test — section-as-one-document · offending-member computation blinded ·
@@ -120,6 +128,18 @@ downgraded to a skip · empty corpus accepted · unresolved pointer downgraded t
 skipped file — while the unmutated control passes 12/12. Blinding the
 offending-member computation reds **four** fixtures, not one: that guard is measured
 as shared, not sole. Deleting a `control` tag from the manifest exits 2, as designed.
+
+Measured again on the every-element pointer, 2026-08-25, **ten** further mutations
+each red it — the wildcard judging only the first element · only the last · every
+element but counting one · every element without naming which · an empty selection
+accepted · the token wildcarded against objects too · a numeric index expanding as
+if it were the token · a deleted `control` tag · a fixture omitting which element
+its finding came from · a refusal fixture omitting the reason — while the unmutated
+control passes 22/22. Two of those ten are the manifest's own demands, and each was
+verified by **bypassing its partner**: remove the demand *and* the key it asks for,
+and the suite goes green on a strictly weaker oracle. That is what the demand costs
+and why it is derived from the fixture's own pointer rather than kept in a list
+beside it.
 
 **Before any fixture runs, the self-test compares the two schemas' shared `$defs`.**
 Each schema file is independently consumable — `SPEC.md` §8 invites downloading one
@@ -232,7 +252,9 @@ Declared, because an instrument's silence is read as coverage.
   catches a *reader* that miscounts what is present, never a corpus that genuinely
   holds less. The roster of what *should* be there is knowable only to the caller, so a
   caller judging a multi-section corpus has to reconcile that roster itself before
-  trusting the verdict below it.
+  trusting the verdict below it. One shrink IS caught without a roster, and only one:
+  an envelope whose array the pointer selects every element of, and which now holds
+  **zero**, is exit 2 — because there the tool can tell that it judged nothing.
 - **Cross-document properties are out of scope.** `compose()` commutativity and
   identity (§12.2) and the `MetaLogDiff` algebra (§13) are properties of *pairs and
   sets* of documents; this tool judges each document against the schema.
@@ -273,6 +295,44 @@ A note on the second form, because it is the reason `--pointer` exists: a docume
 quoted inside an envelope is still a document, and a conformance tool that can only
 read bare files simply declares that surface out of scope. `--pointer` reads it
 instead, and refuses (exit 2) rather than skipping a file the pointer cannot reach.
+
+### `--pointer`, and the one token it adds to RFC 6901
+
+An envelope carries as many documents as its producer performed comparisons, so the
+shape a CI report actually takes is a **list** of them — `raw[0].diff`,
+`raw[1].diff`, … A pointer that can only name one of those judges the first and
+prints its verdict over all of them, which is not a smaller check: it is a green
+covering a subject nobody chose.
+
+So `-` in an **array** position selects **every** element, and each selected element
+is judged and counted as its own document:
+
+```
+--pointer /raw/-/diff        every comparison in one report
+--pointer /runs/-/raw/-/diff every comparison in every run of an aggregate report
+```
+
+The token is safe to give this meaning because RFC 6901 §4 already gives it exactly
+one meaning in an array — *the element after the last* — and that element never
+exists, so no pointer that used to resolve can start resolving differently. In an
+**object** position `-` stays a literal member name, exactly as RFC 6901 says: this
+tool does not overrule the standard it cites in order to be helpful.
+
+Two consequences a caller should plan for, both of them refusals rather than
+verdicts:
+
+- A pointer written for a wire shape the envelope no longer has **stops the run**
+  (exit 2) instead of judging what it happens to reach. `-` against an object that
+  has no member spelled `-` is that case, and the message says so.
+- A pointer that resolves onto an **empty** array selects nothing, and zero
+  documents is exit 2. Every path taken was correct and the subject was nothing;
+  that is the failure this instrument exists to refuse.
+
+The document count is in the output — per file and in total — so a subject that
+shrank is visible rather than silent, and `--expect-documents` turns the total into
+a tripwire. Each finding names the **concrete pointer** of the element it came from
+(`report.json/raw/2/diff`), because `1 of 40` with no element named is a number
+nobody can act on.
 
 ---
 

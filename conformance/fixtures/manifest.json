@@ -2,6 +2,8 @@
     "description": "The oracle for metalog_validate's self-test. Every expectation here is HAND-AUTHORED from SPEC.md and the shipped schemas, never captured from a run: an expectation copied out of the tool under test would make the tool its own oracle, and the pair would agree forever while both were wrong. The `control` tag on a fixture names the specific way this validator could have gone green while blind; metalog_validate refuses to run its self-test if any of them is missing from this file.",
     "findings_encoding": "[instance path, failing keyword, offending member names, error count, documents affected]",
     "undescribed_encoding": "[instance path, member name, documents affected]",
+    "first_documents_encoding": "one label per finding, in order: the document a finding was FIRST seen in. Under a pointer that selects every element of an array the label is the file name followed by the concrete RFC 6901 pointer of the element, e.g. `report.json/raw/2/diff`; otherwise it is the label the corpus reader already used. Optional in general and MANDATORY on any fixture whose pointer carries the every-element token — metalog_validate derives that demand from the pointer itself and refuses to run without it, because a count alone ('1 of 4') passes against a validator that judges every element and names the wrong one.",
+    "refusal_mentions_encoding": "a substring the instrument's own message must contain. MANDATORY on any exit-2 fixture that carries a pointer, and derived from the fixture rather than listed here: exit 2 is a CLASS, not a reason, and a pointer refusal has several — the member is absent, the wire shape moved, the selection is empty, the walk hit a scalar. A fixture asserting only the number passes against an instrument that refuses for a reason nobody intended.",
     "cap_violations_encoding": "[instance path, cap field, value the document declares, actual array length, documents affected]",
     "fixtures": [
         {
@@ -170,7 +172,77 @@
             "pointer": "/no_such_member",
             "control": "instrument-failure",
             "why": "the same envelope with a pointer that does not resolve. Exit 2: a document the pointer cannot reach is a corpus this run cannot judge, never one it may quietly skip — a skipped file shrinks the corpus, which is the one thing this instrument must never do.",
-            "expect": { "exit": 2 }
+            "expect": { "exit": 2, "refusal_mentions": "no member 'no_such_member'" }
+        },
+        {
+            "path": "enveloped/report_with_raw_diff.json",
+            "kind": "diff",
+            "pointer": "/raw/-/diff",
+            "control": "instrument-failure",
+            "why": "the SAME envelope as the two entries above, read with the every-element pointer — and `raw` here is a single OBJECT, the wire shape a report carried before its producer started publishing one diff per comparison. `-` is a wildcard only where an ARRAY sits; against an object RFC 6901 already gives it a meaning, a literal member name, and this instrument does not overrule RFC 6901 to be helpful. So the run REFUSES rather than judging the envelope as though it were a diff, and `refusal_mentions` pins WHICH refusal: a resolver that gave the token a second meaning would also exit 2, one token later, on a scalar it had no business reaching. That the coupling reds loudly is the point — repointing at the array without republishing the corpus must stop the run, not go quietly green over one element of a shape that no longer exists.",
+            "expect": { "exit": 2, "refusal_mentions": "RFC 6901 reads it as a literal member name" }
+        },
+        {
+            "path": "enveloped/report_with_dash_member.json",
+            "kind": "diff",
+            "pointer": "/reports/-",
+            "control": "pointer-token-literal-in-object",
+            "why": "an envelope with a member literally spelled `-`, beside a second member — and this is the fixture that keeps the extension from swallowing the standard it extends. RFC 6901 gives `-` a meaning in an ARRAY (the element after the last, which never exists, which is what makes the token free to mean `every element` here) and a different one in an OBJECT (a literal member name, which resolves perfectly well). An implementation that reads the token as a wildcard everywhere would select BOTH members here and judge two documents; the correct reading selects one — the invalid one, deliberately, so the assertion is not merely a count. `first_documents` pins the second half: a non-expanding pointer must leave the label the corpus reader already had, the FILE name with no pointer appended, which is exactly what every existing caller's output depends on.",
+            "expect": {
+                "exit": 1,
+                "documents": 1,
+                "findings": [
+                    ["current", "additionalProperties", ["vendor_private_counter"], 1, 1]
+                ],
+                "first_documents": ["report_with_dash_member.json"],
+                "undescribed": []
+            }
+        },
+        {
+            "path": "enveloped/report_with_raw_diff_array.json",
+            "kind": "diff",
+            "pointer": "/raw/-/diff",
+            "control": "pointer-array-every-element",
+            "why": "THE anti-blindness fixture, and the shape a CI report actually takes: `raw` is a LIST with one {unit, diff} entry per comparison the producer performed. FOUR entries here; entry 2 (`package`) carries `vendor_private_counter` bare inside `current`, which the diff schema closes. Entries 0, 1 and 3 are fully conformant, and that ordering is the entire teeth: a validator whose pointer resolves to ONE document judges entry 0, finds nothing, and prints the same confident CONFORMANT over a corpus that contains a violation — subject-incomplete, not smaller. The contrast is pinned as the very next entry in this file: the same bytes under `/raw/0/diff` MUST read exit 0 over 1 document, so the two entries together are the executable form of the finding rather than a measurement somebody has to re-run. `documents: 4` is load-bearing beside the finding: a walker that judged all four but reported a count of one would still be lying about the subject. `vendor_private_counter` is a name the standard can never mint, so these teeth cannot fall out the day a member is standardised — the failure mode that silently disarmed two fixtures in this set once already.",
+            "expect": {
+                "exit": 1,
+                "documents": 4,
+                "findings": [
+                    ["current", "additionalProperties", ["vendor_private_counter"], 1, 1]
+                ],
+                "first_documents": ["report_with_raw_diff_array.json/raw/2/diff"],
+                "undescribed": []
+            }
+        },
+        {
+            "path": "enveloped/report_with_raw_diff_array.json",
+            "kind": "diff",
+            "pointer": "/raw/0/diff",
+            "why": "THE CONTRAST, and it belongs in the manifest rather than in a report: the same four-entry envelope as the entry above, read with the naive repoint. Exit 0 over ONE document — a truthful sentence about entry 0 and a green over a corpus whose entry 2 is invalid. This entry is not a wish; it is the recorded behaviour a single-document pointer HAS, kept executable so that nobody re-derives it and so that the every-element entry above cannot be read as an improvement in degree. It doubles as the compatibility pin: an explicit numeric index still selects exactly one document and still names it by FILE, unchanged, which is what every existing caller of --pointer relies on.",
+            "expect": { "exit": 0, "documents": 1, "findings": [], "undescribed": [] }
+        },
+        {
+            "path": "enveloped/report_with_empty_raw_array.json",
+            "kind": "diff",
+            "pointer": "/raw/-/diff",
+            "control": "pointer-empty-selection",
+            "why": "the array is present, well-formed, and EMPTY — the shape a report takes when its producer performed no comparison, or when a refresh regressed to zero. The pointer resolves perfectly and selects nothing, so there is no unreadable byte anywhere to trip the instrument-failure control: this is the OTHER way a corpus reaches zero, and the only one an exception-shaped guard cannot see. Exit 2. A run that judged zero documents and printed CONFORMANT would be green for the one reason that matters, that it never looked — and unlike a missing file it would be green while every path it took was correct.",
+            "expect": { "exit": 2, "refusal_mentions": "that array is EMPTY" }
+        },
+        {
+            "path": "enveloped/aggregate_report_nested_arrays.json",
+            "kind": "diff",
+            "pointer": "/runs/-/raw/-/diff",
+            "why": "two every-element tokens in one pointer — the aggregate envelope, several runs each carrying several comparisons. The selection is the CARTESIAN set, 2 x 2 = 4 documents, and the only violation sits at runs[1].raw[1], reachable by neither a first-run-only nor a first-comparison-only reader. Without this entry the multi-token path would ship untested, which is the never-ran failure mode one level down from the one the entry above closes: the expansion is written as a loop over tokens, so a second token costs no branch of its own — and an untested loop is exactly where an off-by-one hides. `first_documents` pins the full concrete pointer, so a walker that judges all four and mislabels which one failed still reds here.",
+            "expect": {
+                "exit": 1,
+                "documents": 4,
+                "findings": [
+                    ["current", "additionalProperties", ["vendor_private_counter"], 1, 1]
+                ],
+                "first_documents": ["aggregate_report_nested_arrays.json/runs/1/raw/1/diff"],
+                "undescribed": []
+            }
         },
         {
             "path": "corrupt/unreadable_line.jsonl",
