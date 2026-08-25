@@ -294,12 +294,59 @@ No existing field changes type, becomes required, or is removed; **no conformant
   `attribution` with §6's three sketch parameters and a `provenance[].source` with
   §12.4's `service`/`host` plus `fleet`.
 
-- `conformance/README.md` catches up with the fixture set it describes: fourteen
-  fixtures, six of them carrying five distinct `control` tags, and
+- **`--pointer` can now address every element of an array**, with one token added
+  to RFC 6901: `-` in an **array** position selects **every** element, and each
+  selected element is judged and counted as its own document
+  (`--pointer /raw/-/diff`). The token is safe to give that meaning because RFC
+  6901 §4 already gives it exactly one in an array — *the element after the last* —
+  and that element never exists, so no pointer that used to resolve can start
+  resolving differently. In an **object** position it stays a literal member name,
+  exactly as RFC 6901 says.
+
+  **The reason this is not a convenience.** An envelope carries one document per
+  comparison its producer performed, so a real CI report's `raw` is a **list**. A
+  pointer that resolves to one document judges the first and prints the same
+  verdict over the rest — not a smaller check, a green covering a subject nobody
+  chose. Measured on a four-entry envelope whose violation sits at entry 2:
+  `/raw/0/diff` reads **exit 0, CONFORMANT**; `/raw/-/diff` reads **exit 1** and
+  names `report.json/raw/2/diff`. Both readings are pinned as fixtures in the same
+  manifest, so the contrast is executable rather than remembered.
+
+  **Nothing moves for a single-document subject.** A pointer without the token
+  selects exactly one node and labels it by FILE, unchanged — verified by
+  re-running the three live invocations of this tool before and after: identical
+  exit codes and identical findings, the only difference being a per-file document
+  count added to the `corpus` line.
+
+  Two failures are refusals rather than verdicts, and both are exit 2: a pointer
+  written for a wire shape the envelope no longer has, and a pointer that resolves
+  onto an **empty** array. The second is the shrink no exception-shaped guard can
+  see — every path taken is correct and the subject is nothing.
+
+  **Report shape:** the document count is now printed **per corpus file** as well
+  as in the total, so a file that stopped carrying what it used to is visible
+  without a roster. In `--json`, `corpus` is correspondingly a list of
+  `{path, documents, expanded}` rather than a list of paths — one key with one
+  meaning, rather than a second key repeating the first.
+
+- **Three new self-test controls**, each derived from a mutation that the previous
+  fixture set passed: `pointer-array-every-element` (the four-entry envelope above,
+  with its single-document twin), `pointer-empty-selection` (an array present,
+  well-formed and empty), and `pointer-token-literal-in-object` (an envelope
+  carrying a member spelled `-`, so an implementation that wildcards the token
+  everywhere judges two documents where one was addressed). The manifest gains two
+  demands it derives from a fixture's own shape rather than from a list: a fixture
+  whose pointer expands must say **which element** each finding came from, and a
+  fixture expecting a refusal on a pointer must say **which refusal** — exit 2 is a
+  class, not a reason. Ten mutations red the suite; the unmutated control passes
+  **22/22**.
+
+- `conformance/README.md` catches up with the fixture set it describes: twenty-two
+  fixtures, ten of them carrying eight distinct `control` tags, and
   `declared-cap-violation` — added in this release's tooling entry above — gains
   the control-table row it never got. The instrument's declared limits gain the
   one this release makes relevant: a bare vendor member at either **document
-  root** is reported, never failed.
+  root** is reported, never failed. `--pointer` gains a section of its own.
 
 ---
 

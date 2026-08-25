@@ -1,0 +1,30 @@
+{
+    "report_version": "1.0.0",
+    "reports": {
+        "-": {
+            "diff_version": "0.6.0",
+            "current": {
+                "window": { "start": "2026-01-01T00:01:00Z", "end": "2026-01-01T00:02:00Z" },
+                "document_id": "dash-window-2",
+                "vendor_private_counter": 3
+            },
+            "previous": {
+                "window": { "start": "2026-01-01T00:00:00Z", "end": "2026-01-01T00:01:00Z" },
+                "document_id": "dash-window-1"
+            },
+            "stability_score": 0.55
+        },
+        "latest": {
+            "diff_version": "0.6.0",
+            "current": {
+                "window": { "start": "2026-01-01T00:02:00Z", "end": "2026-01-01T00:03:00Z" },
+                "document_id": "latest-window-2"
+            },
+            "previous": {
+                "window": { "start": "2026-01-01T00:01:00Z", "end": "2026-01-01T00:02:00Z" },
+                "document_id": "latest-window-1"
+            },
+            "stability_score": 0.88
+        }
+    }
+}

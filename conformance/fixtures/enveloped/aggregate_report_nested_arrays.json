@@ -1,0 +1,76 @@
+{
+    "report_version": "1.0.0",
+    "runs": [
+        {
+            "pipeline": "nightly",
+            "raw": [
+                {
+                    "unit": "build",
+                    "diff": {
+                        "diff_version": "0.6.0",
+                        "current": {
+                            "window": { "start": "2026-01-01T00:01:00Z", "end": "2026-01-01T00:02:00Z" },
+                            "document_id": "nightly-build-2"
+                        },
+                        "previous": {
+                            "window": { "start": "2026-01-01T00:00:00Z", "end": "2026-01-01T00:01:00Z" },
+                            "document_id": "nightly-build-1"
+                        },
+                        "stability_score": 0.96
+                    }
+                },
+                {
+                    "unit": "test",
+                    "diff": {
+                        "diff_version": "0.6.0",
+                        "current": {
+                            "window": { "start": "2026-01-01T00:01:00Z", "end": "2026-01-01T00:02:00Z" },
+                            "document_id": "nightly-test-2"
+                        },
+                        "previous": {
+                            "window": { "start": "2026-01-01T00:00:00Z", "end": "2026-01-01T00:01:00Z" },
+                            "document_id": "nightly-test-1"
+                        },
+                        "stability_score": 0.93
+                    }
+                }
+            ]
+        },
+        {
+            "pipeline": "release",
+            "raw": [
+                {
+                    "unit": "build",
+                    "diff": {
+                        "diff_version": "0.6.0",
+                        "current": {
+                            "window": { "start": "2026-01-01T01:01:00Z", "end": "2026-01-01T01:02:00Z" },
+                            "document_id": "release-build-2"
+                        },
+                        "previous": {
+                            "window": { "start": "2026-01-01T01:00:00Z", "end": "2026-01-01T01:01:00Z" },
+                            "document_id": "release-build-1"
+                        },
+                        "stability_score": 0.98
+                    }
+                },
+                {
+                    "unit": "test",
+                    "diff": {
+                        "diff_version": "0.6.0",
+                        "current": {
+                            "window": { "start": "2026-01-01T01:01:00Z", "end": "2026-01-01T01:02:00Z" },
+                            "document_id": "release-test-2",
+                            "vendor_private_counter": 4
+                        },
+                        "previous": {
+                            "window": { "start": "2026-01-01T01:00:00Z", "end": "2026-01-01T01:01:00Z" },
+                            "document_id": "release-test-1"
+                        },
+                        "stability_score": 0.71
+                    }
+                }
+            ]
+        }
+    ]
+}

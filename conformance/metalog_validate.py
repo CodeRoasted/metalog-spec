@@ -62,6 +62,15 @@ SECTION_RE = re.compile(r"^###\s(.+?)\s###$")
 MAX_INSTANCE_DEPTH = 64
 MAX_APPLICATOR_DEPTH = 32
 
+# The one token `--pointer` adds to RFC 6901, and the reason it is safe to add.
+# RFC 6901 §4 gives `-` a single meaning in an ARRAY: "the element after the last".
+# That element never exists, so in an EVALUATION context — which is all this tool
+# does — a pointer containing `-` at an array position can never resolve. The token
+# is therefore free: nothing that used to resolve can start resolving differently.
+# Against an OBJECT it stays a literal member name, exactly as RFC 6901 says, so a
+# document with a member spelled `-` is still addressable.
+POINTER_EACH = "-"
+
 # Annotation keywords assert nothing about an instance. `{"description": "..."}`
 # and `true` are THE SAME SCHEMA in Draft 2020-12, and an instrument that reads
 # them differently is reading its own formatting rather than the standard.
@@ -118,37 +127,104 @@ class InstrumentError(RuntimeError):
 # Corpus loading. There is no path through this function that skips a line.
 # --------------------------------------------------------------------------
 
-def json_pointer(document, pointer: str, where: str):
-    """RFC 6901, applied to a DOCUMENT rather than a schema.
+def _pointer_escape(token: str) -> str:
+    """A member name as an RFC 6901 reference token."""
+    return token.replace("~", "~0").replace("/", "~1")
+
+
+def resolve_pointer(document, pointer: str, where: str) -> tuple[bool, list[tuple[str, object]]]:
+    """RFC 6901 applied to a DOCUMENT rather than a schema, plus ONE extension.
 
     A MetaLog or a MetaLogDiff is often carried inside a larger envelope -- a CI
-    report that quotes the diff it was built from, for instance. Pointing at it is
-    better than teaching every producer to publish a bare document.
+    report that quotes the diffs it was built from, for instance. Pointing at them
+    is better than teaching every producer to publish bare documents.
 
-    A pointer that does not resolve is FATAL, never a skip: silently dropping the
-    file would shrink the corpus, and a corpus that shrank on its own is the one
-    thing this instrument must never do.
+    THE EXTENSION, and why an envelope forces it. An envelope carries as many
+    documents as its producer performed comparisons; the shape a CI report actually
+    takes is a LIST of them, not one. A pointer that can only name `/raw/0/diff`
+    judges the first and reports the same confident verdict over the rest -- which
+    is not a smaller check, it is a green that covers a subject nobody chose. So
+    `POINTER_EACH` in an array position selects EVERY element, and each selected
+    element becomes a document of its own, judged and counted separately.
+
+    Returns `(expanded, [(concrete_pointer, node), ...])`. `expanded` is False when
+    no array was iterated, and the caller then keeps the labels it already used: a
+    subject that was one document stays one document under the name it had.
+
+    Two things are FATAL here, never a skip, and they are the same defect seen from
+    two sides: a pointer that does not resolve, and a pointer that resolves onto an
+    EMPTY array. Silently dropping the file, or judging zero of its documents, both
+    shrink the corpus -- and a corpus that shrank on its own is the one thing this
+    instrument must never do.
     """
-    node = document
+    frontier: list[tuple[str, object]] = [("", document)]
+    expanded = False
+
     for token in pointer.lstrip("/").split("/"):
         token = token.replace("~1", "/").replace("~0", "~")
-        if isinstance(node, list):
-            if not token.isdigit() or int(token) >= len(node):
+        reached: list[tuple[str, object]] = []
+        for prefix, node in frontier:
+            at = prefix or "<root>"
+            if isinstance(node, list):
+                if token == POINTER_EACH:
+                    expanded = True
+                    if not node:
+                        raise InstrumentError(
+                            f"{where}: pointer {pointer!r} selects every element of "
+                            f"the array at {at} — and that array is EMPTY, so this "
+                            f"file contributes nothing. Zero documents is not a "
+                            f"clean subject: a corpus that shrank to nothing is "
+                            f"green for the one reason that matters, that it never "
+                            f"looked.")
+                    reached += [(f"{prefix}/{index}", item)
+                                for index, item in enumerate(node)]
+                    continue
+                if not token.isdigit() or int(token) >= len(node):
+                    raise InstrumentError(
+                        f"{where}: pointer {pointer!r} does not resolve — {token!r} "
+                        f"is not an index into the {len(node)}-element array at "
+                        f"{at}. {POINTER_EACH!r} there selects every element of it.")
+                reached.append((f"{prefix}/{token}", node[int(token)]))
+            elif isinstance(node, dict):
+                if token not in node:
+                    hint = ""
+                    if token == POINTER_EACH:
+                        hint = (f" {POINTER_EACH!r} selects every element of an "
+                                f"ARRAY; what sits at {at} is an object, so RFC "
+                                f"6901 reads it as a literal member name — which "
+                                f"is what an envelope looks like when its wire "
+                                f"shape moved out from under the pointer.")
+                    raise InstrumentError(
+                        f"{where}: pointer {pointer!r} does not resolve — no member "
+                        f"{token!r} at {at}. A document the pointer cannot reach is "
+                        f"a corpus this run cannot judge, not one it may skip."
+                        f"{hint}")
+                reached.append((f"{prefix}/{_pointer_escape(token)}", node[token]))
+            else:
                 raise InstrumentError(
-                    f"{where}: pointer {pointer!r} does not resolve — {token!r} is "
-                    f"not an index into a {len(node)}-element array")
-            node = node[int(token)]
-        elif isinstance(node, dict):
-            if token not in node:
-                raise InstrumentError(
-                    f"{where}: pointer {pointer!r} does not resolve — no member "
-                    f"{token!r}. A document the pointer cannot reach is a corpus "
-                    f"this run cannot judge, not one it may skip.")
-            node = node[token]
-        else:
-            raise InstrumentError(
-                f"{where}: pointer {pointer!r} descends into a scalar at {token!r}")
-    return node
+                    f"{where}: pointer {pointer!r} descends into a scalar at "
+                    f"{token!r}")
+        frontier = reached
+
+    return expanded, frontier
+
+
+def _select(document, pointer: str | None, where: str,
+            label: str) -> tuple[bool, list[tuple[str, object]]]:
+    """One parsed corpus entry -> the documents a pointer selects inside it.
+
+    The label rule is the whole compatibility story. An expanding pointer renames
+    each document to the CONCRETE pointer of the element it selected, so a finding
+    names the element rather than the file it came from — over forty documents from
+    two files, `1/40 documents` with no name is a number nobody can act on. Every
+    other case keeps the label the caller already had.
+    """
+    if not pointer:
+        return False, [(label, document)]
+    expanded, selected = resolve_pointer(document, pointer, where)
+    if not expanded:
+        return False, [(label, selected[0][1])]
+    return True, [(f"{label}{concrete}", node) for concrete, node in selected]
 
 
 def load_corpus(path: Path, pointer: str | None = None) -> tuple[list[tuple[str, object]], dict]:
@@ -156,12 +232,16 @@ def load_corpus(path: Path, pointer: str | None = None) -> tuple[list[tuple[str,
 
     Accepts three shapes: a single `.json` document, JSONL, and the sectioned
     `### name ###` + JSONL form the published determinism evidence uses.
-    `pointer` selects the document inside a larger envelope (see json_pointer).
+    `pointer` selects the document -- or, with `POINTER_EACH`, every document --
+    inside a larger envelope (see resolve_pointer).
 
     THE DESIGN RULE: every non-blank line is classified as exactly one of
     {section header, document}. A line that parses as neither is fatal. There is
     no third bucket, so a parser bug cannot express itself as a smaller document
-    count -- it can only stop the run.
+    count -- it can only stop the run. An expanding pointer extends the rule
+    rather than bending it: one entry may now yield MANY documents, never zero,
+    and `accounting["documents"]` counts what was actually judged, so
+    `--expect-documents` still reconciles against the whole subject.
     """
     if not path.is_file():
         raise InstrumentError(f"corpus does not exist: {path}")
@@ -172,9 +252,9 @@ def load_corpus(path: Path, pointer: str | None = None) -> tuple[list[tuple[str,
             doc = json.loads(text)
         except json.JSONDecodeError as exc:
             raise InstrumentError(f"{path}: not a JSON document — {exc}") from exc
-        if pointer:
-            doc = json_pointer(doc, pointer, str(path))
-        return [(path.name, doc)], {"lines": 1, "blank": 0, "sections": 0, "documents": 1}
+        expanded, selected = _select(doc, pointer, str(path), path.name)
+        return selected, {"lines": 1, "blank": 0, "sections": 0,
+                          "documents": len(selected), "expanded": expanded}
 
     lines = text.splitlines()
     sectioned = any(SECTION_RE.match(ln.strip()) for ln in lines)
@@ -183,6 +263,7 @@ def load_corpus(path: Path, pointer: str | None = None) -> tuple[list[tuple[str,
     ordinal = 0
     blank = 0
     sections = 0
+    expanded = False
 
     for lineno, raw in enumerate(lines, start=1):
         stripped = raw.strip()
@@ -205,9 +286,10 @@ def load_corpus(path: Path, pointer: str | None = None) -> tuple[list[tuple[str,
                 f"skipping it would shrink the document count silently."
             ) from exc
         ordinal += 1
-        if pointer:
-            doc = json_pointer(doc, pointer, f"{path}:{lineno}")
-        docs.append((f"{section}#{ordinal}", doc))
+        selected_here, selected = _select(doc, pointer, f"{path}:{lineno}",
+                                          f"{section}#{ordinal}")
+        expanded = expanded or selected_here
+        docs += selected
 
     if not docs:
         raise InstrumentError(
@@ -216,7 +298,7 @@ def load_corpus(path: Path, pointer: str | None = None) -> tuple[list[tuple[str,
             f"for the one reason that matters: it never looked."
         )
     return docs, {"lines": len(lines), "blank": blank, "sections": sections,
-                  "documents": len(docs)}
+                  "documents": len(docs), "expanded": expanded}
 
 
 # --------------------------------------------------------------------------
@@ -544,14 +626,21 @@ def collect_cap_violations(docs, pairs: set[tuple[str, str]]) -> list[dict]:
 def render(report: dict, stream) -> None:
     w = lambda s="": print(s, file=stream)
     env = report["environment"]
-    w('metalog-conformance · SPEC §8 clauses 1 and 4')
-    for path in report["corpus"]:
-        w(f"  corpus     : {path}")
-    if report.get("pointer"):
-        w(f"  pointer    : {report['pointer']}  (the document inside the envelope)")
-    w(f"  kind       : {report['kind']}  (schema/{report['schema']})")
     acc = report["accounting"]
     plural = lambda n, word: f"{n} {word}" if n == 1 else f"{n} {word}s"
+    w('metalog-conformance · SPEC §8 clauses 1 and 4')
+    for entry in report["corpus"]:
+        w(f"  corpus     : {entry['path']}  "
+          f"({plural(entry['documents'], 'document')} judged)")
+    if report.get("pointer"):
+        note = "the document inside the envelope"
+        if report.get("pointer_expanded"):
+            note = (f"{POINTER_EACH!r} selects EVERY element of the array it "
+                    f"addresses — {plural(acc['documents'], 'document')} judged "
+                    f"across {plural(len(report['corpus']), 'file')}, not the "
+                    f"first of each")
+        w(f"  pointer    : {report['pointer']}  ({note})")
+    w(f"  kind       : {report['kind']}  (schema/{report['schema']})")
     w(f"  parsed     : {plural(acc['sections'], 'section')} · "
       f"{plural(acc['documents'], 'document')} · {plural(acc['lines'], 'line')} "
       f"({acc['blank']} blank). No line is skippable: an unreadable line is fatal.")
@@ -667,11 +756,19 @@ def run(corpora, kind: str, schema_dir: Path, spec_text: str, check_formats: boo
 
     docs: list[tuple[str, object]] = []
     accounting = {"lines": 0, "blank": 0, "sections": 0, "documents": 0}
+    # ONE entry per corpus, carrying its own document count rather than only the
+    # total. A caller pinning the total with --expect-documents already reds on any
+    # shrink; a HUMAN reading the output needs to know WHICH file stopped carrying
+    # what it used to, and under an expanding pointer the per-file number is the
+    # only place that is visible.
+    corpus: list[dict] = []
     for path in corpora:
         part, acc = load_corpus(Path(path), pointer)
         docs += part
         for k in accounting:
             accounting[k] += acc[k]
+        corpus.append({"path": str(path), "documents": acc["documents"],
+                       "expanded": acc["expanded"]})
 
     if expect_documents is not None and accounting["documents"] != expect_documents:
         raise InstrumentError(
@@ -687,8 +784,9 @@ def run(corpora, kind: str, schema_dir: Path, spec_text: str, check_formats: boo
     names = [n for f in findings for n in f["properties"]] + [u["key"] for u in undescribed]
 
     return {
-        "corpus": [str(p) for p in corpora],
+        "corpus": corpus,
         "pointer": pointer,
+        "pointer_expanded": any(entry["expanded"] for entry in corpus),
         "kind": kind,
         "schema": schema_name,
         "accounting": accounting,
@@ -716,6 +814,12 @@ REQUIRED_CONTROLS = {
     "closed-object-violation",      # forecloses can't-FAIL on species 1
     "instrument-failure",           # forecloses a corrupt corpus reading as clean
     "declared-cap-violation",       # forecloses can't-FAIL on §8 clause 4
+    "pointer-array-every-element",  # forecloses judging element 0 of an N-element
+                                    # envelope and printing the verdict of all N
+    "pointer-empty-selection",      # forecloses an array that shrank to zero
+                                    # reading as a clean, truthful pass
+    "pointer-token-literal-in-object",  # forecloses an extension that quietly
+                                    # redefines the base standard it extends
 }
 
 
@@ -832,9 +936,6 @@ def object_positions(schema: dict) -> list[tuple[str, dict]]:
     found: list[tuple[str, dict]] = []
     seen: set[int] = set()
 
-    def escape(token: str) -> str:
-        return token.replace("~", "~0").replace("/", "~1")
-
     def visit(node, pointer: str, in_place: bool) -> None:
         if not isinstance(node, dict) or id(node) in seen:
             return
@@ -846,7 +947,7 @@ def object_positions(schema: dict) -> list[tuple[str, dict]]:
                 visit(node[keyword], f"{pointer}/{keyword}", False)
         for keyword in LOCATION_MAP:
             for name, sub in (node.get(keyword) or {}).items():
-                visit(sub, f"{pointer}/{keyword}/{escape(name)}", False)
+                visit(sub, f"{pointer}/{keyword}/{_pointer_escape(name)}", False)
         for keyword in LOCATION_LIST:
             for index, sub in enumerate(node.get(keyword) or []):
                 visit(sub, f"{pointer}/{keyword}/{index}", False)
@@ -982,6 +1083,34 @@ def selftest(schema_dir: Path, spec_text: str, stream) -> int:
     for fx in fixtures:
         path = TOOL_DIR / "fixtures" / fx["path"]
         want = fx["expect"]
+        # An EXPANDING pointer must pin which element each finding came from. The
+        # demand is derived from the fixture's own pointer, never from a list kept
+        # beside it: `1 of 40 documents` with no element named is a count a reader
+        # cannot act on, and a fixture that asserted only the count would pass
+        # against a walker that mislabels every finding. `want["exit"] != 2` is not
+        # an escape hatch — an exit-2 fixture has no findings to name.
+        if (want["exit"] != 2 and fx.get("pointer")
+                and POINTER_EACH in fx["pointer"].lstrip("/").split("/")
+                and "first_documents" not in want):
+            raise InstrumentError(
+                f"fixture {fx['path']} points with {fx['pointer']!r}, which selects "
+                f"every element of an array, and declares no `first_documents`. A "
+                f"fixture over an expanded corpus must say WHICH element each "
+                f"finding came from; asserting the count alone passes against a "
+                f"validator that judges all of them and names the wrong one.")
+        # A REFUSAL must be pinned to its reason, not merely to its exit code, on
+        # every fixture whose subject is the pointer. `exit: 2` alone cannot tell
+        # "the envelope's wire shape moved out from under this pointer" apart from
+        # "the pointer walked into a scalar" — and a resolver that quietly gave a
+        # token a second meaning refuses BOTH ways, for different reasons, while
+        # passing a fixture that reads only the number. Derived from the fixture's
+        # own shape, so it cannot be forgotten on the next one.
+        if want["exit"] == 2 and fx.get("pointer") and "refusal_mentions" not in want:
+            raise InstrumentError(
+                f"fixture {fx['path']} expects a refusal on pointer "
+                f"{fx['pointer']!r} and declares no `refusal_mentions`. Exit 2 is a "
+                f"class, not a reason: a fixture that asserts only the number passes "
+                f"against an instrument refusing for a reason nobody intended.")
         try:
             report = run([path], fx["kind"], schema_dir, spec_text, False,
                          want.get("documents"), fx.get("pointer"))
@@ -992,10 +1121,12 @@ def selftest(schema_dir: Path, spec_text: str, stream) -> int:
                 "findings": _tuples(report["findings"]),
                 "cap_violations": _cap_tuples(report["cap_violations"]),
                 "undescribed": _undescribed_tuples(report["undescribed"]),
+                "first_documents": [f["first_document"] for f in report["findings"]],
             }
         except InstrumentError as exc:
             got = {"exit": 2, "documents": None, "findings": None,
-                   "cap_violations": None, "undescribed": None, "why": str(exc)}
+                   "cap_violations": None, "undescribed": None,
+                   "first_documents": None, "why": str(exc)}
 
         expected = {
             "exit": want["exit"],
@@ -1007,11 +1138,24 @@ def selftest(schema_dir: Path, spec_text: str, stream) -> int:
             "undescribed": [tuple(t) for t in want.get("undescribed", [])]
                            if want["exit"] != 2 else None,
         }
+        # Compared only where the manifest declares it: naming the document a
+        # finding first appeared in is an ADDITIONAL assertion, demanded above
+        # exactly where it is load-bearing.
+        if want["exit"] != 2 and "first_documents" in want:
+            expected["first_documents"] = list(want["first_documents"])
+        if want["exit"] == 2 and "refusal_mentions" in want:
+            expected["refusal_reason"] = want["refusal_mentions"]
+            said = got.get("why")
+            got["refusal_reason"] = (want["refusal_mentions"] if said is not None
+                                     and want["refusal_mentions"] in said else said)
         ok = all(got.get(k) == expected[k] for k in expected)
-        w(f"  [{'PASS' if ok else 'FAIL'}] {fx['path']}  ({fx['why']})")
+        # The pointer is part of the fixture's identity: one file carries several
+        # entries, and a PASS/FAIL line naming only the path cannot say which.
+        subject = fx["path"] + (f"  --pointer {fx['pointer']}" if fx.get("pointer") else "")
+        w(f"  [{'PASS' if ok else 'FAIL'}] {subject}  ({fx['why']})")
         if not ok:
-            failures.append(fx["path"])
-            for k in ("exit", "documents", "findings", "cap_violations", "undescribed"):
+            failures.append(subject)
+            for k in sorted(expected):
                 if got.get(k) != expected[k]:
                     w(f"        {k}: expected {expected[k]!r}")
                     w(f"        {k}: actual   {got.get(k)!r}")
@@ -1045,8 +1189,14 @@ def main(argv=None) -> int:
     parser.add_argument("--pointer", default=None,
                         help="RFC 6901 JSON Pointer to the document INSIDE a larger "
                              "envelope, e.g. --pointer /raw for a CI report that "
-                             "quotes the diff it was built from. A pointer that does "
-                             "not resolve is exit 2, never a skipped file.")
+                             "quotes the diff it was built from. One extension: "
+                             f"{POINTER_EACH!r} in an ARRAY position selects EVERY "
+                             "element and judges each as its own document — "
+                             f"--pointer /raw/{POINTER_EACH}/diff over a report "
+                             "carrying twenty comparisons judges twenty, and the "
+                             "count is in the output. A pointer that does not "
+                             "resolve, or that selects an EMPTY array, is exit 2 — "
+                             "never a skipped file and never a green over nothing.")
     parser.add_argument("--check-formats", action="store_true",
                         help="assert `format` (date-time, uri). OFF by default: "
                              "Draft 2020-12's default vocabulary makes format an "
