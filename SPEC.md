@@ -90,6 +90,27 @@ subset of the optional fields. Consumers **MUST** ignore unknown
 top-level fields and **MUST** ignore unknown keys inside
 `extensions`.
 
+**Encoding.** A MetaLog is a JSON text as defined by
+[RFC 8259](https://www.rfc-editor.org/rfc/rfc8259) §7, and every
+string it contains is bound by that section — member names and
+values alike, at every depth, `extensions` included. A producer
+**MUST** escape any character in the range U+0000–U+001F occurring
+in a string: the two-character escape where RFC 8259 defines one
+(`\b`, `\f`, `\n`, `\r`, `\t`), otherwise `\uXXXX`. It **MUST NOT**
+emit the raw character.
+
+This constrains **encoding, never content**. Log-derived values
+legitimately carry control characters and this spec takes no
+position on whether they should: a producer observing U+0000 in a
+value emits `\u0000`, and the value round-trips losslessly. The
+requirement is stated rather than left to RFC 8259 by implication
+because the failure it names is silent in a particular way — a
+document carrying a raw control character **is not JSON**, so a
+consumer's parser rejects it before any schema runs, and that
+rejection is indistinguishable from a truncated or corrupt file.
+An implementer needs text to cite for the difference. See §8
+clause 5.
+
 ### 2.1 `producer`
 
 ```jsonc
@@ -923,6 +944,9 @@ A producer is **conformant** with this spec at version *X.Y.Z* if:
    `behavior.branching_size`, `cube.cells` by `cube.cell_budget`.
    A cap a producer does **not** declare is not a claim, and its
    absence is not a violation.
+5. Every string it emits is escaped as §2 requires: no character in
+   the range U+0000–U+001F appears raw inside a string, at any
+   depth, in any member name or value, `extensions` included.
 
 A consumer is conformant if it accepts any document that validates
 against the schema, ignoring unknown fields and unknown extensions,
@@ -933,7 +957,19 @@ for clause 1.** Clause 4 is not reachable from the schema — JSON
 Schema's `maxItems` takes a constant, while the bound here is the
 value of a sibling field — but it *is* decidable from the document
 alone, and [`conformance/metalog_validate.py`](conformance/metalog_validate.py)
-decides it. Clauses 2 and 3 are not mechanically decidable today:
+decides it. Clause 5 is not reachable from the schema either, and
+for a stronger reason than clause 4: a document that violates it is
+not JSON, so no parser hands it to a schema validator and no
+keyword can fire. It *is* decidable from the document's **bytes**,
+with no parse and no tokenizer for the part that matters — RFC 8259
+§2 admits only U+0009, U+000A, U+000D and U+0020 as whitespace
+between tokens, so 29 of the 32 characters in U+0000–U+001F may not
+appear raw anywhere in a JSON text, and only those three remaining
+need string context to judge. A validator that decides it **MUST**
+report it as a **producer** failure, held apart from an unreadable
+corpus: the two reach a reader through the same parser error and
+have opposite remedies — fix the producer's escaping, or re-fetch
+the file. Clauses 2 and 3 are not mechanically decidable today:
 clause 2 only as far as the schema expresses it, and clause 3 not
 until a pinned cross-implementation digest vector exists.
 
@@ -1797,7 +1833,10 @@ cells regenerate by closure (**lossless reconstruction**). Each cell:
   ordered **prefix-path array** (`array[i]` = value at chain level `i`; its length is
   the roll-up granularity, `≤ floor_depth`). The object is **open over axis names** —
   so a future axis validates with no schema change — but each value **MUST** be a
-  string or an array of strings.
+  string or an array of strings. Those strings are bound by §2's encoding clause
+  exactly like every other string in the document — the constraint here is on
+  **type**, and it is not the only one that applies. Axis values come from the
+  observed stream, so a control character in one is escaped, never emitted raw.
 - `count` is the distributive base measure (**integer**).
 - The fully-aggregated cell (`coord: {}`) carries the window total.
 - Cells **MUST** serialise in a deterministic canonical (coord-sorted) order for

@@ -13,9 +13,13 @@ The spec follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [0.9.0] — unreleased
 
-**Additive** under [`GOVERNANCE.md`](GOVERNANCE.md) §2 — new optional fields only.
-No existing field changes type, becomes required, or is removed; **no conformant
-0.8.0 document becomes invalid**, and a 0.8.0 producer stays legal.
+**Additive** under [`GOVERNANCE.md`](GOVERNANCE.md) §2 — new optional fields only —
+**plus editorial clarifications, which carry no bump of their own** (see
+*Clarified* below). No existing field changes type, becomes required, or is
+removed; **no conformant 0.8.0 document becomes invalid**, and a 0.8.0 producer
+stays legal. The editorial items move no conformance bar either: each states a
+requirement that already bound a 0.8.0 producer, and states it so an implementer
+can cite it.
 
 ### Added
 
@@ -190,6 +194,45 @@ No existing field changes type, becomes required, or is removed; **no conformant
   makes the member optional. **No normative effect:** the key-sorted `value_counts`
   MUST is unchanged and no field's status changes; what changes is the spec's
   description of what the reference producer puts on the wire.
+
+### Clarified
+
+- **§2 gains an explicit `Encoding` clause and §8 a fifth conformance clause: a
+  producer MUST escape U+0000–U+001F inside every string** — member names and
+  values, at every depth, `extensions` included. **Editorial under
+  [`GOVERNANCE.md`](GOVERNANCE.md) §2, and it moves no conformance bar.** The
+  requirement is RFC 8259 §7 verbatim, and §1 already defines a MetaLog as *a
+  JSON document*: a byte sequence carrying a raw control character inside a
+  string was never a JSON text, so it was never a MetaLog. No conformant
+  document's bytes change and no valid document becomes invalid. What changes is
+  that the requirement is **citable** — it was inherited by implication only, and
+  the spec named neither RFC 8259 nor escaping anywhere in its text, leaving an
+  implementer no clause to point at when rejecting such a document and no clause
+  telling them their producer must escape.
+
+  **MUST escape, never MUST NOT emit**, and the distinction is the design. The
+  clause constrains **encoding**; it takes no position on **content**. A
+  log-derived value legitimately carrying U+0000 is emitted as `\u0000` and
+  round-trips losslessly. Forbidding the content would put this standard in the
+  business of adjudicating the values its producers observe, which it has no
+  basis to do.
+
+  **Why it earns a clause rather than being left to RFC 8259.** The failure is
+  silent in a particular way: a document violating it is not JSON, so a
+  consumer's parser rejects it *before* any schema runs — and that rejection is
+  byte-for-byte indistinguishable from a truncated or corrupt file. The two have
+  opposite remedies (fix the producer's escaping / re-fetch the file), so §8's
+  closing paragraph now requires a validator that decides clause 5 to report it
+  as a **producer** failure and hold it apart from an unreadable corpus. Clause 5
+  is decidable from the document's **bytes** with no parse: RFC 8259 §2 admits
+  only U+0009, U+000A, U+000D and U+0020 as inter-token whitespace, so 29 of the
+  32 characters in the range may not appear raw anywhere in a JSON text, and only
+  those three need string context.
+
+  §16.4 gains a pointer at the same clause. Its existing rule — cube `coord`
+  values MUST be a string or an array of strings — constrains **type** and reads
+  as though type were the whole constraint; axis values come from the observed
+  stream, so they are exactly where a control character arrives.
 
 ### Conformance tooling
 
