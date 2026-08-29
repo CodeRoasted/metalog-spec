@@ -11,7 +11,7 @@ The spec follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
-## [0.9.0] — unreleased
+## [0.9.0] — 2026-08-29
 
 **Additive** under [`GOVERNANCE.md`](GOVERNANCE.md) §2 — new optional fields only —
 **plus editorial clarifications, which carry no bump of their own** (see
