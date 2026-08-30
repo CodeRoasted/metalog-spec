@@ -9,6 +9,20 @@ The spec follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 > still introduce incompatible schema changes. After 1.0, semver
 > applies strictly.
 
+> **Publication gap — a declared defect, not a second kind of release.**
+> [`GOVERNANCE.md`](GOVERNANCE.md) §7 makes the GitHub Release the publication
+> surface and requires one for **every** MINOR and MAJOR version. Three exist:
+> **0.1.0**, **0.8.0** and **0.9.0**. So **0.2.0, 0.3.0, 0.4.0, 0.5.0, 0.6.0 and
+> 0.7.0 are unpublished** — their entries below are normative spec history, and
+> an implementer who needs a downloadable artifact for one of those six has
+> none. Of the six, only **0.5.0** carries a tag at all: `v0.5.0` was created as
+> a *lightweight* tag and was converted to an annotated one on 2026-08-30,
+> **onto the same commit** (`add88281`) it already named, so any existing pin to
+> `v0.5.0` still resolves to the same tree. **0.2.0, 0.3.0, 0.4.0, 0.6.0 and
+> 0.7.0 have no tag in this repository at all.** 0.1.1 is a PATCH, and §7 lets a
+> PATCH share the Release notes of its MINOR, so its lack of a Release is
+> compliant rather than a gap. Measured 2026-08-30.
+
 ---
 
 ## [0.9.0] — 2026-08-29
