@@ -9,21 +9,27 @@ The spec follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 > still introduce incompatible schema changes. After 1.0, semver
 > applies strictly.
 
-> **Publication gap — a declared defect, not a second kind of release.**
-> [`GOVERNANCE.md`](GOVERNANCE.md) §7 makes the GitHub Release the publication
-> surface and requires one for **every** MINOR and MAJOR version. Three exist:
-> **0.1.0**, **0.8.0** and **0.9.0**. So **0.2.0, 0.3.0, 0.4.0, 0.5.0, 0.6.0 and
-> 0.7.0 are unpublished** — their entries below are normative spec history, and
-> an implementer who needs a downloadable artifact for one of those six has
-> none. Of the six, only **0.5.0** carries a tag at all: `v0.5.0` was created as
-> a *lightweight* tag and was converted to an annotated one on 2026-08-30,
-> **onto the same commit** (`add88281`) it already named, so any existing pin to
-> `v0.5.0` still resolves to the same tree. **0.2.0, 0.3.0, 0.4.0, 0.6.0 and
-> 0.7.0 have no tag in this repository at all.** 0.1.1 is a PATCH, and §7 lets a
-> PATCH share the Release notes of its MINOR, so its lack of a Release is
-> compliant rather than a gap. Measured 2026-08-30.
-
----
+> **The publication gap is CLOSED — 2026-08-30.** [`GOVERNANCE.md`](GOVERNANCE.md) §7 makes the
+> annotated tag the publication surface and requires a GitHub Release for every MINOR and MAJOR
+> version. **All ten versions of the 0.x line now carry an annotated tag and a Release.** *(`0.1.1`
+> is a PATCH; §7 requires no Release for it, so its absence is compliance, not a gap.)*
+>
+> **What was wrong, recorded because a closed defect that leaves no trace stops being learned from.**
+> Before today only **five** versions had a tag and **three** had a Release. `0.2.0`, `0.3.0`,
+> `0.4.0`, `0.6.0` and `0.7.0` **had no tag at all**, so an implementer reading an entry below could
+> not obtain the document it describes; `v0.5.0` existed only as a *lightweight* tag.
+>
+> **Two things were done, and the difference between them matters.** `v0.5.0` was converted to an
+> annotated tag **onto the same commit it already named** (`add88281`), so any existing pin still
+> resolves to identical bytes. The five missing tags were **created retroactively**, each naming the
+> last commit at which `SPEC.md`'s own H1 declared that version — **a rule derived from the document
+> rather than chosen, and re-derivable by anyone**; each tag's annotation carries the rule and its
+> two caveats.
+>
+> **No date is misrepresented.** The six Releases created on 2026-08-30 say so in their own bodies.
+> A Release created today for a specification text dated 2026-05 is a **late publication**, and it is
+> labelled as one — it is not a claim that the version was available earlier. The dates in the
+> headings below are the specification's, and they are unchanged.
 
 ## [0.9.0] — 2026-08-29
 
