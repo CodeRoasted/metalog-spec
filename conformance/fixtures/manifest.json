@@ -4,6 +4,9 @@
     "undescribed_encoding": "[instance path, member name, documents affected]",
     "first_documents_encoding": "one label per finding, in order: the document a finding was FIRST seen in. Under a pointer that selects every element of an array the label is the file name followed by the concrete RFC 6901 pointer of the element, e.g. `report.json/raw/2/diff`; otherwise it is the label the corpus reader already used. Optional in general and MANDATORY on any fixture whose pointer carries the every-element token — metalog_validate derives that demand from the pointer itself and refuses to run without it, because a count alone ('1 of 4') passes against a validator that judges every element and names the wrong one.",
     "refusal_mentions_encoding": "a substring the instrument's own message must contain. MANDATORY on any exit-2 fixture that carries a pointer, and derived from the fixture rather than listed here: exit 2 is a CLASS, not a reason, and a pointer refusal has several — the member is absent, the wire shape moved, the selection is empty, the walk hit a scalar. A fixture asserting only the number passes against an instrument that refuses for a reason nobody intended.",
+    "unadjudicated_directories": {
+        "unarmed": "Fixtures authored against a rule the shipped schemas cannot yet express, so wiring them would assert a verdict against a schema that cannot answer the question. They are kept in the repository, out of the adjudicated corpus, until the rule lands in SPEC.md and the schemas; metalog_validate refuses to run its self-test if this exemption carries no reason, and prints how many files it currently holds so an exemption that grows cannot grow quietly."
+    },
     "cap_violations_encoding": "[instance path, cap field, value the document declares, actual array length, documents affected]",
     "fixtures": [
         {

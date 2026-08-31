@@ -40,6 +40,7 @@ import argparse
 import json
 import re
 import sys
+import tempfile
 from collections import Counter, defaultdict
 from pathlib import Path
 
@@ -808,6 +809,111 @@ def run(corpora, kind: str, schema_dir: Path, spec_text: str, check_formats: boo
 # Self-test — the gate's teeth, and the reason a green here means anything.
 # --------------------------------------------------------------------------
 
+MANIFEST_NAME = "manifest.json"
+
+# Files under `fixtures/` that are documentation ABOUT the corpus rather than
+# members of it. Kept to a suffix so a new corpus file in an unforeseen encoding
+# (`.ndjson`, say) is still censused: an extension allowlist would silently
+# narrow the sweep, which is the same defect one level down from the one the
+# census closes.
+NON_CORPUS_SUFFIXES = {".md"}
+
+
+def census_fixture_files(fixtures_dir: Path, listed: set[str],
+                         unadjudicated: set[str]
+                         ) -> tuple[list[str], list[str], dict[str, int], int]:
+    """Join the fixture files ON DISK against the paths `manifest.json` lists.
+
+    Returns `(unlisted, absent, shadowed, considered)`:
+      * `unlisted`   files present in the corpus that no manifest entry names —
+                     the defect this exists for. Such a file is judged by
+                     nothing, forever, while the self-test's closing count
+                     ("22/22 fixtures") reads as coverage OF THE CORPUS when it
+                     is only coverage of the list.
+      * `absent`     manifest entries naming a file that is not there — the
+                     reverse leg. It already failed later, in the corpus reader,
+                     as an unreadable-file error; named here it is a manifest
+                     defect rather than a mystery mid-run.
+      * `shadowed`   per declared unadjudicated directory, how many files it
+                     holds. Printed every run: an exemption that grows is then
+                     visible, which is the only thing that keeps it honest.
+      * `considered` how many files the join actually judged.
+
+    Pure: it takes a directory and two sets and touches nothing else, so the
+    control below can exercise every branch on a synthetic tree.
+    """
+    unlisted: list[str] = []
+    shadowed: dict[str, int] = {d: 0 for d in sorted(unadjudicated)}
+    considered = 0
+    for path in sorted(fixtures_dir.rglob("*")):
+        if not path.is_file():
+            continue
+        rel = path.relative_to(fixtures_dir).as_posix()
+        if rel == MANIFEST_NAME:
+            continue
+        top = rel.split("/", 1)[0]
+        # The shadow is tested BEFORE the suffix rule on purpose: the count
+        # printed for a declared directory is the size of the whole directory,
+        # not the size of the part that happens to look like a corpus.
+        if top in shadowed:
+            shadowed[top] += 1
+            continue
+        if path.suffix in NON_CORPUS_SUFFIXES:
+            continue
+        considered += 1
+        if rel not in listed:
+            unlisted.append(rel)
+    absent = sorted(rel for rel in listed if not (fixtures_dir / rel).is_file())
+    return unlisted, absent, shadowed, considered
+
+
+def census_control() -> None:
+    """Prove the census arm can fire, and that a declared shadow survives it.
+
+    A structural refusal nobody has watched fail is the same evidence as a gate
+    nobody has watched fail: none. This runs on a synthetic tree every self-test,
+    so the arm is proven on the same invocation it judges with, and it exercises
+    all four returns — the stowaway is caught, the shadowed file is not, the
+    manifest and a `.md` are out of subject, and a listed-but-missing path is
+    reported from the other side.
+    """
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp)
+        (root / "valid").mkdir()
+        (root / "shadow").mkdir()
+        for rel in (MANIFEST_NAME, "README.md", "valid/listed.metalog.jsonl",
+                    "valid/stowaway.metalog.jsonl", "shadow/unlisted.diff.json"):
+            (root / rel).write_text("", encoding="utf-8")
+        listed = {"valid/listed.metalog.jsonl"}
+
+        unlisted, absent, shadowed, considered = census_fixture_files(
+            root, listed, {"shadow"})
+        if unlisted != ["valid/stowaway.metalog.jsonl"]:
+            raise InstrumentError(
+                f"census control: an unlisted fixture was NOT caught — expected "
+                f"['valid/stowaway.metalog.jsonl'], got {unlisted!r}. The arm is "
+                f"dead, so its silence over the real corpus means nothing.")
+        if shadowed != {"shadow": 1}:
+            raise InstrumentError(
+                f"census control: the declared unadjudicated directory did not "
+                f"survive — expected {{'shadow': 1}}, got {shadowed!r}. Either the "
+                f"shadow stopped shadowing (its files would now red) or it stopped "
+                f"counting (its growth would be invisible).")
+        if considered != 2 or absent:
+            raise InstrumentError(
+                f"census control: the join judged {considered} file(s) and reported "
+                f"absent={absent!r}; expected 2 and none. `{MANIFEST_NAME}` and "
+                f"`.md` must be out of subject, and nothing listed was missing.")
+
+        _, absent, _, _ = census_fixture_files(
+            root, listed | {"valid/ghost.metalog.jsonl"}, {"shadow"})
+        if absent != ["valid/ghost.metalog.jsonl"]:
+            raise InstrumentError(
+                f"census control: a manifest entry naming a file that is not there "
+                f"was NOT caught — expected ['valid/ghost.metalog.jsonl'], got "
+                f"{absent!r}.")
+
+
 REQUIRED_CONTROLS = {
     "multi-document-section",       # forecloses green-BLIND on the sectioned form
     "undescribed-false-positive",   # forecloses a walker that invents findings
@@ -1060,6 +1166,54 @@ def selftest(schema_dir: Path, spec_text: str, stream) -> int:
             f"{sorted(missing)}. Each one forecloses a specific way this validator "
             f"could go green while blind; without it, a pass here proves nothing."
         )
+
+    # ── THE CORPUS CENSUS. Until 2026-08-31 this self-test iterated `fixtures`
+    # from the manifest and never the filesystem, so a fixture FILE that was
+    # never listed was judged by nothing, forever — and the closing count read
+    # as coverage of the corpus when it was only coverage of the list. The join
+    # below is the one arm that closes it, and its own control runs first.
+    census_control()
+
+    # The shadow is DECLARED DATA, in the oracle, with a reason per entry — never
+    # a set hard-coded here. A directory deliberately outside the adjudicated
+    # corpus is a decision (`fixtures/unarmed/` holds fixtures authored against a
+    # rule the schemas cannot yet express: wiring them would assert a verdict
+    # against a schema that cannot answer the question). A reason nobody wrote
+    # down is a defect that looks like a decision, so an empty one refuses here.
+    shadow = manifest.get("unadjudicated_directories", {})
+    if not isinstance(shadow, dict):
+        raise InstrumentError(
+            f"`unadjudicated_directories` in {manifest_path.name} must be an object "
+            f"mapping a directory name to the reason it is outside the adjudicated "
+            f"corpus; got {type(shadow).__name__}.")
+    for name, reason in sorted(shadow.items()):
+        if not isinstance(reason, str) or not reason.strip():
+            raise InstrumentError(
+                f"`unadjudicated_directories['{name}']` carries no reason. A "
+                f"directory this self-test agrees not to judge must say why it is "
+                f"exempt, or the exemption is indistinguishable from an oversight.")
+
+    fixtures_dir = TOOL_DIR / "fixtures"
+    listed = {fx["path"] for fx in fixtures}
+    unlisted, absent, shadowed, considered = census_fixture_files(
+        fixtures_dir, listed, set(shadow))
+    if unlisted:
+        raise InstrumentError(
+            f"{len(unlisted)} fixture file(s) under {fixtures_dir.name}/ are named by "
+            f"NO entry in {manifest_path.name}: {unlisted}. Such a file is judged by "
+            f"nothing and this self-test would still print a full count, which reads "
+            f"as coverage it never had. List it with its expectation, or declare its "
+            f"directory in `unadjudicated_directories` with the reason.")
+    if absent:
+        raise InstrumentError(
+            f"{len(absent)} entry/entries in {manifest_path.name} name a file that is "
+            f"not there: {absent}. The oracle outlived its subject.")
+    w(f"  fixture census: {considered} corpus file(s) on disk, all named by "
+      f"{manifest_path.name} ({len(fixtures)} entries over {len(listed)} distinct path(s))")
+    for name, reason in sorted(shadow.items()):
+        held = shadowed.get(name, 0)
+        state = f"{held} file(s) skipped" if held else "no file at this ref"
+        w(f"    unadjudicated by declaration: {name}/ — {state} — {reason}")
 
     import jsonschema
     loaded: dict[str, dict] = {}
