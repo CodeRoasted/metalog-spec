@@ -1,4 +1,4 @@
-# MetaLog Specification — v0.9.0 (Draft)
+# MetaLog Specification — v0.10.0 (Draft)
 
 > **Status:** Draft. Subject to incompatible change until v1.0.
 > **Cross-reference:** [`RATIONALE.md`](RATIONALE.md) for *why*
@@ -75,10 +75,10 @@ top-level fields:
 | `canonicalization_version` | string | no | Opaque identifier for the canonicalization rules in effect. Gates `compose()`/diff comparability. See §2.4. |
 | `retention_profile` | string | no | Opaque identifier for the retention parameters (top_k, reservoir, salience weights, diversity caps). Gates `compose()`/diff comparability. See §2.4. |
 | `stats` | object | yes | Per-template counts and frequency metrics. See §3. |
-| `templates` | object | no | Optional dedup map `template_id → template_str`. See §3.4. |
+| `templates` | object | no | Optional dedup map `template_id → template_str`. See §3.4. **RESERVED** — see §2. |
 | `behavior` | object | no | Sequence/transition fingerprint. See §4. |
 | `stability` | object | no | Divergence from the previous window. See §5. |
-| `attribution` | object | no | Distribution of templates across sub-sources. See §6. |
+| `attribution` | object | no | Distribution of templates across sub-sources. See §6. **RESERVED** — see §2. |
 | `cube` | object | no | Joint categorical condensation (closed cube). **Experimental.** See §16. |
 | `coordinate` | object | no | Re-derivation coordinate: `raw(window) = replay(source, bounds)`. See §15. |
 | `run_outcome` | string | no | Terminal verdict of the run this window covers, when the stream stated one. See §2.5. |
@@ -89,6 +89,33 @@ Producers **MUST** emit the required fields and **MAY** emit any
 subset of the optional fields. Consumers **MUST** ignore unknown
 top-level fields and **MUST** ignore unknown keys inside
 `extensions`.
+
+**RESERVED features.** A feature marked **RESERVED** is registered in
+this specification but is **not** part of any conformance level. A
+producer **MUST NOT** be judged non-conformant for omitting it, and a
+consumer **MUST NOT** rely on its presence. A RESERVED feature carries
+no compatibility guarantee and **MAY** be removed in any release.
+
+The label exists because a specification is read by implementers who
+cannot see the reference implementation: a described feature that no
+producer emits is indistinguishable, from the outside, from one that is
+merely rare, and an implementer building against it is building against
+nothing. RESERVED says which is which. As of **v0.10.0** the RESERVED
+features are `templates` (§3.4), `attribution` (§6) and
+`cube.floor_saturation` (§16.3).
+
+**RESERVED is DECLARED in the schema, not only in this prose.** Each
+reserved position in
+[`schema/metalog.v0.schema.json`](schema/metalog.v0.schema.json)
+carries an `x-metalog-reserved` keyword whose value is an object with a
+`description` and the `since` version. Reservation covers the position's
+whole **subtree**: `attribution`'s four required sub-fields are reserved
+because `attribution` is, and neither a producer nor a consumer owes
+them anything. Like `x-metalog-vacuous` (§13.2.1) this is an
+**annotation**: it asserts nothing, a generic validator ignores it, and
+no document changes validity. It exists because a conformance level
+that only a prose reader can see is one a third party's tooling cannot
+act on — and third-party tooling is the entire reason the label exists.
 
 **Encoding.** A MetaLog is a JSON text as defined by
 [RFC 8259](https://www.rfc-editor.org/rfc/rfc8259) §7, and every
@@ -334,6 +361,12 @@ skeletons in any of three modes:
 | **inline** | `stats.top_k[i].template` | Self-contained documents; small cost (~50–100 B per entry). |
 | **dedup** | top-level `templates` map | Many MetaLogs sharing a corpus (multi-window archives, sharded composition). Each `template_id` appears once across the document. |
 | **id-only** | omitted entirely | Bandwidth-bound transports; the consumer reconstructs strings from a side channel keyed by `template_id`. |
+
+The top-level `templates` map is **RESERVED** (§2): it is registered
+here, is not part of any conformance level, and no producer is judged
+non-conformant for omitting it. The `inline` and `id-only` modes above
+are **not** reserved — a `top_k` entry's own `template` field is
+ordinary optional surface.
 
 The top-level dedup map is shaped:
 
@@ -846,6 +879,13 @@ producers and consumers **SHOULD** use a `MetaLogDiff` document
 
 ## 6. `attribution` — sub-source distribution (optional)
 
+**`attribution` is RESERVED (§2)**: it is registered in this
+specification, is not part of any conformance level, and carries no
+compatibility guarantee. No producer is judged non-conformant for
+omitting it, no consumer may rely on its presence, and it **MAY** be
+removed in any release. The block below is its registered shape, not a
+conformance obligation.
+
 When a single MetaLog covers multiple hosts, services, or tenants,
 attribution captures *which template fired most for which sub-source*
 in compressed form.
@@ -947,6 +987,10 @@ A producer is **conformant** with this spec at version *X.Y.Z* if:
 5. Every string it emits is escaped as §2 requires: no character in
    the range U+0000–U+001F appears raw inside a string, at any
    depth, in any member name or value, `extensions` included.
+6. Every `MetaLogDiff` it emits satisfies §13.2's witness rule:
+   `comparison_outcome` agrees with whether the document carries a
+   non-vacuous signal property, vacuity being decided by each
+   property's `x-metalog-vacuous` declaration (§13.2.1).
 
 A consumer is conformant if it accepts any document that validates
 against the schema, ignoring unknown fields and unknown extensions,
@@ -972,6 +1016,17 @@ have opposite remedies — fix the producer's escaping, or re-fetch
 the file. Clauses 2 and 3 are not mechanically decidable today:
 clause 2 only as far as the schema expresses it, and clause 3 not
 until a pinned cross-implementation digest vector exists.
+
+Clause 6 is not reachable from the schema either: the predicate is
+`x-metalog-vacuous`, an annotation a generic validator ignores by
+design, and the rule quantifies over the schema's own property set
+rather than over the instance. It *is* decidable from the document
+and the schema alone, and
+[`conformance/metalog_validate.py`](conformance/metalog_validate.py)
+decides it. That tool **MUST** exit 2 rather than judge a document
+when the schema's declarations are themselves defective — an
+instrument that cannot say what a finding is must not return a
+verdict about one.
 
 ---
 
@@ -1333,6 +1388,7 @@ not directly comparable.
 ```jsonc
 {
   "diff_version": "0.4.0",
+  "comparison_outcome": "changed",     // string, REQUIRED — "changed" | "unchanged", §13.2
   "current":  { "window": { "start": "...", "end": "..." }, "document_id": "sha256:..." },
   "previous": { "window": { "start": "...", "end": "..." }, "document_id": "sha256:..." },
   "kl_divergence": 0.043,
@@ -1387,18 +1443,158 @@ not directly comparable.
 
 ### 13.2 Required vs optional fields
 
-- `diff_version`, `current`, `previous` are **REQUIRED**.
-- All other fields are **OPTIONAL** but at least one of
-  `kl_divergence`, `js_divergence`, `template_deltas`,
-  `new_templates`, `vanished_templates`, `branching_delta`,
-  `ngram_delta`, `tail_delta`, or `reservoir_delta` **MUST** be
-  present (an empty diff is a no-op document and should not be
-  emitted).
+- `diff_version`, `current`, `previous`, `comparison_outcome` are
+  **REQUIRED**.
+- `comparison_outcome` is `"changed"` or `"unchanged"`. It is the
+  producer's **assertion about the comparison it performed**, not a
+  summary of which fields it chose to serialise.
+- `"unchanged"` means *the comparison ran and found no change*. That is
+  a **positive result**, not an empty document: an instrument that
+  cannot say "I compared and found nothing" is an instrument whose
+  silence is unreadable. A document whose `comparison_outcome` is
+  `"unchanged"` **MAY** carry signal properties and is **NOT** required
+  to carry any, but it **MUST NOT** carry a **witness**: every optional
+  signal property it does carry **MUST** be vacuous by that property's
+  own `x-metalog-vacuous` declaration (§13.2.1). A producer that found
+  a change and reported `"unchanged"` has emitted a document at war
+  with itself, and a consumer cannot distinguish that from a defect.
+- `"changed"` means *the comparison found at least one change*, and the
+  document **MUST** carry a **witness** for it: at least one signal
+  property that is **non-vacuous by that property's own declaration**.
+  **A signal property that is present but carries no finding is not a
+  witness**: `template_deltas` is a union over both windows and
+  `js_divergence` is emitted whenever computable, so presence alone is
+  satisfied by every producer regardless of what it found.
+- The witness set is **every optional signal property of
+  [`schema/metalog_diff.v0.schema.json`](schema/metalog_diff.v0.schema.json)**
+  — derived from the schema, never enumerated here. A signal property
+  added to the schema joins the witness set on arrival. This replaces
+  the hand-kept list that had drifted from the schema by three members
+  (`field_histogram_deltas`, `cube_diff`, `stability_score`).
+- **Vacuity is DECLARED per property, in the schema — never inferred
+  from the property's JSON shape.** Each optional signal property
+  carries an `x-metalog-vacuous` annotation naming the state in which
+  it carries no finding, and the witness rule reads that annotation.
+  A signal property's shape does not determine what a finding in it
+  looks like: a **descriptor** member (`cube_diff.axes`,
+  `ngram_delta.ngram_size`) is never a finding however non-empty it is,
+  an all-numeric object (`tail_delta`) carries findings with no array
+  at all, and a scalar's vacuous value is whatever its own definition
+  makes it — `0` for a divergence, **`1` for `stability_score`**.
+- A producer that found no change on a signal property **MUST** emit
+  that property's declared vacuous value, or omit the property
+  entirely. A value that is merely *close* to the declared vacuous
+  value is a witness, and will be read as one: `const: 0` is exact
+  numeric equality, so a divergence computed in floating point and
+  serialised as `1e-17` between two identical distributions is a
+  **false witness**, and the defect is the producer's.
 - `template_deltas` **SHOULD** be capped at the larger of the two
   inputs' `top_k_size`. Producers **MAY** report the cap in
   `extensions.org.metalog.deltas_truncated_at` — the §7 container is
   granted at this root from **v0.9.0**, which is the release that gave
   this MAY a placement to name.
+
+### 13.2.1 Vacuity declarations — `x-metalog-vacuous`
+
+§13.2's witness rule asks whether a signal property carries a **finding**. A
+property's JSON shape does not answer that question: a descriptor member is
+never a finding however non-empty it is, an all-numeric object carries findings
+with no array at all, and a scalar's no-finding value is whatever its own
+definition makes it. **Vacuity is therefore DECLARED, per property, in
+`metalog_diff.v0.schema.json` — never inferred from shape.**
+
+**The declaration.** Each optional signal property of that schema carries an
+`x-metalog-vacuous` keyword whose value is a **JSON Schema Draft 2020-12
+assertion subschema**, in the dialect the schema file declares at its root.
+
+**The rule.** A signal property is **vacuous** exactly when its value validates
+against that subschema, and is a **witness** otherwise.
+
+`x-metalog-vacuous` is a schema keyword. It never appears in a MetaLogDiff
+document, so §7's reverse-DNS rule for extension **members** does not reach it;
+the `x-metalog-` prefix guards against collision with a future JSON Schema
+vocabulary keyword. It asserts nothing about any document: a generic validator
+ignores it, exactly as it ignores `format`, and no consumer must implement it.
+
+**Grammar.** A conformant `x-metalog-vacuous` value:
+
+1. **MUST** be a JSON object. The boolean schemas `true` and `false` are **not**
+   conformant values: they are the two degenerate declarations — one makes the
+   property a witness never, the other always — and neither has anywhere to
+   carry its reason.
+2. **MUST** be a valid Draft 2020-12 schema.
+3. **MUST NOT** contain any object member whose name begins with `$`, at
+   any depth. *Member*, not *keyword*: at depth, a name inside a
+   `properties` map is an instance property name rather than a keyword,
+   and telling the two apart would need exactly the dialect keyword model
+   this section deliberately does not require. The rule is stated over
+   member names so that it is decidable by walking the annotation alone.
+   The annotation is not reached by a host validator's schema-compilation walk,
+   so whether a `$ref` inside it resolves is implementation-defined. The
+   annotation is **self-contained**: it can be lifted out of the schema and
+   evaluated against a property's value with nothing else loaded.
+4. **MUST** carry a `description` saying what a finding in this property is, or
+   why the property is never one.
+5. Carrying **no assertion keyword** — only `description`, `title`, `examples`,
+   `default`, `deprecated`, `readOnly` or `writeOnly` — declares the property a
+   **descriptor**: it is never a witness. This is not a special case; the
+   empty-assertion object is the always-true schema, so every value is vacuous
+   under it. Clause 4 is what makes it a declaration rather than an oversight.
+
+There is deliberately **no fixed list of permitted assertion keywords**. The
+grammar is closed on structure and open on predicate: an implementer proposing a
+signal property whose shape nobody anticipated writes the predicate that decides
+it, and needs no change to this section.
+
+**One declaration is structurally always a witness, and that is not a
+defect.** §13.7 forbids emitting `reservoir_delta` with all three of its
+lists empty, which is exactly the state its declaration calls vacuous —
+so in a conformant document the property witnesses whenever it is
+present. Clause 1 forbids the two boolean spellings, so this is the only
+conformant way to write that declaration; a reader should simply not
+expect all twelve to be able to decide both ways.
+
+**Coverage.** Every property of the root `properties` object that is neither
+listed in the root `required` array nor the §7 `extensions` container **MUST**
+carry an `x-metalog-vacuous` keyword. An **absent** declaration is a defect of
+the schema, not a permission: absence is not a disposition, it is the lack of
+one. A validator deciding §13.2 **MUST** refuse to run when it finds one, rather
+than return a verdict about a finding it cannot define.
+
+**What a declaration cannot say, and why.** A vacuity predicate is a **pure
+function of the property's own serialized value**. It cannot reach a sibling
+property, the paired document, or `diff_version`; it cannot compare one member
+against another or perform arithmetic; it cannot express an aggregate over
+entries beyond what JSON Schema asserts. This is a floor rather than a gap. It
+is what lets any implementer evaluate the rule with an off-the-shelf validator
+and the property's value alone, and it places the design pressure correctly: a
+signal property whose finding is not a function of its own serialized value does
+not carry its own finding, and the remedy is to give it one. A property whose
+vacuity cannot be declared has exactly two conformant homes — reshape it so its
+value states its finding, or declare it a descriptor — and neither is silent.
+
+**Producer obligation.** A producer that found no change on a signal property
+**MUST** emit that property's declared vacuous value, or omit the property. The
+declarations use exact equality: a divergence computed as `1e-17` between two
+identical distributions is a **witness**, and the defect is the producer's.
+
+**Evaluation, in full.** Let `D` be a MetaLogDiff and `S` be
+`metalog_diff.v0.schema.json`.
+
+1. `D` **MUST** validate against `S` (§8 clause 1). The witness rule is
+   evaluated only on a schema-valid document; because `D` has already been
+   type-checked, a declaration never restates the property's type.
+2. The **witness set** is every member name of `S`'s root `properties` that is
+   neither in `S`'s root `required` nor `extensions`. It is read from **`S`**,
+   never from `D`: a member `D` carries that `S` does not declare is not in the
+   witness set, and a member inside `extensions` is never a witness.
+3. For each name `P` in the witness set absent from `D`: `P` is not a witness.
+   For each present: `P` is **vacuous** if `D[P]` validates against
+   `S`'s `properties/P/x-metalog-vacuous`, and a **witness** if it does not.
+4. `comparison_outcome: "changed"` **MUST** carry at least one witness.
+   `comparison_outcome: "unchanged"` **MUST NOT** carry any witness — a producer
+   filtering by significance omits the sub-threshold property or emits it at its
+   vacuous value, rather than asserting an outcome its own document contradicts.
 
 ### 13.3 Direction and sign
 
@@ -1801,7 +1997,7 @@ two levels and aggregates (`*`) below.
   roll-up** to a coarser effective floor (§16.10's WHERE step, bounding per-window
   cardinality) is exactly *prefix truncation of the chain* and requires **no schema
   change**: `floor_depth` shrinks and the cells roll up.
-- **`floor_saturation`** (optional) = the fraction of emerging borders that hit the
+- **`floor_saturation`** (optional, **RESERVED** — §2) = the fraction of emerging borders that hit the
   floor without being able to descend. High ⇒ the **schema** floor is too coarse ⇒
   re-freeze it finer **offline on the corpus, never per window** (§16.10's
   per-window step only ever *coarsens*). It is a **health metric, not a gate**: a

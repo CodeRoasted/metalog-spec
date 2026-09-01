@@ -96,6 +96,10 @@
             "additionalProperties": false
         },
         "templates": {
+            "x-metalog-reserved": {
+                "description": "RESERVED (SPEC 2): registered, not part of any conformance level. A producer is not non-conformant for omitting it and a consumer MUST NOT rely on its presence. The top-level dedup map only -- the inline and id-only template modes of SPEC 3.4 are not reserved.",
+                "since": "0.10.0"
+            },
             "type": "object",
             "description": "Optional dedup map template_id -> template_str (SPEC §3.4).",
             "patternProperties": {
@@ -364,6 +368,10 @@
             "additionalProperties": false
         },
         "attribution": {
+            "x-metalog-reserved": {
+                "description": "RESERVED (SPEC 2): registered, not part of any conformance level, and MAY be removed in any release. Reservation covers this subtree, its four required sub-fields included.",
+                "since": "0.10.0"
+            },
             "type": "object",
             "required": [
                 "dimension",
@@ -690,6 +698,10 @@
                     "description": "The producer's static closed-cell budget (SPEC \u00a716.10). Optional. It dominates every other term of the size formula (SPEC \u00a711.4), so an undeclared budget leaves a consumer unable to price the block. Added in v0.9.0."
                 },
                 "floor_saturation": {
+                    "x-metalog-reserved": {
+                        "description": "RESERVED (SPEC 2): registered, not part of any conformance level. An optional WHERE-floor health metric no producer is required to emit.",
+                        "since": "0.10.0"
+                    },
                     "type": "number",
                     "minimum": 0,
                     "maximum": 1,

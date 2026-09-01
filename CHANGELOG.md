@@ -31,6 +31,106 @@ The spec follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 > labelled as one — it is not a claim that the version was available earlier. The dates in the
 > headings below are the specification's, and they are unchanged.
 
+## [0.10.0] — UNRELEASED
+
+**Breaking** under [`GOVERNANCE.md`](GOVERNANCE.md) §2 — a new **required** member
+on `MetaLogDiff`, and a rewritten §13.2 clause. MINOR bump: MAJOR stays `0`, so
+§6's *"the MAJOR field of `metalog_version` must equal the MAJOR of the spec"* is
+satisfied unchanged and **both schema files keep their `v0` filenames** — a reader
+who expects a `v1` schema and a MAJOR check that starts refusing documents will
+find neither. RFC issue
+[#8](https://github.com/CodeRoasted/metalog-spec/issues/8), opened 2026-08-24.
+
+**This entry covers the RFC's P2 only.** P1 (closing the extension boundary), P3
+(the composed document's own caps) and P4 (the `branching` compose clause) are
+proposed in the same issue and are **not** in this text yet.
+
+### Changed
+
+- **§13.2 now quantifies over a VERDICT, not over field presence.** The old clause
+  required *"at least one of"* nine named fields to be **present**. Presence is
+  satisfied by every producer regardless of what it found — `template_deltas` is a
+  union over both windows and `js_divergence` is emitted whenever computable — so
+  **the clause could not fail**, which is worse than an absent one: it reads as
+  coverage. It is replaced by a witness rule over an asserted outcome.
+
+  **`comparison_outcome` (string, `"changed"` | `"unchanged"`) is REQUIRED.** It is
+  the producer's assertion about the comparison it performed, not a summary of what
+  it chose to serialise. A `"changed"` document **MUST** carry a **witness** — at
+  least one non-vacuous signal property. An `"unchanged"` document **MUST NOT**
+  carry one: both arms are obliged, because a rule that binds only one arm is
+  satisfied forever by a producer that always writes the other.
+
+  **A producer MUST emit a signal property's declared vacuous value, or omit the
+  property.** `const: 0` is exact numeric equality — measured with `jsonschema`
+  4.26.0 on Draft 2020-12, `0`, `0.0` and `-0.0` match `const: 0` and `1e-17` does
+  **not** — so a divergence computed in floating point and serialised as `1e-17`
+  between two identical distributions is a **false witness**.
+
+- **The witness set is derived from the schema, never enumerated in prose.** §13.2's
+  hand-kept list had drifted from `metalog_diff.v0.schema.json` by three members
+  (`field_histogram_deltas`, `cube_diff`, `stability_score`): nine named against
+  twelve shipped. Deleting the list is the only repair that cannot drift again — a
+  signal property added to the schema joins the witness set on arrival. The cost is
+  stated rather than hidden: **§13.2 is no longer readable standalone**, and a reader
+  must consult the schema to know the set.
+
+### Added
+
+- **§13.2.1 — `x-metalog-vacuous`, a per-property vacuity declaration.** The witness
+  rule asks whether a property carries a **finding**, and a property's JSON *shape*
+  does not answer that: a descriptor member (`cube_diff.axes`,
+  `ngram_delta.ngram_size`) is never a finding however non-empty it is, an
+  all-numeric object (`tail_delta`) carries findings with no array at all, and a
+  scalar's no-finding value is whatever its definition makes it — `0` for a
+  divergence, **`1` for `stability_score`**. So vacuity is **declared**, per
+  property, in the schema.
+
+  The annotation's value **is a JSON Schema Draft 2020-12 assertion subschema**, and
+  a property is vacuous exactly when its value validates against it. The grammar is
+  **closed on structure** — five walkable MUSTs — and **open on predicate**: there is
+  deliberately no allowlist of assertion keywords, so an implementer proposing a
+  signal property whose shape nobody anticipated writes the predicate that decides it
+  and needs no change to this section.
+
+  **All twelve** optional signal properties of `metalog_diff.v0.schema.json` carry
+  one. Coverage is a MUST and an absent declaration is a **defect of the schema, not
+  a permission**: a validator deciding §13.2 **MUST** refuse to run rather than
+  return a verdict about a finding it cannot define.
+
+  `x-metalog-vacuous` never appears in a document, so §7's reverse-DNS rule for
+  extension **members** does not reach it. A generic validator ignores it exactly as
+  it ignores `format`; **no document changes validity because of the annotation
+  alone**, and the only migration cost is for STRICT-mode validators (Ajv's
+  `strict: true`), which must allowlist the keyword.
+
+- **§8 gains conformance clause 6** — a producer's diffs satisfy the witness rule —
+  and the closing paragraph records that, like clauses 4 and 5, it is not reachable
+  from the schema: the predicate is an annotation a generic validator ignores by
+  design, and the rule quantifies over the schema's property set rather than over the
+  instance.
+
+- **§2 defines the RESERVED conformance level**, and applies it to three features the
+  reference producer does not implement: **`templates`** (§3.4, the top-level dedup
+  map only — the `inline` and `id-only` modes are unaffected), **`attribution`** (§6)
+  and **`cube.floor_saturation`** (§16.3). A RESERVED feature is registered here, is
+  **not part of any conformance level**, and **MAY** be removed in any release; no
+  producer is non-conformant for omitting it and no consumer may rely on it.
+
+  This is a **relaxation** — it removes no field and invalidates no document. It
+  exists because a specification is read by implementers who cannot see the reference
+  implementation: from the outside, a described feature nobody emits is
+  indistinguishable from one that is merely rare, and an implementer building against
+  it is building against nothing.
+
+  **The label is machine-readable.** Each reserved position in
+  `metalog.v0.schema.json` carries an `x-metalog-reserved` annotation (a
+  `description` and a `since`), and reservation covers the position's whole subtree.
+  A conformance level only a prose reader can see is one a third party's tooling
+  cannot act on, and third-party tooling is the entire reason the label exists.
+  Like `x-metalog-vacuous`, it is an annotation: it asserts nothing and changes no
+  document's validity.
+
 ## [0.9.0] — 2026-08-29
 
 **Additive** under [`GOVERNANCE.md`](GOVERNANCE.md) §2 — new optional fields only —

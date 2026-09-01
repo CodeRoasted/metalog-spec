@@ -7,7 +7,7 @@
     "additionalProperties": {
         "description": "Open, and NOT by design: this root admits any member, including a bare vendor member §7 forbids beside the `extensions` container it grants, so an unknown key here validates and is reported legal-but-undescribed rather than rejected. Closing it is a breaking change under GOVERNANCE.md §2 and is not in this release."
     },
-    "required": ["diff_version", "current", "previous"],
+    "required": ["diff_version", "current", "previous", "comparison_outcome"],
     "properties": {
         "diff_version": {
             "type": "string",
@@ -51,10 +51,48 @@
             },
             "additionalProperties": false
         },
-        "kl_divergence": { "type": "number", "minimum": 0 },
-        "js_divergence": { "type": "number", "minimum": 0, "maximum": 1 },
-        "stability_score": { "type": "number", "minimum": 0, "maximum": 1 },
+        "comparison_outcome": {
+            "description": "The producer's assertion about the comparison it performed (SPEC 13.2): `changed` means the comparison found at least one change and the document MUST carry a witness; `unchanged` means it ran and found none, and the document MUST NOT carry one. Not a summary of which fields were serialised.",
+            "type": "string",
+            "enum": ["changed", "unchanged"]
+        },
+        "kl_divergence": {
+            "x-metalog-vacuous": {
+                "description": "Vacuous at zero: identical distributions.",
+                "const": 0
+            },
+            "type": "number",
+            "minimum": 0
+        },
+        "js_divergence": {
+            "x-metalog-vacuous": {
+                "description": "Vacuous at zero: identical distributions.",
+                "const": 0
+            },
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1
+        },
+        "stability_score": {
+            "x-metalog-vacuous": {
+                "description": "stability_score is 1 - js_divergence, so its no-change value is ONE, not zero.",
+                "const": 1
+            },
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1
+        },
         "template_deltas": {
+            "x-metalog-vacuous": {
+                "description": "The array is a union over both windows' templates, so it is non-empty whenever either window is. The finding is a non-zero delta, never a row.",
+                "items": {
+                    "properties": {
+                        "delta": {
+                            "const": 0
+                        }
+                    }
+                }
+            },
             "type": "array",
             "items": {
                 "type": "object",
@@ -71,6 +109,10 @@
             }
         },
         "field_histogram_deltas": {
+            "x-metalog-vacuous": {
+                "description": "Vacuous when no slot's distribution moved: no rows.",
+                "maxItems": 0
+            },
             "type": "array",
             "description": "Per-slot value-distribution change between the two documents' param_histograms (SPEC §3.5.2). MUST be sorted by js_divergence descending — an ordering the schema cannot assert; §3.5.2 owns it. Added to the schema in v0.8.0 (normative in the prose since v0.3.0).",
             "items": {
@@ -103,14 +145,26 @@
             }
         },
         "new_templates": {
+            "x-metalog-vacuous": {
+                "description": "Vacuous when no template appeared.",
+                "maxItems": 0
+            },
             "type": "array",
             "items": { "type": "string", "pattern": "^[a-z]+:.+$" }
         },
         "vanished_templates": {
+            "x-metalog-vacuous": {
+                "description": "Vacuous when no template vanished.",
+                "maxItems": 0
+            },
             "type": "array",
             "items": { "type": "string", "pattern": "^[a-z]+:.+$" }
         },
         "branching_delta": {
+            "x-metalog-vacuous": {
+                "description": "Vacuous when no template's branching entropy moved.",
+                "maxItems": 0
+            },
             "type": "array",
             "items": {
                 "type": "object",
@@ -125,6 +179,20 @@
             }
         },
         "ngram_delta": {
+            "x-metalog-vacuous": {
+                "description": "ngram_size is a PARAMETER, never a finding; the finding is a non-empty list. An absent list is an empty one.",
+                "properties": {
+                    "new_ngrams": {
+                        "maxItems": 0
+                    },
+                    "vanished_ngrams": {
+                        "maxItems": 0
+                    },
+                    "rate_changed": {
+                        "maxItems": 0
+                    }
+                }
+            },
             "type": "object",
             "required": ["ngram_size"],
             "properties": {
@@ -167,6 +235,20 @@
             "additionalProperties": false
         },
         "tail_delta": {
+            "x-metalog-vacuous": {
+                "description": "Nine members, no array: the finding is a non-zero delta. The six previous_/current_ members are the coordinates the deltas are taken between and are never findings on their own.",
+                "properties": {
+                    "tail_template_count_delta": {
+                        "const": 0
+                    },
+                    "tail_entropy_bits_delta": {
+                        "const": 0
+                    },
+                    "tail_max_rate_delta": {
+                        "const": 0
+                    }
+                }
+            },
             "type": "object",
             "description": "Long-tail shape change (SPEC §13). Present only when both documents carried a stats.tail_summary.",
             "required": [
@@ -188,6 +270,31 @@
             "additionalProperties": false
         },
         "cube_diff": {
+            "x-metalog-vacuous": {
+                "description": "axes is the diff's declared coordinate space -- a DESCRIPTOR (SPEC 13.6), required and non-empty, and never a finding. The finding is a populated emerging/vanishing border.",
+                "properties": {
+                    "emerging": {
+                        "properties": {
+                            "lower": {
+                                "maxItems": 0
+                            },
+                            "upper": {
+                                "maxItems": 0
+                            }
+                        }
+                    },
+                    "vanishing": {
+                        "properties": {
+                            "lower": {
+                                "maxItems": 0
+                            },
+                            "upper": {
+                                "maxItems": 0
+                            }
+                        }
+                    }
+                }
+            },
             "type": "object",
             "description": "Emerging-border diff of two cube blocks (SPEC §13.6, §16). Present only when both inputs carried a cube and their axes are equal. Experimental, added in v0.6.0.",
             "required": ["axes"],
@@ -210,6 +317,20 @@
             "additionalProperties": false
         },
         "reservoir_delta": {
+            "x-metalog-vacuous": {
+                "description": "Vacuous when no salient template appeared, vanished or crossed the failure frontier. An absent list is an empty one.",
+                "properties": {
+                    "new_salient": {
+                        "maxItems": 0
+                    },
+                    "vanished_salient": {
+                        "maxItems": 0
+                    },
+                    "frontier_crossings": {
+                        "maxItems": 0
+                    }
+                }
+            },
             "type": "object",
             "description": "Rare-salient membership change between the two documents' stats.reservoir blocks (SPEC §13.7). Membership is decided over top_k UNION reservoir on each side, never over reservoir alone: a template that moved between the two retention mechanisms has not appeared or disappeared. Omitted entirely when all three lists are empty; every list MUST be sorted by template_id ascending — an ordering the schema cannot assert. Added in v0.9.0.",
             "properties": {
