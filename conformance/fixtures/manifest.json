@@ -7,6 +7,8 @@
     "unadjudicated_directories": {
         "unarmed": "Fixtures authored against a rule the shipped schemas cannot yet express, so wiring them would assert a verdict against a schema that cannot answer the question. They are kept in the repository, out of the adjudicated corpus, until the rule lands in SPEC.md and the schemas; metalog_validate refuses to run its self-test if this exemption carries no reason, and prints how many files it currently holds so an exemption that grows cannot grow quietly."
     },
+    "witness_violations_encoding": "[asserted comparison_outcome, the witness member names that contradict it, documents affected]. SPEC \u00a78 clause 6. The name list is EMPTY on the `changed` arm \u2014 the defect there is the absence of a witness \u2014 and names every non-vacuous property on the `unchanged` arm. Vacuity is read from each property's own `x-metalog-vacuous` declaration in metalog_diff.v0.schema.json (\u00a713.2.1), never from its JSON shape.",
+    "witness_unjudged_encoding": "how many documents SPEC \u00a713.2.1 step 1 WITHHELD the witness rule from, because they are not schema-valid. Defaults to 0 and is compared on every non-refusal fixture: a withheld verdict is not a pass, and an unasserted one would let a step-1 regression that stopped judging every document pass this suite green. Nonzero exactly on the fixtures whose diff document carries a schema violation.",
     "cap_violations_encoding": "[instance path, cap field, value the document declares, actual array length, documents affected]",
     "fixtures": [
         {
@@ -91,6 +93,7 @@
             "why": "proves the diff leg can FAIL too — an extra member inside `current`, which the diff schema closes",
             "expect": {
                 "exit": 1,
+                "witness_unjudged": 1,
                 "documents": 1,
                 "findings": [
                     ["current", "additionalProperties", ["region"], 1, 1]
@@ -117,6 +120,7 @@
             "why": "the v0.9.0 `reservoir_delta` adoption (SPEC §13.7), with a legal sibling beside the illegal member so the report has to discriminate. The `new_salient` entry is fully conformant — required `template_id`/`count`/`salience` plus the two optional §3.7.1 members — and MUST validate; the `frontier_crossings` entry spells `direction` as `increased`, which the closed `up`/`down` enum MUST reject. Direction is the right member to put teeth in: it is the one place in this block where a plausible synonym changes meaning, and the enum is what stops a producer inventing `escalated`/`recovered` and shipping the polarity reading §13.7.2 refuses to make. Revert the adoption and this reds three ways — the finding disappears, the exit drops to 0, and `reservoir_delta` joins the undescribed list.",
             "expect": {
                 "exit": 1,
+                "witness_unjudged": 1,
                 "documents": 1,
                 "findings": [
                     ["reservoir_delta.frontier_crossings[].direction", "enum", [], 1, 1]
@@ -130,10 +134,62 @@
             "why": "the v0.9.0 diff-root `extensions` grant (SPEC §7), proved in both directions inside ONE document. The container is now DESCRIBED, so its reverse-DNS grammar is enforced at this root: `topology_delta` written bare inside `extensions` is rejected, while `com.example.topology_delta` beside it MUST validate — a legal member next to the illegal one, so the report has to discriminate rather than reject the object wholesale. These teeth cannot fall out the way a fixture built on a live defect can: no future standardisation can make an unprefixed key legal INSIDE `extensions`, whatever the standard mints elsewhere. `vendor_private_counter` sits bare at the diff ROOT to hold the limit the grant does NOT close — that root is open, so the member is legal-but-undescribed and changes no exit code. Revert the grant and this fixture reds three ways: the finding disappears, the exit drops to 0, and `extensions` itself joins the undescribed list.",
             "expect": {
                 "exit": 1,
+                "witness_unjudged": 1,
                 "documents": 1,
                 "findings": [
                     ["extensions", "additionalProperties", ["topology_delta"], 1, 1]
                 ],
+                "undescribed": [
+                    ["<root>", "vendor_private_counter", 1]
+                ]
+            }
+        },
+        {
+            "path": "valid/unchanged_all_vacuous.diff.json",
+            "kind": "diff",
+            "control": "vacuity-is-declared-not-shaped",
+            "why": "THE anti-shape fixture, and the first of a family of THREE built from one body so that each entry's claim is attributable to the token that differs. A conformant `unchanged` MetaLogDiff (SPEC \u00a713.2) carrying ELEVEN of the diff schema's twelve optional signal properties, every one PRESENT and vacuous by its own `x-metalog-vacuous` declaration (\u00a713.2.1) \u2014 so this document reds every reading of vacuity that goes by JSON shape instead of by the declaration. A PRESENCE reader reports eleven witnesses on a document that carries none, which is exactly the clause 0.10.0 deleted. An EMPTINESS reader reports three: `template_deltas` (one row, `delta: 0`), `tail_delta` (nine members, six of them non-zero coordinates and no array at all) and `cube_diff` (a required, non-empty `axes` that \u00a713.6 makes a DESCRIPTOR and never a finding). A reader that assumed `const: 0` for every scalar reports a fourth, `stability_score: 1`, whose vacuous value is ONE because the score is 1 - js_divergence. The twelfth property, `reservoir_delta`, is ABSENT on purpose and its absence is not an omission: \u00a713.7 requires an emitted block to carry at least one non-empty list, so its declared vacuous state is a state no conformant producer may emit \u2014 the declaration is unreachable by construction, and writing it here would have made this fixture violate \u00a713.7 while passing every check this tool can run.",
+            "expect": { "exit": 0, "documents": 1, "findings": [], "undescribed": [] }
+        },
+        {
+            "path": "invalid/changed_without_witness.diff.json",
+            "kind": "diff",
+            "control": "witness-rule-changed-arm",
+            "why": "the same bytes as valid/unchanged_all_vacuous.diff.json with ONE token changed \u2014 `comparison_outcome` from `unchanged` to `changed` \u2014 so the exit-code difference between the two entries is attributable to that token and to nothing else. SPEC \u00a713.2 requires a `changed` document to carry a witness; this one carries eleven signal properties and no witness, because every one of them is vacuous by its own declaration. That is precisely the state the old presence-quantified clause could not reach: all eleven are PRESENT, so a rule reading `at least one of ... is present` passes this document, which is why the clause was replaced rather than repaired. The expected finding names NO member, and that is the shape of this arm: on the `changed` side the defect IS an absence, and there is nothing to point at but the outcome the producer asserted.",
+            "expect": {
+                "exit": 1,
+                "documents": 1,
+                "findings": [],
+                "witness_violations": [
+                    ["changed", [], 1]
+                ],
+                "undescribed": []
+            }
+        },
+        {
+            "path": "invalid/unchanged_with_witness.diff.json",
+            "kind": "diff",
+            "control": "witness-rule-unchanged-arm",
+            "why": "the same bytes as valid/unchanged_all_vacuous.diff.json with ONE row changed \u2014 `template_deltas[0]` moves from `current_count: 4, delta: 0` to `current_count: 7, delta: 3`, the two numbers \u00a713.3 binds together \u2014 so the document now carries a witness while still asserting `unchanged`. SPEC \u00a713.2 obliges BOTH arms, and this is the arm a one-sided implementation drops: a rule that only checks `changed` is satisfied forever by a producer that always writes `unchanged`. The witness sits inside an array that is non-empty in BOTH documents and identical in length, so a presence reader and an emptiness reader are blind to the mutation \u2014 they pass here while reding this fixture's twin, which is what makes the expected list `template_deltas` an assertion about the DECLARATION rather than about the shape. The other ten signal properties are unchanged from the twin and MUST NOT be named: the report has to discriminate, not reject the document wholesale.",
+            "expect": {
+                "exit": 1,
+                "documents": 1,
+                "findings": [],
+                "witness_violations": [
+                    ["unchanged", ["template_deltas"], 1]
+                ],
+                "undescribed": []
+            }
+        },
+        {
+            "path": "undescribed/diff_root_vendor_member.diff.json",
+            "kind": "diff",
+            "control": "witness-set-from-schema",
+            "why": "the fourth member of the witness-rule family, and the only one whose subject is WHERE the witness set comes from. The same body as valid/unchanged_all_vacuous.diff.json with ONE member added \u2014 `vendor_private_counter` bare at the diff ROOT, which is open, so it validates and is reported LEGAL-BUT-UNDESCRIBED without changing the exit code. SPEC \u00a713.2.1 step 2 reads the witness set from the SCHEMA and never from the document: a member the document carries that the schema does not declare is NOT in the set, so this document still carries no witness and its `unchanged` stands. Read the set from the DOCUMENT instead \u2014 every non-required member it happens to hold \u2014 and the vendor member becomes a witness, this fixture reds, and a producer could manufacture a witness by inventing a member at an open root. Measured 2026-09-01: that mutation passed the other 25 fixtures 25/25, so without this entry \u00a713.2.1's most consequential sentence had no arm at all.",
+            "expect": {
+                "exit": 0,
+                "documents": 1,
+                "findings": [],
                 "undescribed": [
                     ["<root>", "vendor_private_counter", 1]
                 ]
@@ -162,6 +218,7 @@
             "why": "a document carried INSIDE a larger envelope, the shape a CI report takes when it quotes the diff it was built from. Without this fixture the --pointer path ships untested, and an untested path in a gate is the never-ran failure mode one level down.",
             "expect": {
                 "exit": 1,
+                "witness_unjudged": 1,
                 "documents": 1,
                 "findings": [
                     ["current", "additionalProperties", ["region"], 1, 1]
@@ -193,6 +250,7 @@
             "why": "an envelope with a member literally spelled `-`, beside a second member — and this is the fixture that keeps the extension from swallowing the standard it extends. RFC 6901 gives `-` a meaning in an ARRAY (the element after the last, which never exists, which is what makes the token free to mean `every element` here) and a different one in an OBJECT (a literal member name, which resolves perfectly well). An implementation that reads the token as a wildcard everywhere would select BOTH members here and judge two documents; the correct reading selects one — the invalid one, deliberately, so the assertion is not merely a count. `first_documents` pins the second half: a non-expanding pointer must leave the label the corpus reader already had, the FILE name with no pointer appended, which is exactly what every existing caller's output depends on.",
             "expect": {
                 "exit": 1,
+                "witness_unjudged": 1,
                 "documents": 1,
                 "findings": [
                     ["current", "additionalProperties", ["vendor_private_counter"], 1, 1]
@@ -209,6 +267,7 @@
             "why": "THE anti-blindness fixture, and the shape a CI report actually takes: `raw` is a LIST with one {unit, diff} entry per comparison the producer performed. FOUR entries here; entry 2 (`package`) carries `vendor_private_counter` bare inside `current`, which the diff schema closes. Entries 0, 1 and 3 are fully conformant, and that ordering is the entire teeth: a validator whose pointer resolves to ONE document judges entry 0, finds nothing, and prints the same confident CONFORMANT over a corpus that contains a violation — subject-incomplete, not smaller. The contrast is pinned as the very next entry in this file: the same bytes under `/raw/0/diff` MUST read exit 0 over 1 document, so the two entries together are the executable form of the finding rather than a measurement somebody has to re-run. `documents: 4` is load-bearing beside the finding: a walker that judged all four but reported a count of one would still be lying about the subject. `vendor_private_counter` is a name the standard can never mint, so these teeth cannot fall out the day a member is standardised — the failure mode that silently disarmed two fixtures in this set once already.",
             "expect": {
                 "exit": 1,
+                "witness_unjudged": 1,
                 "documents": 4,
                 "findings": [
                     ["current", "additionalProperties", ["vendor_private_counter"], 1, 1]
@@ -239,6 +298,7 @@
             "why": "two every-element tokens in one pointer — the aggregate envelope, several runs each carrying several comparisons. The selection is the CARTESIAN set, 2 x 2 = 4 documents, and the only violation sits at runs[1].raw[1], reachable by neither a first-run-only nor a first-comparison-only reader. Without this entry the multi-token path would ship untested, which is the never-ran failure mode one level down from the one the entry above closes: the expansion is written as a loop over tokens, so a second token costs no branch of its own — and an untested loop is exactly where an off-by-one hides. `first_documents` pins the full concrete pointer, so a walker that judges all four and mislabels which one failed still reds here.",
             "expect": {
                 "exit": 1,
+                "witness_unjudged": 1,
                 "documents": 4,
                 "findings": [
                     ["current", "additionalProperties", ["vendor_private_counter"], 1, 1]

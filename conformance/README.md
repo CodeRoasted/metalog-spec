@@ -29,7 +29,7 @@ python3 conformance/metalog_validate.py --kind diff --pointer /raw/-/diff \
 
 ## What it reports, and why it never reports one number
 
-A single "N errors" number hides three findings with different owners — and one of
+A single "N errors" number hides four findings with different owners — and one of
 them is not a failure at all. This tool never adds them together.
 
 **SCHEMA-INVALID** — a document violated a *closed* object (`additionalProperties:
@@ -53,11 +53,55 @@ pair added to the schema tomorrow is checked on arrival. `cube.cell_budget` is
 the one declared exception, because it is named for §16.10's BUDGET object
 rather than for the array it bounds. Objects under `extensions` are skipped —
 that is vendor space (§7), and a vendor's own `foo_size` is not a claim this
-standard may adjudicate.
+standard may adjudicate. **This standard's own `x-metalog-*` schema keywords are
+skipped too**, and for the mirror-image reason: an annotation is a *predicate*, not
+a description of a document location, so an `<x>_size`/`<x>` pair appearing inside
+one would mint a cap **no schema declares** and then enforce it against every
+document. Measured 2026-09-01: the derived pair set is byte-identical with and
+without the skip on the shipped v0.10.0 pair, and on a copy whose annotation was
+given such a pair the unskipped walk mints `('shard_size', 'shard')` while this one
+mints nothing. The rule is stated over the **prefix** rather than over one keyword,
+so `x-metalog-reserved` (SPEC §2's RESERVED level) needed no second pass.
 
 **An undeclared cap is not a violation.** A producer that omits
 `behavior.branching_size` declares no cap (§4.2); the tool reads that as a
 posture and says so, rather than assuming a default and going green.
+
+**WITNESS** — a `MetaLogDiff` whose `comparison_outcome` disagrees with the
+document's own signal properties: `"changed"` with no non-vacuous signal property,
+or `"unchanged"` carrying one. This is §8 clause 6 failing. **Exit 1.**
+
+The schema cannot reach this either, and for two independent reasons — the second
+is the one a reader misses. The predicate is `x-metalog-vacuous`, an *annotation* a
+generic validator ignores by design (SPEC §13.2.1); **and** the rule quantifies over
+the *schema's* property set rather than over the instance, so even a validator
+taught the keyword could not express "at least one of the properties I declare".
+
+Three things about the rule are load-bearing, and each has its own fixture:
+
+- **Vacuity is DECLARED, never inferred from shape.** Each optional signal property
+  of `metalog_diff.v0.schema.json` carries an `x-metalog-vacuous` keyword whose
+  value is a Draft 2020-12 assertion subschema; the property is vacuous exactly when
+  its value validates against it. Shape does not answer the question: `cube_diff.axes`
+  is a required, non-empty **descriptor** and never a finding, `tail_delta` carries
+  findings with no array at all, and `stability_score`'s no-change value is **`1`**,
+  not `0`.
+- **The witness set is read from the SCHEMA, never from the document.** A member a
+  document carries that the schema does not declare is not in the set — otherwise a
+  producer could manufacture a witness by inventing a member at the open root.
+- **Schema-validity comes first (§13.2.1 step 1).** `{"maxItems": 0}` is *inert* on
+  a non-array, so judging an unvalidated document would call a mistyped property
+  vacuous and make a real witness disappear. Documents the step withholds are
+  **counted and printed**, never absorbed: a withheld verdict is not a pass.
+
+**The instrument REFUSES rather than judges when the declarations are themselves
+defective.** SPEC §8's closing paragraph makes this a MUST, and it is exit 2, not a
+verdict: a missing declaration, a boolean one, a `$`-keyword at any depth inside
+one, one with no `description`, one that is not a valid Draft 2020-12 schema. An
+absent declaration is the load-bearing case, because absence is the one defect that
+reads as *permission* — skipping an undeclared property would silently shrink the
+witness set. The self-test prints the denominator every run (`12 of 12 optional
+signal properties declared`), because an arm armed at zero is unobservable.
 
 **LEGAL-BUT-UNDESCRIBED** — a member that an *open* container permits and that no
 schema describes. The MetaLog root is open by design, so this is **not** a
@@ -75,7 +119,8 @@ different concept in another section reads `[in SPEC.md]` and is not a schema la
 Open the section before acting on it.
 
 The two species are **disjoint by construction**: a member rejected by a closed
-object is never also counted as undescribed.
+object is never also counted as undescribed. WITNESS is disjoint from both for a
+different reason — it is decided only on a document that already passed SCHEMA-INVALID.
 
 ---
 
@@ -89,7 +134,8 @@ object is never also counted as undescribed.
 
 Exit 2 is not a softer failure, it is a *different* one: an unreadable line, an
 empty corpus, a document count that did not match `--expect-documents`, a missing
-schema, an unresolvable `$ref`, a failed self-test. A caller that treats 2 as 1
+schema, an unresolvable `$ref`, a missing or defective `x-metalog-vacuous`
+declaration in the shipped schema, a failed self-test. A caller that treats 2 as 1
 loses the distinction between "your documents are wrong" and "repair the
 instrument"; a caller that treats 2 as 0 has a gate that goes green because it
 never looked.
@@ -98,13 +144,13 @@ never looked.
 
 ## Why the self-test exists
 
-A validator that cannot fail is decoration. `--selftest` runs twenty-two fixtures whose
+A validator that cannot fail is decoration. `--selftest` runs twenty-six fixtures whose
 expected results are **hand-authored in `fixtures/manifest.json` from the spec and
 the schemas** — never captured from a run, because an expectation copied out of the
 tool under test makes the tool its own oracle, and the pair then agree forever
 while both are wrong.
 
-Ten of those fixtures carry a `control` tag, naming **eight** distinct blindnesses
+Fourteen of those fixtures carry a `control` tag, naming **twelve** distinct blindnesses
 (`instrument-failure` is carried by three), and the self-test **refuses to run**
 if any tag is missing from the manifest — deleting a fixture cannot quietly widen
 what a green covers. Each control forecloses one specific way this validator could
@@ -119,6 +165,10 @@ have gone green while blind:
 | `instrument-failure` | A truncated corpus, a `--pointer` that does not resolve, and a pointer whose envelope changed shape underneath it must all exit 2. **There is no code path that skips a line or a file**: every non-blank line is either a section header or a document, anything else stops the run, and an unreachable pointer refuses rather than dropping the file. A parser bug cannot express itself as a smaller document count — only as a refusal to answer. Each of these fixtures also pins the *reason*, not only the number: exit 2 is a class, and an instrument refusing for a reason nobody intended would otherwise satisfy a fixture that reads the code alone. |
 | `pointer-array-every-element` | An envelope carries as many documents as its producer performed comparisons, and the shape it takes is a **list**. A pointer that resolves to one document judges the first and prints the same confident verdict over the rest — not a smaller check, a green covering a subject nobody chose. This fixture is a four-entry envelope whose violation sits at entry **2**, and its `/raw/0/diff` twin in the same manifest pins what the single-document reading does with those exact bytes: **exit 0, CONFORMANT**. The contrast is executable rather than remembered. |
 | `pointer-empty-selection` | The other way a corpus reaches zero, and the only one no exception-shaped guard can see: the pointer resolves perfectly onto an array that is **empty**. Every path taken is correct and the subject is nothing. Exit 2 — a verdict over zero documents is green for the one reason that matters, that it never looked. |
+| `vacuity-is-declared-not-shaped` | §8 clause 6 asks whether a signal property carries a **finding**, and its JSON *shape* does not answer that. The fixture is a conformant `"unchanged"` diff carrying **eleven of the twelve** optional signal properties, every one present and vacuous by its own `x-metalog-vacuous` declaration. A **presence** reader finds eleven witnesses on a document that carries none — the exact clause 0.10.0 deleted. An **emptiness** reader finds three (`template_deltas` holds a row whose `delta` is `0`; `tail_delta` holds nine members and no array; `cube_diff.axes` is a required non-empty **descriptor**). A reader that assumed `const: 0` for every scalar finds a fourth, `stability_score: 1`. The twelfth property, `reservoir_delta`, is absent on purpose: §13.7 forbids emitting an all-empty block, so its declared vacuous state is unreachable by construction and writing it here would have made a "valid" fixture violate §13.7. |
+| `witness-rule-changed-arm` | `"changed"` obliges a witness. The fixture is the control above with **one token** changed, so the exit-code difference between the two is attributable to that token and nothing else. The finding names no member, because on this arm the defect *is* an absence. |
+| `witness-rule-unchanged-arm` | `"unchanged"` forbids one, and a rule that binds only the other arm is satisfied forever by a producer that always writes `"unchanged"`. The fixture is the same control with **one row** changed — `template_deltas[0]` from `delta: 0` to `delta: 3`, with `current_count` moved to match (§13.3) — so the witness sits inside an array that is non-empty and the same length in both documents, where a presence reader and an emptiness reader are blind to the mutation. |
+| `witness-set-from-schema` | §13.2.1 step 2 reads the witness set from the **schema**, never from the document. The fixture carries a bare `vendor_private_counter` at the diff root, which is open: legal-but-undescribed, exit 0, and **not** a witness. Read the set from the document instead and it becomes one — a producer could then manufacture a witness by inventing a member at an open root. Measured 2026-09-01: that mutation passed the other twenty-five fixtures **25/25**, so until this entry existed the sentence had no arm at all. |
 | `pointer-token-literal-in-object` | The extension must not swallow the standard it extends. `-` means *every element* where an **array** sits, because RFC 6901 gives that token no resolvable meaning there; where an **object** sits it is a literal member name and stays one. This fixture is an envelope carrying a member spelled `-` beside a second member, so a reading that wildcards the token everywhere judges two documents where one was addressed. |
 
 Measured on the committed tool, 2026-08-19: **seven** independent mutations each
@@ -140,6 +190,20 @@ verified by **bypassing its partner**: remove the demand *and* the key it asks f
 and the suite goes green on a strictly weaker oracle. That is what the demand costs
 and why it is derived from the fixture's own pointer rather than kept in a list
 beside it.
+
+Measured a third time on the witness rule, 2026-09-01: **six** mutations of the
+clause-6 evaluator each red it, and the shape of what they red is the evidence —
+dropping §13.2.1 step 1 (schema-validity first) reds **7**, reading the witness set
+from the document reds **1**, dropping the `"changed"` arm reds **1**, dropping the
+`"unchanged"` arm reds **1**, reading vacuity from shape reds **4**, reading it as
+presence reds **4** — while the unmutated control passes 26/26. The three that red
+exactly **one** fixture are what proves those three arms non-redundant: deleting a
+check that reds four says little about which of the four was load-bearing. Six
+further mutations of the schema's own declarations — one deleted, one `true`, one
+`false`, one carrying `$ref`, one with no `description`, one that is not a valid
+Draft 2020-12 schema — each exit **2** naming the clause they broke, on a plain run
+and on `--selftest` alike, which is what proves the refusal is reachable without a
+corpus at all.
 
 **Before any fixture runs, the self-test compares the two schemas' shared `$defs`.**
 Each schema file is independently consumable — `SPEC.md` §8 invites downloading one
@@ -226,13 +290,30 @@ Declared, because an instrument's silence is read as coverage.
   the refusal existed. (Measured on the published determinism evidence,
   2026-08-19, with the checkers armed: enabling it adds no findings — every
   format-carrying value there is well-formed.)
-- **A green on a `MetaLogDiff` corpus says nothing about §13.2.** The prose requires
-  a diff to carry at least one signal field; `metalog_diff.v0.schema.json` requires
-  only `diff_version`, `current` and `previous` and encodes no `anyOf`, so a diff
-  carrying nothing but those three members validates cleanly. Measured 2026-08-19 on
-  two published diff documents: **zero errors, and neither carries a signal field.**
-  This is a limit of what the schema expresses, and the tool reports what the schema
-  says — it does not invent the clause the schema is missing.
+- **§13.2 is now reached, and this bullet records what that cost and what it did not
+  buy.** Until v0.10.0 it said the opposite: *"a green on a `MetaLogDiff` corpus says
+  nothing about §13.2"*, because the clause quantified over field **presence**,
+  presence is satisfied by every producer regardless of what it found, and the schema
+  required only `diff_version`, `current` and `previous`. §13.2 now quantifies over an
+  asserted **verdict** (`comparison_outcome`) and SPEC §8 gained clause 6, so the tool
+  decides it. Three limits survive, and none of them is the old one:
+  - **Only on a schema-valid document.** §13.2.1 step 1, and it is not ceremony —
+    `{"maxItems": 0}` is *inert* on a non-array, so a document that skipped validation
+    could have a mistyped array property called vacuous and its real witness would
+    disappear. Withheld documents are counted and printed on every run.
+  - **Only as far as the declarations are correct.** The tool reads
+    `x-metalog-vacuous` and checks its **grammar**; it cannot check whether a
+    declaration says the *right* thing about the property. A declaration that named
+    the wrong vacuous value would be enforced faithfully and wrongly. What it does
+    guarantee is that a **missing or malformed** one stops the run (exit 2) rather
+    than shrinking the witness set in silence.
+  - **`reservoir_delta`'s declaration is unreachable by construction**, and this is a
+    property of the standard rather than of the tool: §13.7 requires an emitted block
+    to carry at least one non-empty list, and its declared vacuous state is *all three
+    lists empty*. In a conformant document the property is therefore a witness
+    whenever it is present, and its declaration can never decide anything. It is still
+    the right predicate to write — the grammar has no conformant way to spell "never
+    vacuous", the two boolean schemas being exactly what §13.2.1 clause 1 refuses.
 - **A bare vendor member at either document root is reported, never failed.** §7 makes
   `extensions` the only carrier of non-standard members, at any depth. The schema
   enforces that wherever the object is closed; both document roots are **open**, so a

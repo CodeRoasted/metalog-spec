@@ -1,5 +1,6 @@
 {
     "diff_version": "0.9.0",
+    "comparison_outcome": "changed",
     "current": {
         "window": { "start": "2026-01-01T00:01:00Z", "end": "2026-01-01T00:02:00Z" },
         "document_id": "window-2"

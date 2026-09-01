@@ -13,6 +13,14 @@ MetaLogDiff) and it reports, separately:
                        this clause is unreachable from the schema and is checked
                        here instead. An UNDECLARED cap is not a violation: a
                        producer that omits the field declares no cap (SPEC §4.2).
+  * WITNESS-VIOLATION  a MetaLogDiff's `comparison_outcome` disagrees with the
+                       document's own signal properties -> §8 clause 6 fails.
+                       Exit 1. `"changed"` with no non-vacuous signal property, or
+                       `"unchanged"` carrying one. Vacuity is DECLARED per property
+                       by `x-metalog-vacuous` (SPEC §13.2.1) and never inferred from
+                       shape; the witness set is read from the SCHEMA, never from
+                       the document. Unreachable from the schema: the predicate is
+                       an annotation a generic validator ignores by design.
   * LEGAL-BUT-UNDESCRIBED
                        a key an OPEN container permits and no schema describes.
                        Not a conformance failure; reported because a producer
@@ -28,7 +36,8 @@ Exit codes are a contract:
   1  findings: at least one document is schema-invalid
   2  the instrument could not run honestly (unparsable corpus, empty corpus,
      document count did not match a caller's expectation, unresolvable $ref,
-     missing schema, self-test failure). Never a green, never a silent skip.
+     missing schema, a defective or missing `x-metalog-vacuous` declaration in the
+     shipped schema, self-test failure). Never a green, never a silent skip.
 
 Licence: MIT, per this repository's LICENSE (executable code is MIT; prose is
 CC BY 4.0 -- see LICENSE-SPEC). Requires `jsonschema` >= 4.18 (Draft 2020-12).
@@ -80,6 +89,32 @@ ANNOTATION_KEYWORDS = frozenset((
     "deprecated", "readOnly", "writeOnly",
 ))
 
+# This standard's own schema-keyword namespace. SPEC §13.2.1 mints the prefix for
+# `x-metalog-vacuous` and says why: it "guards against collision with a future JSON
+# Schema vocabulary keyword", and "a generic validator ignores it, exactly as it
+# ignores `format`". Both halves generalise — a keyword outside the dialect's
+# vocabulary asserts nothing about an instance — so the rule below is stated over
+# the PREFIX rather than over one name. That is derived from how the namespace is
+# defined, not a hand-kept list, and it is what stops the next annotation from
+# re-arming these walkers: `x-metalog-reserved` (SPEC §2's RESERVED level) landed in
+# `metalog.v0.schema.json` while this was being written and needed no edit here.
+#
+# Every walker that reads a subschema as STRUCTURE must step over the namespace.
+# Three did not, and each is corrected at its own site: `derive_cap_pairs`,
+# `_declared_formats`, and `constrains` (here). `object_positions` is already
+# correct by construction — see the LOCATION_* comment.
+METALOG_KEYWORD_PREFIX = "x-metalog-"
+
+# The one keyword read BY NAME rather than skipped by prefix: the witness rule's
+# own predicate (§13.2.1). Skipping it as structure and reading it as a predicate
+# are the same decision seen from two sides.
+VACUITY_KEYWORD = METALOG_KEYWORD_PREFIX + "vacuous"
+
+
+def metalog_annotation(key) -> bool:
+    """Is this member name a keyword of this standard's own namespace?"""
+    return isinstance(key, str) and key.startswith(METALOG_KEYWORD_PREFIX)
+
 
 def constrains(node) -> bool:
     """Does this subschema assert ANYTHING about an instance?
@@ -98,7 +133,8 @@ def constrains(node) -> bool:
     if node is False:
         return True
     if isinstance(node, dict):
-        return any(keyword not in ANNOTATION_KEYWORDS for keyword in node)
+        return any(keyword not in ANNOTATION_KEYWORDS and not metalog_annotation(keyword)
+                   for keyword in node)
     return True
 
 
@@ -307,9 +343,20 @@ def load_corpus(path: Path, pointer: str | None = None) -> tuple[list[tuple[str,
 # --------------------------------------------------------------------------
 
 def _declared_formats(schema) -> set[str]:
-    """Every `format` value the schema declares anywhere. Drives the
-    --check-formats teeth check: the set is derived from the artifact, never
-    enumerated, so it cannot lag a schema edit."""
+    """Every `format` value the schema declares anywhere ABOUT A DOCUMENT.
+
+    Drives the --check-formats teeth check: the set is derived from the artifact,
+    never enumerated, so it cannot lag a schema edit.
+
+    This standard's own `x-metalog-*` keywords are stepped over, and the reason is a
+    scope one rather than a cosmetic one. A `format` inside a vacuity declaration
+    would be a predicate about a SIGNAL PROPERTY'S VALUE evaluated by the witness
+    rule (§13.2.1), not a format this validator asserts on documents — so demanding
+    a checker for it would make `--check-formats` REFUSE a whole run over an
+    assertion nobody makes. No annotation carries `format` today; the walk is
+    corrected anyway, because the first one that did would take the flag down with
+    it and the message would name a format nobody could find in the document
+    schema."""
     found: set[str] = set()
     stack = [schema]
     while stack:
@@ -318,7 +365,7 @@ def _declared_formats(schema) -> set[str]:
             value = node.get("format")
             if isinstance(value, str):
                 found.add(value)
-            stack.extend(node.values())
+            stack.extend(v for k, v in node.items() if not metalog_annotation(k))
         elif isinstance(node, list):
             stack.extend(node)
     return found
@@ -561,7 +608,22 @@ CAP_WALK_SKIP = {"extensions"}
 
 
 def derive_cap_pairs(schema) -> set[tuple[str, str]]:
-    """Every (cap field, array field) pair the schema declares."""
+    """Every (cap field, array field) pair the schema declares.
+
+    The walk recurses into every subschema value, which is what makes it derived
+    rather than hand-kept — and which is exactly why it has to step over this
+    standard's own `x-metalog-*` keywords. A vacuity declaration (§13.2.1) is an
+    assertion about ONE property's value, not a description of a document location,
+    and its `properties` map names members it merely constrains. Walking into one
+    treats an annotation as schema structure: the first annotation that happened to
+    carry an `<x>_size` integer beside an `<x>` array would MINT A CAP PAIR THAT NO
+    SCHEMA DECLARES, and the phantom would then be enforced against every document,
+    silently, as §8 clause 4. Measured 2026-09-01 on the shipped v0.10.0 pair: the
+    derived set is byte-identical with and without this skip, so it changes no
+    verdict today — and measured in the other direction on a copy whose declaration
+    was given a `shard_size`/`shard` pair, where the unskipped walk mints
+    `('shard_size', 'shard')` and this one mints nothing. The walk is corrected
+    because the defect is in the reading, not in its current yield."""
     pairs = set(DECLARED_CAP_PAIRS)
 
     def visit(node):
@@ -576,7 +638,9 @@ def derive_cap_pairs(schema) -> set[tuple[str, str]]:
                     sibling = props.get(name[: -len("_size")])
                     if isinstance(sibling, dict) and sibling.get("type") == "array":
                         pairs.add((name, name[: -len("_size")]))
-            for value in node.values():
+            for key, value in node.items():
+                if metalog_annotation(key):
+                    continue
                 visit(value)
         elif isinstance(node, list):
             for value in node:
@@ -624,12 +688,208 @@ def collect_cap_violations(docs, pairs: set[tuple[str, str]]) -> list[dict]:
     )
 
 
+# --------------------------------------------------------------------------
+# SPEC §8 clause 6 — a `MetaLogDiff`'s `comparison_outcome` agrees with whether the
+# document carries a WITNESS. Unreachable from the schema for two independent
+# reasons, and the second is the one a reader misses: the predicate is
+# `x-metalog-vacuous`, an annotation a generic validator ignores by design, AND the
+# rule quantifies over the SCHEMA's property set rather than over the instance —
+# so even a validator taught the keyword could not express "at least one of the
+# properties I declare". §13.2.1 owns the algorithm; this is that algorithm.
+# --------------------------------------------------------------------------
+
+# The marker that ENGAGES this clause, read from the artifact rather than from a
+# `--kind` string in this file. §13.2 mints `comparison_outcome` as a REQUIRED root
+# member, so a schema whose root `required` names it is a schema the witness rule
+# governs and one that does not is not — `metalog.v0.schema.json` is not, and gets
+# no coverage demand. Deleting the member from the diff schema disarms the clause,
+# and does it LOUDLY: the fixtures assert witness findings that would then vanish.
+WITNESS_MARKER = "comparison_outcome"
+
+
+def governs_witness_rule(schema: dict) -> bool:
+    return WITNESS_MARKER in set(schema.get("required") or ())
+
+
+def witness_set(schema: dict) -> list[str]:
+    """§13.2.1 evaluation step 2 — every member of the root `properties` that is
+    neither in the root `required` nor `extensions`.
+
+    Read from the SCHEMA, never from the document. That direction is the whole
+    repair 0.10.0 made: a member a document carries that the schema does not
+    declare is not in the witness set, so a producer cannot manufacture a witness
+    by inventing a member at the open root, and a signal property added to the
+    schema joins the set on arrival with nothing here to update."""
+    required = set(schema.get("required") or ())
+    return sorted(name for name in (schema.get("properties") or {})
+                  if name not in required and name != "extensions")
+
+
+def _dollar_members(node, trail: str = "") -> list[str]:
+    """Every member name beginning with `$` inside a declaration (grammar MUST 3).
+
+    The limit, stated because an instrument's over-approximation is still a
+    refusal somebody has to act on: this reads EVERY object member name at every
+    depth, so a declaration whose `properties` map described an instance member
+    literally spelled `$foo` would be refused although no keyword is involved.
+    Separating the two needs a full keyword model of the dialect, which is the one
+    thing §13.2.1 deliberately does not require of an implementer — the grammar is
+    "closed on structure and open on predicate", so a walker cannot know which
+    positions are keyword positions. The over-approximation costs an author a
+    rename; the under-approximation would let a `$ref` through, and §13.2.1's
+    reason for banning it is that whether it resolves is implementation-defined."""
+    found: list[str] = []
+    if isinstance(node, dict):
+        for key, value in node.items():
+            here = f"{trail}/{key}" if trail else key
+            if key.startswith("$"):
+                found.append(here)
+            found += _dollar_members(value, here)
+    elif isinstance(node, list):
+        for index, value in enumerate(node):
+            found += _dollar_members(value, f"{trail}/{index}")
+    return found
+
+
+def vacuity_declarations(schema: dict, schema_name: str) -> dict[str, dict]:
+    """Every optional signal property's `x-metalog-vacuous`, grammar-checked.
+
+    Raises `InstrumentError` — exit 2, never a verdict — on ANY defect, which is
+    what SPEC §8's closing paragraph and §13.2.1's Coverage MUST both require:
+    "an instrument that cannot say what a finding is must not return a verdict
+    about one." A missing declaration is the load-bearing case, because absence is
+    the one defect that reads as permission: skipping an undeclared property would
+    quietly shrink the witness set and turn every "changed" document that relied on
+    it into a clause-6 failure, or every "unchanged" one into a pass.
+
+    Four of §13.2.1's five grammar clauses are refusals and are checked here. The
+    fifth is not a refusal at all and is implemented by the EVALUATOR: a
+    declaration carrying no assertion keyword is the always-true schema, so every
+    value validates against it and the property is a descriptor — never a witness.
+    Clause 4 (`description` required) is what makes that a declaration rather than
+    an oversight, and clause 4 IS checked, so the pair is closed. `$comment` is not
+    in §13.2.1's list of permitted annotation keywords and needs no separate rule:
+    clause 3 rejects every `$`-prefixed member before clause 5 is reached."""
+    import jsonschema
+
+    defects: list[str] = []
+    declarations: dict[str, dict] = {}
+    for name in witness_set(schema):
+        node = schema["properties"][name]
+        where = f"{schema_name} properties/{name}"
+        if not isinstance(node, dict) or VACUITY_KEYWORD not in node:
+            defects.append(
+                f"{where}: no `{VACUITY_KEYWORD}`. §13.2.1 Coverage makes a "
+                f"declaration MANDATORY on every optional signal property — an "
+                f"absent one is a defect of the schema, not a permission: absence "
+                f"is not a disposition, it is the lack of one. Declare the state "
+                f"in which this property carries no finding, or declare it a "
+                f"descriptor with a `description` and no assertion keyword.")
+            continue
+        decl = node[VACUITY_KEYWORD]
+        if not isinstance(decl, dict):
+            rendered = "true" if decl is True else "false" if decl is False else repr(decl)
+            defects.append(
+                f"{where}: `{VACUITY_KEYWORD}` is {rendered}, not an object "
+                f"(§13.2.1 grammar 1). The boolean schemas are the two degenerate "
+                f"declarations — one makes the property a witness never, the other "
+                f"always — and neither has anywhere to carry its reason.")
+            continue
+        dollars = _dollar_members(decl)
+        if dollars:
+            defects.append(
+                f"{where}: `{VACUITY_KEYWORD}` carries {dollars} (§13.2.1 grammar "
+                f"3). The annotation is not reached by a host validator's schema "
+                f"compilation, so whether a `$`-keyword inside it resolves is "
+                f"implementation-defined; it MUST be liftable out of the schema and "
+                f"evaluated with nothing else loaded.")
+        reason = decl.get("description")
+        if not isinstance(reason, str) or not reason.strip():
+            defects.append(
+                f"{where}: `{VACUITY_KEYWORD}` carries no `description` (§13.2.1 "
+                f"grammar 4). It MUST say what a finding in this property IS, or "
+                f"why the property is never one — and for a descriptor that "
+                f"sentence is the only thing separating a declaration from an "
+                f"oversight.")
+        try:
+            jsonschema.Draft202012Validator.check_schema(decl)
+        except jsonschema.exceptions.SchemaError as exc:
+            defects.append(
+                f"{where}: `{VACUITY_KEYWORD}` is not a valid Draft 2020-12 schema "
+                f"(§13.2.1 grammar 2) — {exc.message}")
+            continue
+        declarations[name] = decl
+
+    if defects:
+        raise InstrumentError(
+            f"the shipped schema's own vacuity declarations are defective at "
+            f"{len(defects)} point(s), so this instrument cannot say what a finding "
+            f"IS and refuses to return a verdict about one (SPEC §8, closing "
+            f"paragraph): " + " · ".join(defects))
+    return declarations
+
+
+def collect_witness_violations(docs, schema: dict, validator,
+                               declarations: dict[str, dict]
+                               ) -> tuple[list[dict], int]:
+    """§13.2.1 *Evaluation, in full* — all four steps, on the whole corpus.
+
+    Returns `(violations, unjudged)`. `unjudged` is the count of documents step 1
+    withheld, and it is reported rather than absorbed: a document this clause did
+    not judge is not a document that passed it.
+
+    **Step 1 is load-bearing, not ceremony.** The rule runs only on a document that
+    already validates against the schema, because a vacuity declaration is written
+    for a value whose TYPE is settled. `{"maxItems": 0}` is INERT on a non-array —
+    it is an assertion about arrays and every other instance satisfies it — so on a
+    document that skipped validation, an array property serialised as a number
+    would validate against its own declaration and be called VACUOUS. That is the
+    exact shape of a false green: the producer's defect makes the witness disappear
+    and the document then reads as a truthful `"unchanged"`.
+    """
+    import jsonschema
+
+    compiled = {name: jsonschema.Draft202012Validator(decl)
+                for name, decl in declarations.items()}
+    by_class: dict[tuple[str, tuple[str, ...]], dict] = {}
+    unjudged = 0
+
+    for label, doc in docs:
+        # STEP 1 — schema-validity first. See the docstring.
+        if not isinstance(doc, dict) or not validator.is_valid(doc):
+            unjudged += 1
+            continue
+        # STEPS 2 and 3 — the witness set comes from `compiled`, which was built
+        # from the SCHEMA. A member the document carries and the schema does not
+        # declare is never consulted, and `extensions` is never a witness.
+        witnesses = tuple(name for name in sorted(compiled)
+                          if name in doc and not compiled[name].is_valid(doc[name]))
+        # STEP 4 — both arms are obliged. A rule binding only one is satisfied
+        # forever by a producer that always writes the other.
+        outcome = doc.get(WITNESS_MARKER)
+        if outcome == "changed" and not witnesses:
+            key = ("changed", ())
+        elif outcome == "unchanged" and witnesses:
+            key = ("unchanged", witnesses)
+        else:
+            continue
+        entry = by_class.setdefault(key, {"documents": set(), "first": label})
+        entry["documents"].add(label)
+
+    return sorted(
+        ({"outcome": outcome, "witnesses": list(witnesses),
+          "documents": len(entry["documents"]), "first_document": entry["first"]}
+         for (outcome, witnesses), entry in by_class.items()),
+        key=lambda v: (v["outcome"], tuple(v["witnesses"])),
+    ), unjudged
+
+
 def render(report: dict, stream) -> None:
     w = lambda s="": print(s, file=stream)
     env = report["environment"]
     acc = report["accounting"]
     plural = lambda n, word: f"{n} {word}" if n == 1 else f"{n} {word}s"
-    w('metalog-conformance · SPEC §8 clauses 1 and 4')
+    w('metalog-conformance · SPEC §8 clauses 1, 4 and 6')
     for entry in report["corpus"]:
         w(f"  corpus     : {entry['path']}  "
           f"({plural(entry['documents'], 'document')} judged)")
@@ -681,6 +941,49 @@ def render(report: dict, stream) -> None:
           "producer does not declare is not checked and is not a violation.")
     w()
 
+    declared = report["witness_declarations"]
+    if declared is None:
+        w(f"WITNESS — not applicable. schema/{report['schema']} declares no required "
+          f"`{WITNESS_MARKER}`, so SPEC §8 clause 6 does not reach this kind. Nothing "
+          f"here was checked against it, and nothing here passed it.")
+    elif report["witness_violations"]:
+        w("WITNESS — `comparison_outcome` disagrees with the document's own signal "
+          "properties. §8 clause 6 FAILS:")
+        for v in report["witness_violations"]:
+            if v["outcome"] == "changed":
+                w(f"  <root> — declares \"changed\" and carries NO witness: every "
+                  f"signal property it holds is vacuous by that property's own "
+                  f"`{VACUITY_KEYWORD}` declaration (§13.2.1)")
+            else:
+                w(f"  <root> — declares \"unchanged\" and carries witness(es) "
+                  f"{', '.join(v['witnesses'])}: non-vacuous by that property's own "
+                  f"`{VACUITY_KEYWORD}` declaration (§13.2.1)")
+            w(f"      seen     : {v['documents']}/{acc['documents']} documents · "
+              f"first: {v['first_document']}")
+    elif acc["documents"] - report["witness_unjudged"] == 0:
+        # Never "none" over an empty judged set. A clause that judged nothing and
+        # printed the same sentence as a clause that judged everything is the
+        # vacuous green this whole file is built to refuse.
+        total = acc["documents"]
+        w(f"WITNESS — NOTHING JUDGED. {plural(total, 'document')} in this corpus, "
+          f"and {'it is' if total == 1 else 'all of them are'} schema-invalid; "
+          f"§13.2.1 evaluates the witness rule only on a schema-valid document "
+          f"(step 1). §8 clause 6 returned no verdict here — repair the "
+          f"SCHEMA-INVALID findings above and run again.")
+    else:
+        judged = acc["documents"] - report["witness_unjudged"]
+        w(f"WITNESS — none. {plural(judged, 'judged document')} of "
+          f"{acc['documents']} {'agrees' if judged == 1 else 'agree'} with "
+          f"{'its' if judged == 1 else 'their'} own signal properties, against "
+          f"{plural(declared, 'declaration')} read from schema/{report['schema']}.")
+    if declared is not None and report["witness_unjudged"]:
+        w(f"  NOT judged: {plural(report['witness_unjudged'], 'document')} — §13.2.1 "
+          f"evaluates the witness rule only on a SCHEMA-VALID document (step 1), and "
+          f"these are not. That is a withheld verdict, not a pass: a declaration "
+          f"written for an array (`maxItems: 0`) is INERT on a number, so judging an "
+          f"unvalidated document would call a mistyped property vacuous.")
+    w()
+
     if report["undescribed"]:
         w("LEGAL-BUT-UNDESCRIBED — permitted by an OPEN container, described by no "
           "schema. NOT a conformance failure:")
@@ -703,8 +1006,10 @@ def render(report: dict, stream) -> None:
     # machine exits. A tool that lives in `conformance/` and prints a green is read
     # as "conformant"; it tests ONE of §8's four clauses, and saying so here is the
     # difference between an instrument and an instrument's reputation.
-    w("SCOPE — this tests SPEC §8 clause 1 (schema validation) and clause 4 (an")
-    w("  array is truthfully bounded by the cap the same document declares).")
+    w("SCOPE — this tests SPEC §8 clause 1 (schema validation), clause 4 (an array")
+    w("  is truthfully bounded by the cap the same document declares) and, on a")
+    w("  MetaLogDiff, clause 6 (comparison_outcome agrees with the document's own")
+    w("  witness).")
     w("  NOT checked: clause 2 (every required field populated per its definition —")
     w("  only the schema-expressible part of it is), clause 3 (template_id computed")
     w("  per §3.2 — no pinned cross-implementation vector exists yet). A green above")
@@ -712,6 +1017,8 @@ def render(report: dict, stream) -> None:
     w("  Clause 4's own limit: a cap that is not DECLARED cannot be checked. A")
     w("  producer that omits `behavior.branching_size` declares no cap (§4.2), and")
     w("  this tool reads that as a posture, never as a pass.")
+    w("  Clause 6's own limit: it is decided only on a document that is")
+    w("  already schema-valid, and a withheld verdict is printed, never absorbed.")
     w("  See conformance/README.md § What this does not reach.")
     w()
     w(f"VERDICT: {report['verdict']}")
@@ -732,6 +1039,14 @@ def run(corpora, kind: str, schema_dir: Path, spec_text: str, check_formats: boo
         raise InstrumentError(f"schema not found: {schema_path} (pass --schema-dir)")
     schema = json.loads(schema_path.read_text(encoding="utf-8"))
     jsonschema.Draft202012Validator.check_schema(schema)
+
+    # SPEC §8, closing paragraph: this tool MUST exit 2 rather than judge a document
+    # when the schema's own vacuity declarations are defective. It runs BEFORE the
+    # corpus is read, because "refuse rather than judge" is not satisfied by reading
+    # the corpus first and refusing afterwards — the refusal has to be reachable
+    # without a corpus at all.
+    declarations = (vacuity_declarations(schema, schema_name)
+                    if governs_witness_rule(schema) else None)
 
     fmt = None
     if check_formats:
@@ -782,6 +1097,9 @@ def run(corpora, kind: str, schema_dir: Path, spec_text: str, check_formats: boo
     findings, _ = collect_findings(docs, validator)
     undescribed = collect_undescribed(docs, schema)
     cap_violations = collect_cap_violations(docs, derive_cap_pairs(schema))
+    witness_violations, witness_unjudged = (
+        collect_witness_violations(docs, schema, validator, declarations)
+        if declarations is not None else ([], 0))
     names = [n for f in findings for n in f["properties"]] + [u["key"] for u in undescribed]
 
     return {
@@ -793,9 +1111,13 @@ def run(corpora, kind: str, schema_dir: Path, spec_text: str, check_formats: boo
         "accounting": accounting,
         "findings": findings,
         "cap_violations": cap_violations,
+        "witness_violations": witness_violations,
+        "witness_unjudged": witness_unjudged,
+        "witness_declarations": None if declarations is None else len(declarations),
         "undescribed": undescribed,
         "spec_mentions": spec_mentions(names, spec_text),
-        "verdict": "NONCONFORMANT" if (findings or cap_violations) else "CONFORMANT",
+        "verdict": "NONCONFORMANT" if (findings or cap_violations or witness_violations)
+                   else "CONFORMANT",
         "environment": {
             "jsonschema": metadata.version("jsonschema"),
             "python": ".".join(str(v) for v in sys.version_info[:3]),
@@ -926,6 +1248,15 @@ REQUIRED_CONTROLS = {
                                     # reading as a clean, truthful pass
     "pointer-token-literal-in-object",  # forecloses an extension that quietly
                                     # redefines the base standard it extends
+    "witness-rule-changed-arm",     # forecloses a §8 clause 6 that binds only the
+                                    # arm a producer never writes
+    "witness-rule-unchanged-arm",   # forecloses the same, from the other side
+    "vacuity-is-declared-not-shaped",   # forecloses a witness test that reads a
+                                    # property's SHAPE — presence, emptiness, or a
+                                    # zero assumed for every scalar
+    "witness-set-from-schema",      # forecloses a witness set read from the
+                                    # DOCUMENT, which lets a producer manufacture a
+                                    # witness by inventing a member at an open root
 }
 
 
@@ -1008,6 +1339,16 @@ IN_PLACE_APPLICATORS = ("allOf", "anyOf", "oneOf", "if", "then", "else", "not",
 # The keywords that carry a subschema to a DOCUMENT LOCATION — a place an instance
 # value actually sits. Walking only these is what keeps the census honest in both
 # directions: it reaches every position, and it invents none.
+#
+# This ALLOWLIST construction is what keeps `x-metalog-vacuous` out of the closure
+# census, and the exclusion is correct rather than lucky: a vacuity declaration
+# (§13.2.1) is not a place any instance value sits, so it is not an object position
+# and has no closure to declare. Demanding `additionalProperties` inside one would
+# order an author to write a keyword the annotation's own grammar has no use for.
+# The annotation is not thereby unadjudicated — `vacuity_declarations()` walks it
+# and refuses on its own four grammar MUSTs. Recorded here because the day someone
+# "simplifies" this walk into a recurse-into-every-value form, the census gains
+# object positions the schema does not have and exits 2 on a non-defect.
 LOCATION_SUBSCHEMA = ("additionalProperties", "items", "contains",
                       "unevaluatedProperties")
 LOCATION_MAP = ("properties", "patternProperties", "$defs")
@@ -1150,6 +1491,10 @@ def _cap_tuples(entries):
             for v in entries]
 
 
+def _witness_tuples(entries):
+    return [(v["outcome"], tuple(v["witnesses"]), v["documents"]) for v in entries]
+
+
 def selftest(schema_dir: Path, spec_text: str, stream) -> int:
     w = lambda s="": print(s, file=stream)
     manifest_path = TOOL_DIR / "fixtures" / "manifest.json"
@@ -1233,6 +1578,20 @@ def selftest(schema_dir: Path, spec_text: str, stream) -> int:
     positions = declared_closure(loaded)
     w(f"  every object position declares its closure: {positions} position(s) walked")
 
+    # The DENOMINATOR of the witness rule, printed every run. An arm armed at zero
+    # is unobservable, and "12 of 12 declared" is the only line that says the
+    # coverage MUST had a population to be satisfied over.
+    for name, schema in sorted(loaded.items()):
+        if not governs_witness_rule(schema):
+            w(f"  vacuity declarations (§13.2.1) — {name}: not governed, it declares "
+              f"no required `{WITNESS_MARKER}` and SPEC §8 clause 6 does not reach it")
+            continue
+        declared = vacuity_declarations(schema, name)
+        total = len(witness_set(schema))
+        w(f"  vacuity declarations (§13.2.1) — {name}: {len(declared)} of {total} "
+          f"optional signal propert{'y' if total == 1 else 'ies'} declared, each a "
+          f"conformant assertion subschema")
+
     failures: list[str] = []
     for fx in fixtures:
         path = TOOL_DIR / "fixtures" / fx["path"]
@@ -1268,18 +1627,22 @@ def selftest(schema_dir: Path, spec_text: str, stream) -> int:
         try:
             report = run([path], fx["kind"], schema_dir, spec_text, False,
                          want.get("documents"), fx.get("pointer"))
-            code = 1 if (report["findings"] or report["cap_violations"]) else 0
+            code = 1 if (report["findings"] or report["cap_violations"]
+                         or report["witness_violations"]) else 0
             got = {
                 "exit": code,
                 "documents": report["accounting"]["documents"],
                 "findings": _tuples(report["findings"]),
                 "cap_violations": _cap_tuples(report["cap_violations"]),
+                "witness_violations": _witness_tuples(report["witness_violations"]),
+                "witness_unjudged": report["witness_unjudged"],
                 "undescribed": _undescribed_tuples(report["undescribed"]),
                 "first_documents": [f["first_document"] for f in report["findings"]],
             }
         except InstrumentError as exc:
             got = {"exit": 2, "documents": None, "findings": None,
-                   "cap_violations": None, "undescribed": None,
+                   "cap_violations": None, "witness_violations": None,
+                   "witness_unjudged": None, "undescribed": None,
                    "first_documents": None, "why": str(exc)}
 
         expected = {
@@ -1289,6 +1652,16 @@ def selftest(schema_dir: Path, spec_text: str, stream) -> int:
                          for t in want.get("findings", [])] if want["exit"] != 2 else None,
             "cap_violations": [tuple(t) for t in want.get("cap_violations", [])]
                               if want["exit"] != 2 else None,
+            # Compared on EVERY non-refusal fixture, defaulting to none and to zero.
+            # A clause whose expectation is optional is a clause a fixture can drop
+            # silently, and `witness_unjudged` is the withheld verdict: leaving it
+            # unasserted would let a step-1 regression that stopped judging every
+            # document pass the whole suite green.
+            "witness_violations": [(t[0], tuple(t[1]), t[2])
+                                   for t in want.get("witness_violations", [])]
+                                  if want["exit"] != 2 else None,
+            "witness_unjudged": want.get("witness_unjudged", 0)
+                                if want["exit"] != 2 else None,
             "undescribed": [tuple(t) for t in want.get("undescribed", [])]
                            if want["exit"] != 2 else None,
         }
@@ -1398,7 +1771,7 @@ def main(argv=None) -> int:
     else:
         render(report, sys.stdout)
 
-    if report["findings"] or report["cap_violations"]:
+    if report["findings"] or report["cap_violations"] or report["witness_violations"]:
         return 1
     if args.strict_undescribed and report["undescribed"]:
         return 1

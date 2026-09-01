@@ -8,6 +8,7 @@
                     "unit": "build",
                     "diff": {
                         "diff_version": "0.6.0",
+                        "comparison_outcome": "changed",
                         "current": {
                             "window": { "start": "2026-01-01T00:01:00Z", "end": "2026-01-01T00:02:00Z" },
                             "document_id": "nightly-build-2"
@@ -23,6 +24,7 @@
                     "unit": "test",
                     "diff": {
                         "diff_version": "0.6.0",
+                        "comparison_outcome": "changed",
                         "current": {
                             "window": { "start": "2026-01-01T00:01:00Z", "end": "2026-01-01T00:02:00Z" },
                             "document_id": "nightly-test-2"
@@ -43,6 +45,7 @@
                     "unit": "build",
                     "diff": {
                         "diff_version": "0.6.0",
+                        "comparison_outcome": "changed",
                         "current": {
                             "window": { "start": "2026-01-01T01:01:00Z", "end": "2026-01-01T01:02:00Z" },
                             "document_id": "release-build-2"
@@ -58,6 +61,7 @@
                     "unit": "test",
                     "diff": {
                         "diff_version": "0.6.0",
+                        "comparison_outcome": "changed",
                         "current": {
                             "window": { "start": "2026-01-01T01:01:00Z", "end": "2026-01-01T01:02:00Z" },
                             "document_id": "release-test-2",

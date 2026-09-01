@@ -3,12 +3,14 @@
     "summary": { "changes": 1, "significant": 1 },
     "raw": {
         "diff_version": "0.6.0",
+        "comparison_outcome": "changed",
         "current": {
             "window": { "start": "2026-01-01T00:01:00Z", "end": "2026-01-01T00:02:00Z" },
             "region": "eu-west-1"
         },
         "previous": {
             "window": { "start": "2026-01-01T00:00:00Z", "end": "2026-01-01T00:01:00Z" }
-        }
+        },
+        "stability_score": 0.62
     }
 }

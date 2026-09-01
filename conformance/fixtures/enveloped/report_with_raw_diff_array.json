@@ -6,6 +6,7 @@
             "unit": "build",
             "diff": {
                 "diff_version": "0.6.0",
+                "comparison_outcome": "changed",
                 "current": {
                     "window": { "start": "2026-01-01T00:01:00Z", "end": "2026-01-01T00:02:00Z" },
                     "document_id": "build-window-2"
@@ -21,6 +22,7 @@
             "unit": "test",
             "diff": {
                 "diff_version": "0.6.0",
+                "comparison_outcome": "changed",
                 "current": {
                     "window": { "start": "2026-01-01T00:01:00Z", "end": "2026-01-01T00:02:00Z" },
                     "document_id": "test-window-2"
@@ -38,6 +40,7 @@
             "unit": "package",
             "diff": {
                 "diff_version": "0.6.0",
+                "comparison_outcome": "changed",
                 "current": {
                     "window": { "start": "2026-01-01T00:01:00Z", "end": "2026-01-01T00:02:00Z" },
                     "document_id": "package-window-2",
@@ -54,6 +57,7 @@
             "unit": "deploy",
             "diff": {
                 "diff_version": "0.6.0",
+                "comparison_outcome": "changed",
                 "current": {
                     "window": { "start": "2026-01-01T00:01:00Z", "end": "2026-01-01T00:02:00Z" },
                     "document_id": "deploy-window-2"

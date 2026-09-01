@@ -1,0 +1,50 @@
+{
+    "diff_version": "0.10.0",
+    "comparison_outcome": "unchanged",
+    "vendor_private_counter": 7,
+    "current": {
+        "window": { "start": "2026-01-01T00:01:00Z", "end": "2026-01-01T00:02:00Z" },
+        "document_id": "window-2"
+    },
+    "previous": {
+        "window": { "start": "2026-01-01T00:00:00Z", "end": "2026-01-01T00:01:00Z" },
+        "document_id": "window-1"
+    },
+    "kl_divergence": 0,
+    "js_divergence": 0,
+    "stability_score": 1,
+    "template_deltas": [
+        {
+            "template_id": "h:0123456789abcdef0123456789abcdef",
+            "previous_count": 4,
+            "current_count": 4,
+            "delta": 0
+        }
+    ],
+    "field_histogram_deltas": [],
+    "new_templates": [],
+    "vanished_templates": [],
+    "branching_delta": [],
+    "ngram_delta": {
+        "ngram_size": 2,
+        "new_ngrams": [],
+        "vanished_ngrams": [],
+        "rate_changed": []
+    },
+    "tail_delta": {
+        "previous_tail_template_count": 40,
+        "current_tail_template_count": 40,
+        "tail_template_count_delta": 0,
+        "previous_tail_entropy_bits": 4.0,
+        "current_tail_entropy_bits": 4.0,
+        "tail_entropy_bits_delta": 0.0,
+        "previous_tail_max_rate": 0.001,
+        "current_tail_max_rate": 0.001,
+        "tail_max_rate_delta": 0.0
+    },
+    "cube_diff": {
+        "axes": [
+            { "name": "level", "kind": "categorical" }
+        ]
+    }
+}
