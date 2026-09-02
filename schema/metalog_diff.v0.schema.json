@@ -11,7 +11,8 @@
     "properties": {
         "diff_version": {
             "type": "string",
-            "pattern": "^0\\.[0-9]+\\.[0-9]+$"
+            "pattern": "^0\\.[0-9]+\\.[0-9]+$",
+            "description": "The SPEC version this MetaLogDiff conforms to (SPEC §13.1.1) — the SAME axis as metalog.v0.schema.json's metalog_version, for the other document this specification defines, and NOT a second version axis of its own. The pattern constrains the SHAPE and cannot constrain the VALUE: a document declaring 0.6.0 while carrying comparison_outcome (required from v0.10.0) validates here and is nonetheless self-contradictory, which §13.1.1 forbids in prose because no keyword can reach it. Meaning declared in v0.10.0; before that the schema pinned a shape and the prose declared nothing."
         },
         "current": {
             "type": "object",
@@ -365,6 +366,16 @@
                 }
             },
             "additionalProperties": false
+        },
+        "withheld_signals": {
+            "x-metalog-vacuous": {
+                "description": "Vacuous when the producer withheld no finding: no names. Any name is a finding -- the finding being that ANOTHER signal property carries one this document does not show.",
+                "maxItems": 0
+            },
+            "type": "array",
+            "uniqueItems": true,
+            "description": "The signal properties in which THIS comparison found a change that this document does not carry (SPEC §13.2.2). It is the witness of last resort: a producer that finds a change only in a property it does not serialise has, without this member, no conformant outcome -- `changed` would carry no witness and `unchanged` would be false. Every member MUST name a property of the witness set (§13.2.1 step 2), MUST NOT name `withheld_signals` itself, and MUST name a property that is NOT a witness in this document; the array MUST be sorted ascending and carries no duplicates. The membership and ordering MUSTs are §13.2.2's: an enum here would be the hand-kept list §13.2 deleted, and sortedness is not a keyword. Added in v0.10.0.",
+            "items": { "type": "string", "minLength": 1 }
         },
         "extensions": {
             "description": "Document-level vendor-specific data on a MetaLogDiff (SPEC §7). This placement was granted in v0.9.0. The root itself is open — its `additionalProperties` declares the openness and constrains nothing — so a bare vendor member written beside this container validates while violating §7: the container is where such data belongs, and at an open root the schema does not tell the two apart.",

@@ -68,7 +68,7 @@ top-level fields:
 
 | Field | Type | Required | Purpose |
 |---|---|---|---|
-| `metalog_version` | string | yes | Spec version this document conforms to. SemVer string (e.g. `"0.6.0"`). |
+| `metalog_version` | string | yes | Spec version this document conforms to. SemVer string (e.g. `"0.10.0"`). The `MetaLogDiff` (§13) carries the same axis as `diff_version` — see §13.1.1. |
 | `producer` | object | yes | Identifies the producing implementation. See §2.1. |
 | `window` | object | yes | The time interval covered. See §2.2. |
 | `source` | object | yes | What was observed (service, host, fleet). See §2.3. |
@@ -143,10 +143,17 @@ clause 5.
 ```jsonc
 {
   "name": "insight",          // string, required
-  "version": "0.6.0",         // string, required, SemVer
+  "version": "2.1.0",         // string, required, SemVer — the PRODUCER's own version
   "implementation_uri": "https://github.com/.../insight"  // string, optional
 }
 ```
+
+`producer.version` is the implementation's version and moves on the
+implementation's own schedule. It is **not** `metalog_version` and need not
+track it: the example above shows a `2.x` producer emitting a `0.10.0` document,
+which is the ordinary case and not a mistake. The two were spelled with the same
+number in this section until v0.10.0, and a reader could reasonably have read
+that as a coupling.
 
 ### 2.2 `window`
 
@@ -542,6 +549,13 @@ document, not only at the raw scale.
 > carrying any other signal field satisfies the clause without it, and a consumer that
 > holds no `field_histogram_deltas` is holding a document the standard admits. It lands
 > with the full-fidelity (batch) diff surface, for the §11 reason above.
+>
+> **Withholding it is conformant; withholding a finding silently is not.** A producer
+> that withholds this block and whose comparison found a change *only* in it has no
+> outcome left under §13.2 alone — `"changed"` would carry no witness and `"unchanged"`
+> would be false. **§13.2.2's `withheld_signals` is that producer's outcome**, and it
+> names this block as the case it was minted for. The affordance runs both ways: the
+> block may stay off the wire, and the finding may not.
 
 ---
 
@@ -1387,7 +1401,7 @@ not directly comparable.
 
 ```jsonc
 {
-  "diff_version": "0.4.0",
+  "diff_version": "0.10.0",            // string, REQUIRED — the SPEC version, §13.1.1
   "comparison_outcome": "changed",     // string, REQUIRED — "changed" | "unchanged", §13.2
   "current":  { "window": { "start": "...", "end": "..." }, "document_id": "sha256:..." },
   "previous": { "window": { "start": "...", "end": "..." }, "document_id": "sha256:..." },
@@ -1435,11 +1449,58 @@ not directly comparable.
       { "template_id": "h:8a3f...", "direction": "up", "previous_level": "WARN", "current_level": "ERROR" }
     ]
   },
+  "withheld_signals": [ ],             // array, optional — see §13.2.2 (new in v0.10.0)
   "extensions": {                      // object, optional — vendor data, §7 (placement granted in v0.9.0)
     "com.example.deploy_window": "2026-01-14.3"
   }
 }
 ```
+
+### 13.1.1 `diff_version` — which version this is
+
+**`diff_version` is the version of THIS specification that the document
+conforms to.** It is the same axis as `metalog_version` (§2), carried by the
+other document type this specification defines, and it is **not** a second
+version axis of its own. §9 therefore reaches it unchanged: producers and
+consumers **MUST** check its MAJOR component and **MAY** refuse to process a
+document with an unknown MAJOR.
+
+- A producer **MUST** emit the version of this specification it implements —
+  the same value it emits in `metalog_version` on the MetaLogs it produces.
+- A producer **MUST NOT** emit a `diff_version` older than the version at which
+  the newest member the document carries was minted. A document holding
+  `comparison_outcome` — **REQUIRED** as of v0.10.0 — while declaring `0.6.0`
+  describes itself as a version in which that member did not exist, and a
+  consumer that honours the declaration is entitled to reject it.
+- `canonicalization_version` and `retention_profile` (§2.4) remain the separate
+  axis §9 names. `diff_version` is not one of them, and a change to the
+  producer's processing contract does **not** move it.
+
+**This is stated because it was not.** Before v0.10.0 the only occurrences of
+`diff_version` in this text were a value inside the §13.1 example and an entry
+in §13.2's REQUIRED list, and
+[`schema/metalog_diff.v0.schema.json`](schema/metalog_diff.v0.schema.json)
+constrains it to a SHAPE (`^0\.[0-9]+\.[0-9]+$`) and to no value at all — so
+the number an implementer branches on was the one field this specification had
+never defined. Both readings were available from the text, and the reference
+implementation took the other one: it read `diff_version` as an independent
+version of the diff document, bumped only when the diff's own shape broke, and
+so stamped `0.6.0` onto documents carrying members this specification minted
+four MINOR versions later. That is not the implementation's defect. A version
+field is the one place a specification cannot leave to inference, because it is
+the field a consumer branches on *before* it has read anything else.
+
+See [`adr/0004-diff-version-is-the-spec-version.md`](adr/0004-diff-version-is-the-spec-version.md)
+for the decision, the reading that was rejected, and the measurement that
+prompted both.
+
+The reciprocal limit, stated so nobody looks for enforcement that is not there:
+no keyword can decide this. `pattern` fixes the shape, and JSON Schema has no
+way to require that a member's value be at least the version at which a sibling
+member was minted. §8 clause 1 will pass a document that lies here. The rule is
+a **producer** obligation, decidable by an implementer reading its own output,
+and it is written down rather than left implicit precisely because nothing else
+will catch it.
 
 ### 13.2 Required vs optional fields
 
@@ -1464,7 +1525,9 @@ not directly comparable.
   **A signal property that is present but carries no finding is not a
   witness**: `template_deltas` is a union over both windows and
   `js_divergence` is emitted whenever computable, so presence alone is
-  satisfied by every producer regardless of what it found.
+  satisfied by every producer regardless of what it found. A producer whose
+  only finding lies in a property it does not serialise reports it in
+  `withheld_signals`, which is its witness — see §13.2.2.
 - The witness set is **every optional signal property of
   [`schema/metalog_diff.v0.schema.json`](schema/metalog_diff.v0.schema.json)**
   — derived from the schema, never enumerated here. A signal property
@@ -1595,6 +1658,76 @@ identical distributions is a **witness**, and the defect is the producer's.
    `comparison_outcome: "unchanged"` **MUST NOT** carry any witness — a producer
    filtering by significance omits the sub-threshold property or emits it at its
    vacuous value, rather than asserting an outcome its own document contradicts.
+
+### 13.2.2 `withheld_signals` — a finding this document does not carry (new in v0.10.0)
+
+§13.2's two outcomes assume that what a producer **found** and what its document
+can **show** are the same set. They are not. A producer may compute a signal
+property and not serialise it — §3.5.2 names exactly that choice for
+`field_histogram_deltas` and calls it conformant, because the §11 envelope of a
+streaming producer cannot always afford a per-slot block. When the only change
+such a comparison found lies in a property that producer withholds, both
+outcomes are closed to it: `"changed"` carries no witness and fails §13.2.1's
+clause 4, and `"unchanged"` is false, because the comparison ran and found a
+change. That producer has no conformant document to emit, which is a hole in
+this specification and not a defect of the producer.
+
+**`withheld_signals`** (array of strings, optional) closes it. It names the
+signal properties in which **this comparison found a change that this document
+does not carry**. It is an ordinary optional signal property: it is in the
+witness set, it carries an `x-metalog-vacuous` declaration of `maxItems: 0`, so
+a non-empty array is a **witness** and `"changed"` becomes legal on the strength
+of it alone.
+
+```jsonc
+{
+  "diff_version": "0.10.0",
+  "comparison_outcome": "changed",
+  "current":  { "window": { "start": "...", "end": "..." } },
+  "previous": { "window": { "start": "...", "end": "..." } },
+  "withheld_signals": [ "field_histogram_deltas" ]
+}
+```
+
+- Every member **MUST** be a member name of the witness set (§13.2.1 step 2),
+  and **MUST NOT** be `"withheld_signals"` itself.
+- Every member **MUST** name a property that is **not a witness in this
+  document** — absent from it, or present at its declared vacuous value. Naming
+  a property whose serialised value already witnesses is a false statement about
+  what the document withholds.
+- A producer **MUST NOT** name a property merely because it does not implement
+  one. This member reports a **finding**, not an inventory of omissions: a
+  producer that computes no cube computes no `cube_diff` finding and has nothing
+  to withhold.
+- The array **MUST** be sorted ascending and **MUST NOT** carry duplicates. The
+  diff is a deterministic document and a set has no order to inherit.
+- `"unchanged"` needs no rule of its own here: a non-empty `withheld_signals` is
+  a witness, so §13.2.1's clause 4 already forbids that pair.
+
+**What this costs, stated rather than left for a reader to find.** A consumer
+reading `"changed"` is no longer guaranteed a finding it can point at — it may
+be handed only the name of a place where one exists. That is a real weakening of
+the witness rule, it is bounded, and it is **visible**: the degenerate case is
+legible in the document as exactly one member, so a consumer that requires a
+pointable finding tests for it in one place. The two alternatives were worse in
+both directions. Obliging the producer to serialise a withheld property whenever
+it carries the only finding makes a block's presence on the wire depend on what
+*other* signals did, which is a contract no implementer can hold and a shape no
+consumer can predict. Obliging silence — no document at all for that pair —
+makes a finding vanish and leaves a consumer unable to tell a withheld change
+from a comparison nobody ran, which is the unreadable silence §13.2 exists to
+forbid.
+
+[`adr/0005-the-outcome-a-withholding-producer-did-not-have.md`](adr/0005-the-outcome-a-withholding-producer-did-not-have.md)
+carries the decision and the four alternatives it was chosen against.
+
+**Also stated rather than left implicit: no keyword decides these MUSTs.** The
+membership rule cannot be an `enum` in the schema, because that enum would be
+the hand-kept list of signal properties §13.2 deleted for having drifted from
+the schema by three members; and sortedness is not a JSON Schema assertion. The
+schema carries `uniqueItems` and nothing more. Like §13.1.1's version rule and
+§13.7's orderings, these bind the **producer** and are decidable by an
+implementer over its own output.
 
 ### 13.3 Direction and sign
 

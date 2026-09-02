@@ -45,5 +45,6 @@
         "axes": [
             { "name": "level", "kind": "categorical" }
         ]
-    }
+    },
+    "withheld_signals": []
 }

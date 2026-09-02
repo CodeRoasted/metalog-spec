@@ -34,16 +34,24 @@ The spec follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ## [0.10.0] — UNRELEASED
 
 **Breaking** under [`GOVERNANCE.md`](GOVERNANCE.md) §2 — a new **required** member
-on `MetaLogDiff`, and a rewritten §13.2 clause. MINOR bump: MAJOR stays `0`, so
+on `MetaLogDiff`, a rewritten §13.2 clause, and a `diff_version` rule (§13.1.1) that
+a producer stamping an older value now violates. It also adds one optional member
+(`withheld_signals`, §13.2.2), which is additive on its own. MINOR bump: MAJOR stays `0`, so
 §6's *"the MAJOR field of `metalog_version` must equal the MAJOR of the spec"* is
 satisfied unchanged and **both schema files keep their `v0` filenames** — a reader
 who expects a `v1` schema and a MAJOR check that starts refusing documents will
 find neither. RFC issue
 [#8](https://github.com/CodeRoasted/metalog-spec/issues/8), opened 2026-08-24.
 
-**This entry covers the RFC's P2 only.** P1 (closing the extension boundary), P3
-(the composed document's own caps) and P4 (the `branching` compose clause) are
-proposed in the same issue and are **not** in this text yet.
+**From RFC #8 this entry covers P2 only.** P1 (closing the extension boundary),
+P3 (the composed document's own caps) and P4 (the `branching` compose clause) are
+proposed in the same issue and are **not** in this text yet. **The two §13.1.1 /
+§13.2.2 items below are not from that RFC**; they are editor-raised defects found
+while P2 was in draft, and they land in this version because 0.10.0 is still
+unreleased under [`GOVERNANCE.md`](GOVERNANCE.md) §7 — no tag, no Release, and so
+no implementer to break. Folding them here rather than minting 0.11.0 also keeps
+one number across `SPEC.md`, `metalog_version` and `diff_version`, which is the
+whole point of the first of them.
 
 ### Changed
 
@@ -93,8 +101,8 @@ proposed in the same issue and are **not** in this text yet.
   signal property whose shape nobody anticipated writes the predicate that decides it
   and needs no change to this section.
 
-  **All twelve** optional signal properties of `metalog_diff.v0.schema.json` carry
-  one. Coverage is a MUST and an absent declaration is a **defect of the schema, not
+  **All thirteen** optional signal properties of `metalog_diff.v0.schema.json`
+  carry one. Coverage is a MUST and an absent declaration is a **defect of the schema, not
   a permission**: a validator deciding §13.2 **MUST** refuse to run rather than
   return a verdict about a finding it cannot define.
 
@@ -130,6 +138,78 @@ proposed in the same issue and are **not** in this text yet.
   cannot act on, and third-party tooling is the entire reason the label exists.
   Like `x-metalog-vacuous`, it is an annotation: it asserts nothing and changes no
   document's validity.
+
+- **§13.2.2 — `withheld_signals`, the outcome a withholding producer did not have.**
+  §13.2's two outcomes assume that what a producer FOUND and what its document can
+  SHOW are the same set. They are not: §3.5.2 blesses a producer that computes
+  `field_histogram_deltas` and does not serialise it, because a streaming producer's
+  §11 envelope cannot always afford a per-slot block. A comparison whose ONLY finding
+  lay in such a property had **no conformant outcome at all** — `"changed"` carried no
+  witness and failed §13.2.1 clause 4, and `"unchanged"` was false. That is a hole in
+  this specification, not a defect of the producer.
+
+  `withheld_signals` (array of strings, optional) names the signal properties in which
+  this comparison found a change the document does not carry. It is an ordinary member
+  of the witness set with an `x-metalog-vacuous` of `maxItems: 0`, so a **non-empty**
+  array is a witness and `"changed"` becomes legal on its strength alone; an empty one
+  is vacuous and changes nothing. Every member MUST name a witness-set property other
+  than `withheld_signals` itself, MUST name one that is not a witness in this document,
+  and the array MUST be sorted and duplicate-free.
+
+  **The cost is stated in §13.2.2 rather than discovered.** A consumer reading
+  `"changed"` is no longer guaranteed a finding it can point at; it may get only the
+  name of a place where one exists. That weakening is bounded and legible in one
+  member. Both alternatives were worse: obliging serialisation whenever the property
+  carries the only finding makes a block's presence on the wire depend on what other
+  signals did, and obliging silence makes a finding vanish into a document nobody
+  emits.
+
+  **Zero documents in the committed reference corpus exercise this**, which is why it
+  is being fixed now — the hole is cheapest to close before anyone has fallen into it.
+  Producers unaffected: the member is optional and a producer that serialises every
+  finding it makes never emits it.
+
+### Fixed
+
+- **§13.1.1 — `diff_version` now has a meaning.** The field an implementer branches
+  on was the one this specification had never defined. Its only occurrences in the
+  text were a value inside the §13.1 example and an entry in §13.2's REQUIRED list;
+  `metalog_diff.v0.schema.json` pinned its SHAPE (`^0\.[0-9]+\.[0-9]+$`) and no
+  value. Two readings were available and both were reachable from the text.
+
+  **It is the SPEC version this document conforms to** — the same axis as
+  `metalog_version` (§2), for the other document type this specification defines, and
+  not a second version axis of its own. §9's SemVer rules and MAJOR check reach it
+  unchanged. `canonicalization_version` and `retention_profile` (§2.4) remain the
+  separate axis §9 names; `diff_version` is not one of them.
+
+  A producer **MUST** emit the version it implements, and **MUST NOT** emit one older
+  than the version at which the newest member the document carries was minted.
+
+  **The measured cost of the gap, recorded because it was live on a published
+  surface.** The reference implementation took the other reading — an independent
+  version of the diff document, bumped only when the diff's own shape broke — and its
+  published evidence therefore carries **nine `MetaLogDiff` documents each declaring
+  `diff_version: "0.6.0"` while carrying `comparison_outcome`**, a member this
+  specification made REQUIRED at v0.10.0. The same file's MetaLog documents correctly
+  declare `metalog_version: "0.10.0"`. A document that declares a version in which one
+  of its own required members did not exist is unreadable by a consumer that honours
+  the declaration, and no schema keyword can catch it — §13.1.1 says so in the same
+  breath as the rule.
+
+  Every `diff_version` in this repository is repointed to `0.10.0` in the same pass:
+  fifteen MetaLogDiff documents across eight conformance fixture files, plus the §13.1
+  example. **This is BREAKING for a producer that stamped an older value**, which is
+  the intended direction — such a producer was already emitting a self-contradictory
+  document.
+
+- **§2.1's `producer.version` example no longer mirrors the spec version.** It read
+  `"0.6.0"` beside a `metalog_version` of the same number, which invites exactly the
+  coupling §13.1.1 has to deny. It now reads `"2.1.0"`, and §2.1 states that a producer
+  version moves on the implementation's own schedule and need not track this spec's.
+  `schema/metalog.v0.example.json` follows: `metalog_version` `0.9.0` → `0.10.0`
+  (it was one MINOR behind the text it illustrates) and `producer.version`
+  `0.6.0` → `2.1.0`.
 
 ## [0.9.0] — 2026-08-29
 

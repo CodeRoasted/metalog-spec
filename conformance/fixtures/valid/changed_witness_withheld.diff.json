@@ -46,5 +46,5 @@
             { "name": "level", "kind": "categorical" }
         ]
     },
-    "withheld_signals": []
+    "withheld_signals": ["field_histogram_deltas"]
 }

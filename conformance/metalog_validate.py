@@ -1257,6 +1257,12 @@ REQUIRED_CONTROLS = {
     "witness-set-from-schema",      # forecloses a witness set read from the
                                     # DOCUMENT, which lets a producer manufacture a
                                     # witness by inventing a member at an open root
+    "withheld-signal-is-a-witness", # forecloses a §13.2.2 escape that cannot be
+                                    # taken: the whole point of `withheld_signals`
+                                    # is that a NON-EMPTY one carries the outcome,
+                                    # and a reader that judged it by presence would
+                                    # pass the empty array the family's other three
+                                    # documents all carry
 }
 
 
