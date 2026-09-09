@@ -268,11 +268,24 @@ the distinction censuses 58 positions instead of 49 and reds on all nine.
 
 Declared, because an instrument's silence is read as coverage.
 
-- **§8 clauses 2 and 3 are not tested here.** Clause 2 (every required field
-  populated *according to its definition*) is only covered as far as the schema can
-  express it. Clause 3 (`template_id` computed exactly as §3.2 specifies) needs a
-  pinned cross-implementation vector, and none exists yet — swapping the digest
-  would pass every check in this directory. The tool prints this limit on every run.
+- **§8 clause 2 is reached in ONE place, and clause 3 nowhere.** Clause 2 is *every
+  required field populated according to its definition*, and for exactly one required
+  block that definition says something a schema cannot: `window` (§2.2) states three
+  relations BETWEEN its members — `start` at or before `end`, `duration_seconds`
+  equal to their difference to the nearest second, both instants in UTC — plus a §7
+  extension flag (`org.metalog.lines_observed_estimated`) that §2.2 admits only as
+  `true` and that lives inside a container the schema deliberately leaves untyped.
+  Those four are decided here, on schema-valid documents only, and the withheld count
+  is printed. **Every other required field is still covered only as far as the schema
+  expresses it**, which is most of clause 2 — a `producer.name` that is the empty
+  string, a `source.service` naming the wrong service, a `stats.frequency` that does
+  not match its `count`: all schema-valid, none decided anywhere. The `window` arm
+  does **not** re-check the members' TYPES; `duration_seconds` and `lines_observed`
+  are `integer, minimum 0` in the schema and that is clause 1's business, because a
+  second copy of a check is a place for two answers to diverge. Clause 3
+  (`template_id` computed exactly as §3.2 specifies) needs a pinned
+  cross-implementation vector, and none exists yet — swapping the digest would pass
+  every check in this directory. The tool prints these limits on every run.
 - **Clause 4 is tested, but only where a cap is DECLARED.** The check compares an
   array against the cap in its own document; a producer that declares no cap for a
   block is unbounded on that block and cannot be caught here. `stats.top_k_size` is

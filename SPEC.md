@@ -1027,9 +1027,23 @@ need string context to judge. A validator that decides it **MUST**
 report it as a **producer** failure, held apart from an unreadable
 corpus: the two reach a reader through the same parser error and
 have opposite remedies — fix the producer's escaping, or re-fetch
-the file. Clauses 2 and 3 are not mechanically decidable today:
-clause 2 only as far as the schema expresses it, and clause 3 not
-until a pinned cross-implementation digest vector exists.
+the file. Clause 2 is mechanically decidable in exactly one place. `window`
+(§2.2) is the only required block whose definition states relations
+**between** its members — `start` at or before `end`,
+`duration_seconds` equal to their difference rounded to the nearest
+second, and both instants in UTC. None of the three is expressible
+in JSON Schema at any draft (`format: date-time` constrains the
+grammar, never the offset, and no keyword relates two siblings),
+and all three follow from the document alone, so
+[`conformance/metalog_validate.py`](conformance/metalog_validate.py)
+decides them — together with the §7
+`org.metalog.lines_observed_estimated` flag, which §2.2 admits only
+as `true` and which lives inside an extension container the schema
+does not type by design. The **types** of those members are clause
+1's business and are not re-decided there. Every **other** required
+field is checked only as far as the schema expresses it, and clause
+3 is not mechanically decidable at all until a pinned
+cross-implementation digest vector exists.
 
 Clause 6 is not reachable from the schema either: the predicate is
 `x-metalog-vacuous`, an annotation a generic validator ignores by

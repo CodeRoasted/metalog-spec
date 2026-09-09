@@ -169,6 +169,34 @@ whole point of the first of them.
   Producers unaffected: the member is optional and a producer that serialises every
   finding it makes never emits it.
 
+### Clarified
+
+- **§8 — clause 2 is mechanically decidable for `window` (§2.2), and the closing
+  paragraph now says so.** It read *"clauses 2 and 3 are not mechanically decidable
+  today: clause 2 only as far as the schema expresses it"*. That understated what is
+  available for one block and one block only. `window` is the sole required block
+  whose definition states relations BETWEEN its members — `start` at or before `end`,
+  `duration_seconds` equal to their difference rounded to the nearest second, both
+  instants in UTC — and none of the three is expressible in JSON Schema at any draft:
+  `format: date-time` constrains the grammar and never the offset, and no keyword
+  relates two siblings. All three follow from the document alone.
+  `conformance/metalog_validate.py` now decides them, together with the §7
+  `org.metalog.lines_observed_estimated` flag, which §2.2 admits only as `true` and
+  which sits inside an extension container the schema does not type by design.
+
+  **No normative text changed and no producer requirement moved** — clause 2 says
+  what it always said, §2.2 requires what it always required. This is **editorial**
+  under [`GOVERNANCE.md`](GOVERNANCE.md) §2: what changed is the paragraph describing
+  what a tool can decide, and the tool. A producer already conformant with §2.2 stays
+  conformant; one that was not now finds out, which was the point.
+
+  **One consequence worth stating before someone meets it as a surprise:** §2.2
+  defines `start` and `end` as *"RFC 3339, UTC"* without the word MUST, and the
+  validator reads a field definition as binding, so a `+02:00` offset — a perfectly
+  legal RFC 3339 instant — is now reported. The tool's SCOPE block says this in
+  words and points at §2.2, so a reader under that red is sent to the spec text
+  rather than to their producer.
+
 ### Fixed
 
 - **§13.1.1 — `diff_version` now has a meaning.** The field an implementer branches

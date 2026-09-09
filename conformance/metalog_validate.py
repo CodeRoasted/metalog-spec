@@ -51,6 +51,7 @@ import re
 import sys
 import tempfile
 from collections import Counter, defaultdict
+from datetime import datetime, timedelta
 from pathlib import Path
 
 TOOL_DIR = Path(__file__).resolve().parent
@@ -689,6 +690,183 @@ def collect_cap_violations(docs, pairs: set[tuple[str, str]]) -> list[dict]:
 
 
 # --------------------------------------------------------------------------
+# SPEC §8 clause 2, over §2.2 `window` — the cross-field relations a schema cannot
+# reach. Clause 2 is "every required field is populated according to its definition
+# above", and §8's closing paragraph said clause 2 was decidable "only as far as the
+# schema expresses it". For `window` that sentence understated what is available:
+# schema/metalog.v0.schema.json already types every member (`duration_seconds` and
+# `lines_observed` as `integer, minimum 0`; `start` and `end` as `string` with
+# `format: date-time`), so those are clause 1's business and are deliberately NOT
+# repeated here — a check the schema already makes is a mirror, and a second copy
+# of it only creates a place for the two to disagree. What the schema cannot state
+# is everything §2.2 says BETWEEN the members:
+#
+#   utc            — §2.2 defines start and end as "RFC 3339, UTC". `format:
+#                    date-time` accepts any offset, and by default it is an
+#                    ANNOTATION that asserts nothing at all, so with --check-formats
+#                    off this arm is the only reader of these two strings.
+#   ordering       — `start` MUST be <= `end`. A relation between two members; JSON
+#                    Schema has no vocabulary for it at any draft.
+#   duration       — `duration_seconds` MUST equal `end - start` rounded to the
+#                    nearest second. Also a relation, and the one a producer gets
+#                    wrong silently: every member is individually well-typed.
+#   estimated-flag — `extensions.org.metalog.lines_observed_estimated`, when
+#                    present, is `true`. It lives inside §7's OPEN extension
+#                    container, whose whole contract is that the schema does not
+#                    type what is in it.
+#
+# JUDGED ONLY ON A SCHEMA-VALID DOCUMENT, for the same reason the witness rule is
+# (§13.2.1 step 1) and it is not ceremony here either: on an unvalidated document
+# `window` may be a string, `duration_seconds` a float, `start` an integer. Judging
+# those would report a window relation against a producer whose real defect is a
+# type, sending a reader to fix arithmetic that was never evaluated. The withheld
+# count is printed, never absorbed.
+# --------------------------------------------------------------------------
+
+WINDOW_MARKER = "window"
+ESTIMATED_EXT_NAMESPACE = "org.metalog"
+ESTIMATED_EXT_MEMBER = "lines_observed_estimated"
+
+# `end - start` is compared against `duration_seconds` with a half-second radius,
+# because "rounded to the nearest second" IS that radius — every non-tie delta has
+# exactly one integer within half a second of it. The tiny epsilon is float
+# representation and nothing else. A tie (delta exactly x.5) has two nearest
+# integers and §2.2 names no tie rule, so both are accepted rather than one of them
+# invented here: an instrument that picked a side would red a producer for obeying
+# a rule the spec does not state.
+DURATION_TOLERANCE_SECONDS = 0.5 + 1e-9
+
+
+def governs_window_rule(schema: dict) -> bool:
+    """Read from the artifact, never from a `--kind` string in this file: a schema
+    whose root `required` names `window` is one §2.2 reaches. metalog.v0 does;
+    metalog_diff.v0 does not and gets no coverage demand. Removing the member from
+    the schema disarms this clause and the report says so in words, so the arm can
+    never go quiet while still printing a line that reads like a pass."""
+    return WINDOW_MARKER in set(schema.get("required") or ())
+
+
+def _utc_instant(value) -> tuple[bool, object]:
+    """(ok, datetime | reason). RFC 3339 with an offset that IS UTC.
+
+    `datetime.fromisoformat` accepts more than RFC 3339 (a bare `2026-01-01`, a
+    space separator), so the shape is checked before it is parsed rather than
+    after. An offset is REQUIRED — a naive timestamp is not an instant, and two
+    documents written in different local zones would carry the same string for
+    different moments, which is the determinism failure §2.2's "UTC" exists to
+    foreclose."""
+    if not isinstance(value, str):
+        return False, f"not a string ({type(value).__name__})"
+    if not RFC3339_UTC.match(value):
+        return False, f"{value!r} is not an RFC 3339 UTC instant"
+    try:
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError as exc:
+        return False, f"{value!r} does not parse ({exc})"
+    if parsed.utcoffset() != timedelta(0):
+        return False, f"{value!r} carries a non-UTC offset"
+    return True, parsed
+
+
+# Anchored, and deliberately stricter than `datetime.fromisoformat`: date, `T`,
+# time, optional fractional seconds, then either `Z` or an explicit `+00:00`
+# /`-00:00`. RFC 3339 permits a lower-case `t`/`z`; both are accepted because the
+# grammar does, and §2.2 constrains the ZONE rather than the case.
+RFC3339_UTC = re.compile(
+    r"^\d{4}-\d{2}-\d{2}[Tt]\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:[Zz]|[+-]00:00)$"
+)
+
+
+def _estimated_flag(doc: dict):
+    """The §7 extension flag, read in BOTH spellings the container admits.
+
+    §2.2 writes it as `extensions.org.metalog.lines_observed_estimated`, and §7's
+    key grammar (`^[a-z][a-z0-9_-]*(\\.[a-z][a-z0-9_-]*)+$`) makes two encodings of
+    that path legal: a nested object under the key `org.metalog`, or the whole
+    dotted path as one flat key. Reading only one would be a false negative on a
+    conformant producer and a false positive on nothing — so both are read, and
+    which one a producer chose is not this arm's business. Returns the sentinel
+    `_ABSENT` when neither is present, because `False` is a value the clause
+    forbids and `None` is one it says nothing about."""
+    ext = doc.get("extensions")
+    if not isinstance(ext, dict):
+        return _ABSENT
+    flat = f"{ESTIMATED_EXT_NAMESPACE}.{ESTIMATED_EXT_MEMBER}"
+    if flat in ext:
+        return ext[flat]
+    nested = ext.get(ESTIMATED_EXT_NAMESPACE)
+    if isinstance(nested, dict) and ESTIMATED_EXT_MEMBER in nested:
+        return nested[ESTIMATED_EXT_MEMBER]
+    return _ABSENT
+
+
+_ABSENT = object()
+
+
+def collect_window_violations(docs, validator) -> tuple[list[dict], int]:
+    """§2.2's cross-field relations over the whole corpus.
+
+    Returns `(violations, unjudged)`, `unjudged` counting the documents withheld
+    for not being schema-valid — reported rather than absorbed, exactly as the
+    witness rule reports its own."""
+    by_class: dict[tuple[str, str], dict] = {}
+    unjudged = 0
+
+    def note(clause: str, detail: str, label: str) -> None:
+        entry = by_class.setdefault((clause, detail),
+                                    {"documents": set(), "first": label})
+        entry["documents"].add(label)
+
+    for label, doc in docs:
+        if not isinstance(doc, dict) or not validator.is_valid(doc):
+            unjudged += 1
+            continue
+        window = doc.get(WINDOW_MARKER)
+        if not isinstance(window, dict):
+            # Unreachable on a schema-valid metalog (the root requires it and types
+            # it), and not an error to report: a schema that stops requiring
+            # `window` disarms this clause through governs_window_rule, above.
+            continue
+
+        start_ok, start = _utc_instant(window.get("start"))
+        end_ok, end = _utc_instant(window.get("end"))
+        if not start_ok:
+            note("utc", f"start: {start}", label)
+        if not end_ok:
+            note("utc", f"end: {end}", label)
+
+        # Ordering and duration are both relations between the two instants, so
+        # neither is decidable when either instant failed to parse. Skipping them
+        # is a WITHHELD verdict on those two clauses and the `utc` finding above
+        # is what makes it visible — a reader is never handed "duration is fine"
+        # about a timestamp this arm could not read.
+        if start_ok and end_ok:
+            if start > end:
+                note("ordering",
+                     f"start {window['start']} is after end {window['end']}", label)
+            else:
+                delta = (end - start).total_seconds()
+                declared = window.get("duration_seconds")
+                if abs(declared - delta) > DURATION_TOLERANCE_SECONDS:
+                    note("duration",
+                         f"duration_seconds declares {declared}, "
+                         f"end - start is {delta:g}", label)
+
+        flag = _estimated_flag(doc)
+        if flag is not _ABSENT and flag is not True:
+            note("estimated-flag",
+                 f"{ESTIMATED_EXT_NAMESPACE}.{ESTIMATED_EXT_MEMBER} is "
+                 f"{json.dumps(flag)}, and §2.2 admits only true", label)
+
+    return sorted(
+        ({"clause": clause, "detail": detail, "documents": len(entry["documents"]),
+          "first_document": entry["first"]}
+         for (clause, detail), entry in by_class.items()),
+        key=lambda v: (v["clause"], v["detail"]),
+    ), unjudged
+
+
+# --------------------------------------------------------------------------
 # SPEC §8 clause 6 — a `MetaLogDiff`'s `comparison_outcome` agrees with whether the
 # document carries a WITNESS. Unreachable from the schema for two independent
 # reasons, and the second is the one a reader misses: the predicate is
@@ -889,7 +1067,7 @@ def render(report: dict, stream) -> None:
     env = report["environment"]
     acc = report["accounting"]
     plural = lambda n, word: f"{n} {word}" if n == 1 else f"{n} {word}s"
-    w('metalog-conformance · SPEC §8 clauses 1, 4 and 6')
+    w('metalog-conformance · SPEC §8 clauses 1, 2 (§2.2 window only), 4 and 6')
     for entry in report["corpus"]:
         w(f"  corpus     : {entry['path']}  "
           f"({plural(entry['documents'], 'document')} judged)")
@@ -984,6 +1162,44 @@ def render(report: dict, stream) -> None:
           f"unvalidated document would call a mistyped property vacuous.")
     w()
 
+    if not report["window_governed"]:
+        w(f"WINDOW — not applicable. schema/{report['schema']} does not require a "
+          f"`{WINDOW_MARKER}` member, so §2.2 does not reach this kind. Nothing here "
+          f"was checked against it, and nothing here passed it.")
+    elif report["window_violations"]:
+        w("WINDOW — §2.2's cross-field relations are violated. §8 clause 2 FAILS on "
+          "the part of it that is mechanically decidable:")
+        for v in report["window_violations"]:
+            w(f"  window.{v['clause']} — {v['detail']}")
+            w(f"      seen     : {v['documents']}/{acc['documents']} documents · "
+              f"first: {v['first_document']}")
+    elif acc["documents"] - report["window_unjudged"] == 0:
+        # Never "none" over an empty judged set — the same refusal the witness block
+        # makes, for the same reason: a clause that judged nothing and printed the
+        # sentence of a clause that judged everything is a vacuous green.
+        total = acc["documents"]
+        w(f"WINDOW — NOTHING JUDGED. {plural(total, 'document')} in this corpus, and "
+          f"{'it is' if total == 1 else 'all of them are'} schema-invalid; §2.2's "
+          f"relations are evaluated only on a schema-valid document, because on an "
+          f"unvalidated one `duration_seconds` may not even be a number. §8 clause 2 "
+          f"returned no verdict here — repair the SCHEMA-INVALID findings above and "
+          f"run again.")
+    else:
+        judged = acc["documents"] - report["window_unjudged"]
+        w(f"WINDOW — none. {plural(judged, 'judged document')} of "
+          f"{acc['documents']} {'carries a' if judged == 1 else 'carry'} "
+          f"`{WINDOW_MARKER}` whose start and end are RFC 3339 UTC instants in "
+          f"order, whose `duration_seconds` is `end - start` to the nearest second, "
+          f"and whose §7 estimated-lines flag, where present, is `true`.")
+    if report["window_governed"] and report["window_unjudged"]:
+        w(f"  NOT judged: {plural(report['window_unjudged'], 'document')} — §2.2's "
+          f"relations are decided only on a SCHEMA-VALID document, and these are "
+          f"not. A withheld verdict, not a pass: on an unvalidated document `start` "
+          f"may be an integer and `duration_seconds` a string, and this arm would "
+          f"then report an arithmetic defect at a producer whose real defect is a "
+          f"type.")
+    w()
+
     if report["undescribed"]:
         w("LEGAL-BUT-UNDESCRIBED — permitted by an OPEN container, described by no "
           "schema. NOT a conformance failure:")
@@ -1007,11 +1223,22 @@ def render(report: dict, stream) -> None:
     # as "conformant"; it tests ONE of §8's four clauses, and saying so here is the
     # difference between an instrument and an instrument's reputation.
     w("SCOPE — this tests SPEC §8 clause 1 (schema validation), clause 4 (an array")
-    w("  is truthfully bounded by the cap the same document declares) and, on a")
-    w("  MetaLogDiff, clause 6 (comparison_outcome agrees with the document's own")
-    w("  witness).")
-    w("  NOT checked: clause 2 (every required field populated per its definition —")
-    w("  only the schema-expressible part of it is), clause 3 (template_id computed")
+    w("  is truthfully bounded by the cap the same document declares), on a MetaLog")
+    w("  clause 2 over §2.2's `window` ONLY, and on a MetaLogDiff clause 6")
+    w("  (comparison_outcome agrees with the document's own witness).")
+    w("  Clause 2's own limit, and it is narrow: `window` is the one required block")
+    w("  whose definition states relations BETWEEN its members, so it is the one")
+    w("  part of clause 2 a reader can decide from the document alone. Every other")
+    w("  required field is checked only as far as the schema expresses it. The four")
+    w("  relations decided here are the UTC-ness of `start` and `end` (`format:")
+    w("  date-time` accepts any offset, and by default asserts nothing at all),")
+    w("  their ordering, `duration_seconds` against `end - start`, and the §7")
+    w("  estimated-lines flag. Their TYPES are clause 1's business and are not")
+    w("  re-checked here. §2.2 states UTC as a field definition rather than with the")
+    w("  word MUST; this tool reads a definition as binding, so a `+02:00` offset is")
+    w("  reported — open §2.2 before treating that as a producer bug rather than a")
+    w("  spec-prose question.")
+    w("  NOT checked: the rest of clause 2, and clause 3 (template_id computed")
     w("  per §3.2 — no pinned cross-implementation vector exists yet). A green above")
     w("  says nothing about those two.")
     w("  Clause 4's own limit: a cap that is not DECLARED cannot be checked. A")
@@ -1100,6 +1327,9 @@ def run(corpora, kind: str, schema_dir: Path, spec_text: str, check_formats: boo
     witness_violations, witness_unjudged = (
         collect_witness_violations(docs, schema, validator, declarations)
         if declarations is not None else ([], 0))
+    window_violations, window_unjudged = (
+        collect_window_violations(docs, validator)
+        if governs_window_rule(schema) else ([], 0))
     names = [n for f in findings for n in f["properties"]] + [u["key"] for u in undescribed]
 
     return {
@@ -1114,9 +1344,13 @@ def run(corpora, kind: str, schema_dir: Path, spec_text: str, check_formats: boo
         "witness_violations": witness_violations,
         "witness_unjudged": witness_unjudged,
         "witness_declarations": None if declarations is None else len(declarations),
+        "window_violations": window_violations,
+        "window_unjudged": window_unjudged,
+        "window_governed": governs_window_rule(schema),
         "undescribed": undescribed,
         "spec_mentions": spec_mentions(names, spec_text),
-        "verdict": "NONCONFORMANT" if (findings or cap_violations or witness_violations)
+        "verdict": "NONCONFORMANT" if (findings or cap_violations or witness_violations
+                                       or window_violations)
                    else "CONFORMANT",
         "environment": {
             "jsonschema": metadata.version("jsonschema"),
@@ -1257,6 +1491,13 @@ REQUIRED_CONTROLS = {
     "witness-set-from-schema",      # forecloses a witness set read from the
                                     # DOCUMENT, which lets a producer manufacture a
                                     # witness by inventing a member at an open root
+    "window-consistency-violation", # forecloses can't-FAIL on §2.2's cross-field
+                                    # relations — the arm that decides the only
+                                    # mechanically decidable part of §8 clause 2
+    "window-composed-envelope",     # forecloses a duration check computed from a
+                                    # composed document's CHILDREN instead of from
+                                    # its own start/end, which reds a conformant
+                                    # composition across every gap between shards
     "withheld-signal-is-a-witness", # forecloses a §13.2.2 escape that cannot be
                                     # taken: the whole point of `withheld_signals`
                                     # is that a NON-EMPTY one carries the outcome,
@@ -1497,6 +1738,10 @@ def _cap_tuples(entries):
             for v in entries]
 
 
+def _window_tuples(entries):
+    return [(e["clause"], e["detail"], e["documents"]) for e in entries]
+
+
 def _witness_tuples(entries):
     return [(v["outcome"], tuple(v["witnesses"]), v["documents"]) for v in entries]
 
@@ -1634,7 +1879,8 @@ def selftest(schema_dir: Path, spec_text: str, stream) -> int:
             report = run([path], fx["kind"], schema_dir, spec_text, False,
                          want.get("documents"), fx.get("pointer"))
             code = 1 if (report["findings"] or report["cap_violations"]
-                         or report["witness_violations"]) else 0
+                         or report["witness_violations"]
+                         or report["window_violations"]) else 0
             got = {
                 "exit": code,
                 "documents": report["accounting"]["documents"],
@@ -1642,13 +1888,16 @@ def selftest(schema_dir: Path, spec_text: str, stream) -> int:
                 "cap_violations": _cap_tuples(report["cap_violations"]),
                 "witness_violations": _witness_tuples(report["witness_violations"]),
                 "witness_unjudged": report["witness_unjudged"],
+                "window_violations": _window_tuples(report["window_violations"]),
+                "window_unjudged": report["window_unjudged"],
                 "undescribed": _undescribed_tuples(report["undescribed"]),
                 "first_documents": [f["first_document"] for f in report["findings"]],
             }
         except InstrumentError as exc:
             got = {"exit": 2, "documents": None, "findings": None,
                    "cap_violations": None, "witness_violations": None,
-                   "witness_unjudged": None, "undescribed": None,
+                   "witness_unjudged": None, "window_violations": None,
+                   "window_unjudged": None, "undescribed": None,
                    "first_documents": None, "why": str(exc)}
 
         expected = {
@@ -1668,6 +1917,15 @@ def selftest(schema_dir: Path, spec_text: str, stream) -> int:
                                   if want["exit"] != 2 else None,
             "witness_unjudged": want.get("witness_unjudged", 0)
                                 if want["exit"] != 2 else None,
+            # Same discipline as `witness_unjudged`, and needed for the same
+            # reason: §2.2's relations are withheld from a schema-invalid
+            # document, and an unasserted withheld count would let an arm that
+            # stopped judging anything pass this suite green.
+            "window_violations": [(t[0], t[1], t[2])
+                                  for t in want.get("window_violations", [])]
+                                 if want["exit"] != 2 else None,
+            "window_unjudged": want.get("window_unjudged", 0)
+                               if want["exit"] != 2 else None,
             "undescribed": [tuple(t) for t in want.get("undescribed", [])]
                            if want["exit"] != 2 else None,
         }
@@ -1777,7 +2035,16 @@ def main(argv=None) -> int:
     else:
         render(report, sys.stdout)
 
-    if report["findings"] or report["cap_violations"] or report["witness_violations"]:
+    # THE EXIT CODE IS READ OFF THE VERDICT, never re-derived from a second list of
+    # clause keys. It used to be its own `findings or cap_violations or
+    # witness_violations` expression, which is the same computation `run()` already
+    # makes for `verdict` — so adding a clause meant remembering to add it in two
+    # places, and the §2.2 window arm was added to one of them first. Measured on
+    # 2026-09-09, before this line changed: the report printed
+    # `VERDICT: NONCONFORMANT` over four named window violations and the process
+    # exited 0. A tool whose printed verdict and whose exit code can disagree is
+    # worse than one that only prints, because CI reads the number.
+    if report["verdict"] == "NONCONFORMANT":
         return 1
     if args.strict_undescribed and report["undescribed"]:
         return 1
