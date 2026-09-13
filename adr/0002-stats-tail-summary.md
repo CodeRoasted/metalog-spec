@@ -1,6 +1,9 @@
 # ADR 0002 — `stats.tail_summary` block (MetaLog v0.3.0)
 
-- **Status:** Accepted
+- **Status:** Accepted. **Amended 2026-09-13** by the editor: the
+  *Envelope cost* argument no longer cites the withdrawn §11.5 size
+  headline ([ADR 0006](0006-no-size-per-line-count.md)); the decision is
+  unchanged.
 - **Date:** 2026-05-17
 - **Spec version introduced:** 0.3.0
 - **Supersedes:** —
@@ -56,8 +59,8 @@ fields are **REQUIRED**. Producers MUST NOT emit a partial block.
 ### Envelope cost
 
 Three JSON numbers + framing = **~60 bytes per window**, independent of
-input cardinality. The 4 KB / 1 M-line headline budget (§11) is
-preserved.
+input cardinality: one fixed term in §11.3's formula, where doubling
+`top_k_size` would add 64 variable ones.
 
 ### Why these three fields
 

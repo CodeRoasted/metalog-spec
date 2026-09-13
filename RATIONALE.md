@@ -12,7 +12,10 @@
 **Decided:** JSON.
 
 **Why:**
-- A MetaLog is small (≤ 4 KB target). Encoding overhead is irrelevant.
+- A MetaLog is small: its size is bounded by caps its producer
+  declares — ~9 KB for a `stats`-only document at the recommended
+  `top_k_size` of 64, among SPEC §11.4's worked ceilings. Encoding
+  overhead is irrelevant.
 - The buyers and integrators (SREs) already speak JSON. A new format
   would be a tax we can't afford.
 - LLMs consume JSON natively. Phase 5 of the consumer pipeline
@@ -101,13 +104,16 @@ JSON.
   bounded memory. Implementable in any language.
 
 **Why k = 64 specifically (and not 256 as in v0.1.0 draft):**
-- 256 entries × ~150 bytes each = ~40 KB envelope. Blows the 4 KB
-  headline target by 10× and over-shoots even a generous "tens of
-  KB" budget.
+- 256 entries × ~150 bytes each = ~40 KB envelope. Over-shoots even a
+  generous "tens of KB" budget.
 - 64 entries × ~150 bytes = ~10 KB envelope. Comfortable, and the
   Zipfian coverage at 64 is already ≥ 95% on real logs.
-- The 4 KB target is reachable at k = 32, or with the future v0.2
-  "id-only" mode that omits template strings.
+- No size per line count follows from the choice of k, because a
+  document's size does not depend on how many lines its window saw
+  (SPEC §11.5). Until 0.10.0 this section also claimed a 4 KB target,
+  reachable at k = 32 or in id-only mode. Even SPEC §11.2's lowest
+  published costs put both routes above it, no implementation met it, and it was withdrawn
+  ([ADR 0006](adr/0006-no-size-per-line-count.md)).
 - v0.1.0 draft used 256 as the recommended default; v0.1.1 lowered
   it after the size-budget math (now spec §11) was made explicit.
 - Misra-Gries and SpaceSaving are well-studied streaming
@@ -125,7 +131,7 @@ JSON.
   destroys cross-window comparability. The K must be fixed within
   a producer's stream.
 
-The 4 KB target is **lossy by design**. We are not building a log
+A MetaLog is **lossy by design**. We are not building a log
 index. The lossiness is the product.
 
 ---

@@ -15,7 +15,8 @@ first line and is normative; [`CHANGELOG.md`](CHANGELOG.md) is the dated release
 A **MetaLog** is a bounded-size statistical and structural fingerprint
 of a window of log behaviour. It answers a single question:
 
-> *What was this log stream doing in the last N minutes, in 4 KB or less?*
+> *What was this log stream doing in the last N minutes — in a document
+> bounded by the caps it declares, not by how many lines the stream carried?*
 
 A MetaLog is **not** a log, **not** a metric, and **not** an alert.
 It is a new primitive that sits between raw logs (high entropy, low
@@ -52,20 +53,24 @@ that*. A MetaLog is bounded by the **structure** a window contains —
 its top templates, its salient tail, its n-grams, its branching, its
 cube cells — each capped by a size the producer declares **in the
 document itself** (§11.1) — and **not** by how many lines the window
-carried. §11 sets the design target that follows from it: **≤ 4 KB per
-MetaLog covering ≥ 1 M log lines**, a target scoped to the `stats`-only
-document (§11.5); a document that also carries `behavior` or `cube`
-pays for those blocks, and §11.3 gives the formula that prices them.
+carried. §11 makes that bound computable rather than quoted: §11.3's
+formula prices a document from the caps it declares, and a document
+that also carries `behavior` or `cube` pays for those blocks by the same
+arithmetic. No size is published per line count, because a document's
+size is set by its caps and not by its line count (§11.5).
 That is the value proposition: the artifact stops growing where the
 stream does not.
 
-> **That is a target and a bound, not a measured ratio, and no ratio is
-> quoted anywhere in this spec.** A compression ratio is a measurement,
+> **That is a bound, not a measured ratio, and no ratio is quoted
+> anywhere in this spec.** A compression ratio is a measurement,
 > and it means nothing without the population it was measured on. This
-> spec has none to cite — which is exactly why §11 asks producers to
-> report `envelope_bytes` "so consumers can track the compression ratio
-> achieved on real workloads". An implementation that publishes a ratio
-> should publish the corpus, the configuration and the run with it.
+> spec has none to cite — which is exactly why §11.5 asks producers to
+> report their actual `envelope_bytes`, the only exact figure. An
+> implementation that publishes a ratio should publish the corpus, the
+> configuration and the run with it. **This spec learned that at its own
+> expense:** until 0.10.0 it published a size target — *≤ 4 KB per
+> MetaLog covering ≥ 1 M log lines* — that no implementation met, and it
+> withdrew it ([`adr/0006`](adr/0006-no-size-per-line-count.md)).
 
 For this primitive to be useful across vendors — for an SRE to be
 able to switch their log analyzer without re-training their

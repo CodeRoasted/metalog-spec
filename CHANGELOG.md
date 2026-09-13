@@ -51,7 +51,9 @@ while P2 was in draft, and they land in this version because 0.10.0 is still
 unreleased under [`GOVERNANCE.md`](GOVERNANCE.md) §7 — no tag, no Release, and so
 no implementer to break. Folding them here rather than minting 0.11.0 also keeps
 one number across `SPEC.md`, `metalog_version` and `diff_version`, which is the
-whole point of the first of them.
+whole point of the first of them. **The size headline withdrawn under *Removed* is
+not from that RFC either**: it is an editorial change, raised by the editor after a
+measurement, and it changes no document's validity.
 
 ### Changed
 
@@ -238,6 +240,40 @@ whole point of the first of them.
   `schema/metalog.v0.example.json` follows: `metalog_version` `0.9.0` → `0.10.0`
   (it was one MINOR behind the text it illustrates) and `producer.version`
   `0.6.0` → `2.1.0`.
+
+### Removed
+
+- **The size headline *"≤ 4 KB per MetaLog covering ≥ 1 M log lines"* is withdrawn,
+  because no implementation met it.** It was published from 0.1.1 onward, and until
+  this entry it stood in the README (its tagline, *"in 4 KB or less?"*, and its §11
+  summary), in §3.6.1 and §11.5, in `RATIONALE.md` §R1 and §R3, and in ADR 0002. Since 0.9.0 it was scoped to the `stats`-only document and said to be
+  reached at `top_k_size ≤ 32` inline or `≤ 64` id-only.
+
+  **The evidence.** The reference implementation measured a `stats`-only document at
+  `top_k_size` 32, inline, compact JSON, over one window of exactly 1 000 000 lines
+  across 64 templates, at **6 113 bytes** — 49 % above the 4 096 bytes the headline
+  allows. With every template string emptied, the same document is still
+  **4 331 bytes**; in id-only form it is **3 883 bytes**, computed on that document
+  rather than emitted. The second clause fails on this specification's own
+  arithmetic: §11.4 prices a `stats`-only document at `top_k_size` 64 at ~9 KB, and
+  §3.6.1 prices 64 id-only entries at ~9 KB.
+
+  **Withdrawn rather than rescoped.** The one configuration that measured under
+  4 096 bytes — id-only at `top_k_size` 32, strings out of band — would have
+  published one producer's figure with a 213-byte margin, and §11's opening refuses
+  exactly that kind of figure. ADR 0006 records the decision and the alternatives.
+
+  **What replaces it is the bound that holds** (§11.5): a document's size is set by
+  the caps its producer declares, its template mode and the content its entries
+  carry, never by the number of lines its window observed, which reaches the
+  document only through the width of its numbers. §11.3's formula, applied to a
+  document's declared caps, is the bound.
+
+  **Nothing on the wire changed.** No field, schema or conformance clause moved and
+  no document changes validity: §11 is informative and §3.6.1 is rationale. This is
+  **editorial** under [`GOVERNANCE.md`](GOVERNANCE.md) §2. The earlier entries below
+  that repeat the headline (0.9.0, 0.3.0, 0.1.1) are left as written, because they
+  record what those versions said.
 
 ## [0.9.0] — 2026-08-29
 

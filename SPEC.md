@@ -613,7 +613,8 @@ per-entry costs. `tail_summary` provides three of the four signals that
 matter most for downstream detection — *how many* templates are in the tail
 (`tail_template_count`), *how spread* they are (`tail_entropy_bits`), and
 *how loud* the loudest one is (`tail_max_rate`) — for an envelope cost of
-~60 bytes. This preserves the headline 4 KB / 1 M-lines target ([§11](#11-size-budget))
+~60 bytes: one fixed term in [§11.3](#113-the-envelope-as-a-formula)'s formula, which
+does not grow with `top_k_size`,
 while letting consumers detect tail-mass shifts (e.g. error-burst templates
 that never quite reach `top_k` but collectively grow), which the current
 `tail_count` / `tail_unique` pair cannot expose.
@@ -1217,28 +1218,37 @@ Conversely: the `stats`-only envelope really is small — ~9 KB at
 Both facts are recoverable from the formula; neither is recoverable
 from a table indexed on `k`.
 
-### 11.5 Reaching the 4 KB / 1M-lines target
+### 11.5 What the caps bound, and what they do not
 
-The headline "≤ 4 KB per MetaLog covering ≥ 1 M log lines" target is a
-statement about the **`stats`-only** document — no `reservoir`, no
-`behavior`, no `cube`. Under that scope it is reached at:
+A MetaLog's size is set by three things: the caps its producer fixes
+before window start (§11.1), the template mode it emits (§3.4), and the
+content its entries carry — template strings, `component` values,
+extension payloads. The number of lines the window observed is **not**
+one of them: it reaches the document only through the width of the
+numbers the document records. A figure of the form *"N KB per MetaLog
+covering M log lines"* therefore states no property of this format, and
+this specification publishes none. The bound is §11.3's formula applied
+to the caps a document declares.
 
-1. `top_k_size ≤ 32` in inline mode, **or**
-2. `top_k_size ≤ 64` in id-only mode (§3.4) with template strings
-   shipped out-of-band or via a `templates` dedup map shared across
-   many MetaLogs.
-
-Real log streams follow a Zipfian distribution: the top 64 templates
-typically account for 95–99% of all observations, which is why the
-target is reachable at all.
+**A published figure of that form was withdrawn in 0.10.0.** Versions
+0.1.1 through 0.9.0 stated a target of *"≤ 4 KB per MetaLog covering
+≥ 1 M log lines"* for the `stats`-only document, reached at
+`top_k_size ≤ 32` inline or `top_k_size ≤ 64` id-only. No implementation
+met it, and even §11.2's lowest published figures put both routes above
+it: at 99 bytes for a `top_k` entry carrying `level` and 50 bytes for an
+inline skeleton, 32 inline entries come to ~4.8 KB and 64 id-only
+entries to ~6.3 KB, each before the ~460-byte fixed envelope.
+The measurement and the alternatives considered are recorded in
+[`adr/0006-no-size-per-line-count.md`](adr/0006-no-size-per-line-count.md).
 
 **Two residuals, stated rather than hidden.** `param_histograms`
 (§3.5) is bounded by two producer parameters — a per-template
 histogram cap and the `value_counts` cap (§3.5 recommends a default of
 256) — and **neither is declared in the document today**. And the
-per-entry costs above are *this* document's; a producer whose
-templates, components or extension payloads are larger will measure
-larger costs. For both reasons producers **SHOULD** report their
+per-entry costs above are *this* document's; no parameter caps the
+length of a template string, a `component` or an extension payload,
+so a producer whose content is larger will measure larger costs. For
+both reasons producers **SHOULD** report their
 actual envelope size in
 `extensions.org.metalog.envelope_bytes` (or equivalent), which is the
 only figure that is exact rather than estimated.
