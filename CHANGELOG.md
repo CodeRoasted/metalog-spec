@@ -846,7 +846,7 @@ producer is obliged to emit it. A 0.6.0 producer stays legal against this spec
 
 ### Added
 - **§3.5 / §12.1 compose-visible field histograms.** `param_histograms` are
-  **carried** through `compose()` (previously dropped — the F8 / F2-value gap).
+  **carried** through `compose()` (previously dropped — the compose-visible value gap).
   Per `(template_id, param_index)` pair present in both inputs: merge
   `value_counts` (union + sum, top-N truncate to cap), sum `total`, recompute
   `entropy_bits`; `approximate_cardinality` MAY use sketch-union or
