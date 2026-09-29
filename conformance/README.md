@@ -144,13 +144,13 @@ never looked.
 
 ## Why the self-test exists
 
-A validator that cannot fail is decoration. `--selftest` runs twenty-six fixtures whose
+A validator that cannot fail is decoration. `--selftest` runs thirty-one fixtures whose
 expected results are **hand-authored in `fixtures/manifest.json` from the spec and
 the schemas** — never captured from a run, because an expectation copied out of the
 tool under test makes the tool its own oracle, and the pair then agree forever
 while both are wrong.
 
-Fourteen of those fixtures carry a `control` tag, naming **twelve** distinct blindnesses
+Nineteen of those fixtures carry a `control` tag, naming **seventeen** distinct blindnesses
 (`instrument-failure` is carried by three), and the self-test **refuses to run**
 if any tag is missing from the manifest — deleting a fixture cannot quietly widen
 what a green covers. Each control forecloses one specific way this validator could
@@ -170,6 +170,11 @@ have gone green while blind:
 | `witness-rule-unchanged-arm` | `"unchanged"` forbids one, and a rule that binds only the other arm is satisfied forever by a producer that always writes `"unchanged"`. The fixture is the same control with **one row** changed — `template_deltas[0]` from `delta: 0` to `delta: 3`, with `current_count` moved to match (§13.3) — so the witness sits inside an array that is non-empty and the same length in both documents, where a presence reader and an emptiness reader are blind to the mutation. |
 | `witness-set-from-schema` | §13.2.1 step 2 reads the witness set from the **schema**, never from the document. The fixture carries a bare `vendor_private_counter` at the diff root, which is open: legal-but-undescribed, exit 0, and **not** a witness. Read the set from the document instead and it becomes one — a producer could then manufacture a witness by inventing a member at an open root. Measured 2026-09-01: that mutation passed the other twenty-five fixtures **25/25**, so until this entry existed the sentence had no arm at all. |
 | `pointer-token-literal-in-object` | The extension must not swallow the standard it extends. `-` means *every element* where an **array** sits, because RFC 6901 gives that token no resolvable meaning there; where an **object** sits it is a literal member name and stays one. This fixture is an envelope carrying a member spelled `-` beside a second member, so a reading that wildcards the token everywhere judges two documents where one was addressed. |
+| `withheld-signal-is-a-witness` | §13.2.2 lets a `"changed"` diff name, in `withheld_signals`, a finding it computed and did not serialise. The fixture is `changed_without_witness` with **one array's content** changed — `withheld_signals` from `[]` to `["field_histogram_deltas"]` — and it is CONFORMANT while its twin is not. Judge `withheld_signals` by presence rather than by its declared vacuity and both twins flip, which turns the escape into a hole any producer can climb through. |
+| `window-consistency-violation` | §2.2's relations between `window`'s members are unreachable from the schema, so every document here is **schema-valid** and wrong between its members: `duration_seconds` 300 over a 600-second window, `start` after `end`, an `end` with a legal non-UTC offset (also the withholding witness: with `end` unreadable, ordering and duration are not decided), and the §7 estimated-lines flag at `false`. |
+| `window-composed-envelope` | A composed document whose two raw children are **not contiguous** — 240 seconds of covered span inside a 600-second window. `duration_seconds` is `end - start`, 600; an arm that computed it from the children, or that treated the gap between shards as a defect, reds this conformant document. It is also the one positive witness that the estimated-lines flag admits `true`. |
+| `window-empty-extent` | §2.2: a window with **no line** (`lines_observed` 0) carries `start` equal to `end`. The fixture is one schema-valid document with `lines_observed` 0 whose `start` precedes its `end` by 600 seconds and whose `duration_seconds` is that 600, so ordering and duration both hold and this clause is the only thing that can catch it. Before the clause existed the validator read it CONFORMANT, exit 0. |
+| `window-empty-equal-instants` | The same clause's positive witness: two empty windows with `start` equal to `end`, the second spelling `end` as `…T10:00:00.000+00:00` against a `start` of `…T10:00:00Z` — one instant, two legal RFC 3339 spellings. A clause that compared the strings rather than the instants reds this conformant document; measured, that mutation reds exactly this fixture. |
 
 Measured on the committed tool, 2026-08-19: **seven** independent mutations each
 red the self-test — section-as-one-document · offending-member computation blinded ·
@@ -270,13 +275,16 @@ Declared, because an instrument's silence is read as coverage.
 
 - **§8 clause 2 is reached in ONE place, and clause 3 nowhere.** Clause 2 is *every
   required field populated according to its definition*, and for exactly one required
-  block that definition says something a schema cannot: `window` (§2.2) states three
+  block that definition says something a schema cannot: `window` (§2.2) states four
   relations BETWEEN its members — `start` at or before `end`, `duration_seconds`
-  equal to their difference to the nearest second, both instants in UTC — plus a §7
+  equal to their difference to the nearest second, both instants in UTC, and `start`
+  equal to `end` when `lines_observed` is 0 — plus a §7
   extension flag (`org.metalog.lines_observed_estimated`) that §2.2 admits only as
   `true` and that lives inside a container the schema deliberately leaves untyped.
-  Those four are decided here, on schema-valid documents only, and the withheld count
-  is printed. **Every other required field is still covered only as far as the schema
+  Those five are decided here, on schema-valid documents only, and the withheld count
+  is printed. What §2.2 relates to the window's LINES rather than to its members is
+  not: that `start` and `end` are the earliest and latest event time among the lines
+  the window contains needs those lines, which the document does not carry. **Every other required field is still covered only as far as the schema
   expresses it**, which is most of clause 2 — a `producer.name` that is the empty
   string, a `source.service` naming the wrong service, a `stats.frequency` that does
   not match its `count`: all schema-valid, none decided anywhere. The `window` arm

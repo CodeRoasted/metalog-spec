@@ -84,6 +84,40 @@
             }
         },
         {
+            "path": "invalid/window_empty_extent.metalog.jsonl",
+            "kind": "metalog",
+            "control": "window-empty-extent",
+            "why": "SPEC §2.2: a window containing no line (`lines_observed` 0) carries `start` equal to `end`, and §8 counts that equality among the window relations this validator decides. One SCHEMA-VALID document with `lines_observed` 0 whose `start` precedes its `end` by 600 seconds, and whose `duration_seconds` is that 600, so the ordering and duration clauses both hold and the empty-extent clause is the only thing that can catch it. Before this clause existed the validator read this document CONFORMANT, exit 0.",
+            "expect": {
+                "exit": 1,
+                "documents": 1,
+                "findings": [],
+                "undescribed": [],
+                "window_violations": [
+                    [
+                        "empty-extent",
+                        "lines_observed is 0 and start 2026-04-24T10:00:00Z is not end 2026-04-24T10:10:00Z",
+                        1
+                    ]
+                ],
+                "window_unjudged": 0
+            }
+        },
+        {
+            "path": "valid/window_empty_equal_instants.metalog.jsonl",
+            "kind": "metalog",
+            "control": "window-empty-equal-instants",
+            "why": "The empty-extent clause's positive witness: two SCHEMA-VALID documents with `lines_observed` 0 and `start` equal to `end`, which §2.2 admits and which MUST read CONFORMANT. The second spells `end` as `2026-04-24T10:00:00.000+00:00`, the same instant as its `start` `2026-04-24T10:00:00Z` in another legal RFC 3339 spelling, so a clause that compared the two strings rather than the two instants reds here. A clause tested only by its violation passes forever as `always red on an empty window`.",
+            "expect": {
+                "exit": 0,
+                "documents": 2,
+                "findings": [],
+                "undescribed": [],
+                "window_violations": [],
+                "window_unjudged": 0
+            }
+        },
+        {
             "path": "undescribed/open_containers.metalog.jsonl",
             "kind": "metalog",
             "why": "a member at the OPEN root and a second one nested inside provenance[].window, which is also open. Two locations on purpose: a root-only walker finds one of them and looks correct. Neither is a schema violation.",
@@ -567,6 +601,6 @@
             }
         }
     ],
-    "window_violations_encoding": "[clause, detail, documents affected]. SPEC §8 clause 2, over §2.2's `window` and nothing else. `clause` is one of `utc` / `ordering` / `duration` / `estimated-flag`; `detail` is the instrument's own sentence for that violation and is asserted VERBATIM, because the four clauses are decided by four different computations and a fixture pinning only the clause name would pass against an arm that fired the right label off the wrong arithmetic. Types are NOT among these clauses: `duration_seconds` and `lines_observed` are typed `integer, minimum 0` by the schema, so their non-negativity is clause 1's business and re-checking it here would be a second copy that can disagree with the first.",
+    "window_violations_encoding": "[clause, detail, documents affected]. SPEC §8 clause 2, over §2.2's `window` and nothing else. `clause` is one of `utc` / `ordering` / `duration` / `empty-extent` / `estimated-flag`; `detail` is the instrument's own sentence for that violation and is asserted VERBATIM, because the five clauses are decided by five different computations and a fixture pinning only the clause name would pass against an arm that fired the right label off the wrong arithmetic. Types are NOT among these clauses: `duration_seconds` and `lines_observed` are typed `integer, minimum 0` by the schema, so their non-negativity is clause 1's business and re-checking it here would be a second copy that can disagree with the first.",
     "window_unjudged_encoding": "how many documents §2.2's relations were WITHHELD from, because they are not schema-valid. Defaults to 0 and is compared on every non-refusal fixture, the same discipline `witness_unjudged` carries and for the same reason: on an unvalidated document `start` may be an integer and `duration_seconds` a string, so judging one would report an arithmetic defect at a producer whose real defect is a type. A withheld verdict is not a pass, and leaving it unasserted would let an arm that stopped judging anything pass this suite green. Nonzero exactly on the metalog fixtures that carry a schema violation."
 }
