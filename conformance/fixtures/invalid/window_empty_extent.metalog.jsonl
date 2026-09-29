@@ -1,0 +1,1 @@
+{"metalog_version":"0.7.0","producer":{"name":"example-producer","version":"1.0.0"},"window":{"start":"2026-04-24T10:00:00Z","end":"2026-04-24T10:10:00Z","duration_seconds":600,"lines_observed":0},"source":{"service":"checkout"},"stats":{"unique_templates":0,"top_k_size":64,"tail_count":0,"tail_unique":0,"top_k":[]}}

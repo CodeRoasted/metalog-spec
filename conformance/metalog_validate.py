@@ -710,6 +710,11 @@ def collect_cap_violations(docs, pairs: set[tuple[str, str]]) -> list[dict]:
 #   duration       — `duration_seconds` MUST equal `end - start` rounded to the
 #                    nearest second. Also a relation, and the one a producer gets
 #                    wrong silently: every member is individually well-typed.
+#   empty-extent   — a window containing no line (`lines_observed` 0) MUST carry
+#                    `start` equal to `end`. A relation among three members, and
+#                    decided on the two INSTANTS, never on the two strings: RFC 3339
+#                    spells one instant several ways (`Z`, `+00:00`, a fractional
+#                    `.000`), and §2.2 constrains the time, not its spelling.
 #   estimated-flag — `extensions.org.metalog.lines_observed_estimated`, when
 #                    present, is `true`. It lives inside §7's OPEN extension
 #                    container, whose whole contract is that the schema does not
@@ -851,6 +856,12 @@ def collect_window_violations(docs, validator) -> tuple[list[dict], int]:
                     note("duration",
                          f"duration_seconds declares {declared}, "
                          f"end - start is {delta:g}", label)
+            # Decided apart from ordering: a window with no line and `start` after
+            # `end` breaks both relations, and each is reported by its own clause.
+            if window.get("lines_observed") == 0 and start != end:
+                note("empty-extent",
+                     f"lines_observed is 0 and start {window['start']} is not end "
+                     f"{window['end']}", label)
 
         flag = _estimated_flag(doc)
         if flag is not _ABSENT and flag is not True:
@@ -1190,6 +1201,7 @@ def render(report: dict, stream) -> None:
           f"{acc['documents']} {'carries a' if judged == 1 else 'carry'} "
           f"`{WINDOW_MARKER}` whose start and end are RFC 3339 UTC instants in "
           f"order, whose `duration_seconds` is `end - start` to the nearest second, "
+          f"whose start equals its end when it contains no line, "
           f"and whose §7 estimated-lines flag, where present, is `true`.")
     if report["window_governed"] and report["window_unjudged"]:
         w(f"  NOT judged: {plural(report['window_unjudged'], 'document')} — §2.2's "
@@ -1229,18 +1241,21 @@ def render(report: dict, stream) -> None:
     w("  Clause 2's own limit, and it is narrow: `window` is the one required block")
     w("  whose definition states relations BETWEEN its members, so it is the one")
     w("  part of clause 2 a reader can decide from the document alone. Every other")
-    w("  required field is checked only as far as the schema expresses it. The four")
+    w("  required field is checked only as far as the schema expresses it. The five")
     w("  relations decided here are the UTC-ness of `start` and `end` (`format:")
     w("  date-time` accepts any offset, and by default asserts nothing at all),")
-    w("  their ordering, `duration_seconds` against `end - start`, and the §7")
-    w("  estimated-lines flag. Their TYPES are clause 1's business and are not")
-    w("  re-checked here. §2.2 states UTC as a field definition rather than with the")
-    w("  word MUST; this tool reads a definition as binding, so a `+02:00` offset is")
-    w("  reported — open §2.2 before treating that as a producer bug rather than a")
-    w("  spec-prose question.")
+    w("  their ordering, `duration_seconds` against `end - start`, their equality")
+    w("  when `lines_observed` is 0, and the §7 estimated-lines flag. Their TYPES")
+    w("  are clause 1's business and are not re-checked here. §2.2 states UTC as a")
+    w("  field definition rather than with the word MUST; this tool reads a")
+    w("  definition as binding, so a `+02:00` offset is reported — open §2.2 before")
+    w("  treating that as a producer bug rather than a spec-prose question.")
     w("  NOT checked: the rest of clause 2, and clause 3 (template_id computed")
     w("  per §3.2 — no pinned cross-implementation vector exists yet). A green above")
-    w("  says nothing about those two.")
+    w("  says nothing about those two. The rest of clause 2 includes part of")
+    w("  `window` itself: that `start` and `end` ARE the earliest and latest event")
+    w("  time among the window's lines is a relation to lines the document does")
+    w("  not carry, and no reader of the document alone can decide it.")
     w("  Clause 4's own limit: a cap that is not DECLARED cannot be checked. A")
     w("  producer that omits `behavior.branching_size` declares no cap (§4.2), and")
     w("  this tool reads that as a posture, never as a pass.")
@@ -1498,6 +1513,12 @@ REQUIRED_CONTROLS = {
                                     # composed document's CHILDREN instead of from
                                     # its own start/end, which reds a conformant
                                     # composition across every gap between shards
+    "window-empty-extent",          # forecloses can't-FAIL on §2.2's empty-window
+                                    # relation: `start` equal to `end` when the
+                                    # window contains no line
+    "window-empty-equal-instants",  # forecloses the same relation decided on the
+                                    # two STRINGS, which reds a conformant empty
+                                    # window whose instants are spelled apart
     "withheld-signal-is-a-witness", # forecloses a §13.2.2 escape that cannot be
                                     # taken: the whole point of `withheld_signals`
                                     # is that a NON-EMPTY one carries the outcome,
