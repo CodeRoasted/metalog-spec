@@ -180,8 +180,8 @@ pressure handles the rest.
   Doesn't compose.
 
 The producer chooses what "previous window" means (typically the
-immediately preceding window of the same duration) and reports its
-boundary in `previous_window_end`.
+immediately preceding window) and names it in `previous_window_end`
+by that window's `window.end`.
 
 ---
 

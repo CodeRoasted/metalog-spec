@@ -45,8 +45,13 @@ keywords: **MUST**, **MUST NOT**, **SHOULD**, **SHOULD NOT**, **MAY**.
   `User <*> logged in from <*>`.
 - **TemplateID** — A stable, content-derived identifier for a
   template. See §3.2.
-- **Window** — A contiguous time interval over which a single MetaLog
-  is computed.
+- **Window** — The log lines a single MetaLog is computed over. How a
+  producer decides which lines a window contains is
+  implementation-defined (§2.2).
+- **Event time** — The time a producer attributes to a log line: the
+  timestamp the line carries, when it carries one the producer can
+  read. How a producer attributes a time to a line that carries none
+  is implementation-defined.
 - **Producer** — A program that consumes log lines and emits MetaLog
   documents.
 - **Consumer** — A program that reads MetaLog documents (dashboard,
@@ -70,7 +75,7 @@ top-level fields:
 |---|---|---|---|
 | `metalog_version` | string | yes | Spec version this document conforms to. SemVer string (e.g. `"0.10.0"`). The `MetaLogDiff` (§13) carries the same axis as `diff_version` — see §13.1.1. |
 | `producer` | object | yes | Identifies the producing implementation. See §2.1. |
-| `window` | object | yes | The time interval covered. See §2.2. |
+| `window` | object | yes | The event-time envelope of the lines the window contains. See §2.2. |
 | `source` | object | yes | What was observed (service, host, fleet). See §2.3. |
 | `canonicalization_version` | string | no | Opaque identifier for the canonicalization rules in effect. Gates `compose()`/diff comparability. See §2.4. |
 | `retention_profile` | string | no | Opaque identifier for the retention parameters (top_k, reservoir, salience weights, diversity caps). Gates `compose()`/diff comparability. See §2.4. |
@@ -166,8 +171,30 @@ that as a coupling.
 }
 ```
 
-`start` **MUST** be strictly less than or equal to `end`
-(equality is permitted for empty / heartbeat documents).
+**How a producer decides a window's extent is outside this
+specification.** Which lines a window contains, and how and when the
+producer decides it, are implementation-defined, and this
+specification assumes no producer behaviour for that decision. In
+particular it assumes neither a fixed interval, nor a decision taken
+on any single line, nor an online or causal decision: a producer
+**MAY** fix a window's extent only after reading lines beyond it, and
+**MAY** assign lines to a window retrospectively. A document that
+carries a raw re-derivation coordinate still describes exactly the
+lines whose event time falls within that coordinate's `bounds`
+(§15.3).
+
+`start` and `end` are the earliest and the latest event time among
+the lines the window contains: the window's event-time envelope. They
+say nothing about when or how the window's extent was decided, nor
+about when the document was emitted. A producer that has bounds of
+its own — the interval its rule for deciding the extent used —
+**MAY** publish them in an extension (§7).
+
+`start` **MUST** be less than or equal to `end`; the two are equal
+when every line the window contains carries the same event time, a
+window of one line included. For a window containing no line
+(`lines_observed` 0), `start` **MUST** equal `end`, and both name the
+time the producer attributes to the window.
 `duration_seconds` **MUST** equal `end - start` rounded to the
 nearest second. If a producer cannot count `lines_observed` exactly,
 it **MUST** emit its best estimate and **SHOULD** emit an
@@ -867,11 +894,12 @@ entirely rather than emit empty fields.
 
 Quantifies *how much the system's behaviour changed* since the
 previous window. Stability is a special case of §13 Diff with the
-`previous` document being the previous closed window.
+`previous` document being the window before it in the producer's
+order.
 
 ```jsonc
 {
-  "previous_window_end": "2026-04-24T10:00:00Z",  // RFC 3339, required
+  "previous_window_end": "2026-04-24T10:00:00Z",  // RFC 3339, required, the previous window's `window.end`
   "kl_divergence": 0.043,        // number ≥ 0, KL(current || previous) over template freqs
   "js_divergence": 0.021,        // number in [0, 1], symmetric Jensen-Shannon
   "new_templates": 3,            // integer, templates seen now but not in previous window
@@ -1032,10 +1060,11 @@ the file. Clause 2 is mechanically decidable in exactly one place. `window`
 (§2.2) is the only required block whose definition states relations
 **between** its members — `start` at or before `end`,
 `duration_seconds` equal to their difference rounded to the nearest
-second, and both instants in UTC. None of the three is expressible
-in JSON Schema at any draft (`format: date-time` constrains the
-grammar, never the offset, and no keyword relates two siblings),
-and all three follow from the document alone, so
+second, both instants in UTC, and `start` equal to `end` when
+`lines_observed` is 0. None of the four is expressible in JSON
+Schema at any draft (`format: date-time` constrains the grammar,
+never the offset, and no keyword relates two siblings), and all four
+follow from the document alone, so
 [`conformance/metalog_validate.py`](conformance/metalog_validate.py)
 decides them — together with the §7
 `org.metalog.lines_observed_estimated` flag, which §2.2 admits only
@@ -1269,7 +1298,7 @@ to a 1-hour MetaLog).
 
 - `C.window.start = min(A.window.start, B.window.start)`
 - `C.window.end   = max(A.window.end,   B.window.end)`
-- `C.window.duration_seconds = C.window.end - C.window.start` (real time, **not** sum of inputs)
+- `C.window.duration_seconds = C.window.end - C.window.start` (the event-time envelope of both inputs' lines, **not** the sum of their durations)
 - `C.window.lines_observed = A.window.lines_observed + B.window.lines_observed`
 - `C.source` is `A.source` if equal to `B.source`, otherwise the
   most-specific common prefix (e.g. same `fleet`, drop differing
@@ -2235,11 +2264,10 @@ This cross is a **hard firewall (normative)**:
   entry with its cube coordinate.
 - `cube_coord` is a **pure function** of the entry's `(level, where-path)` — no new
   non-determinism, no float.
-- **Regime precondition (D9):** valid **only** while the reservoir and the cube close
-  on the **same window boundary** (the fixed-window regime — true today). Under
-  adaptive window closure the two may close on different boundaries, so the cross
-  would point at a cell of the wrong window; it **MUST** be re-designed before reuse
-  there (reuse unchanged is *out-of-regime*, not a bug).
+- **Regime precondition:** valid **only** while the reservoir and the cube are
+  computed over the same lines, one window's content. A producer whose reservoir and
+  cube can cover different lines **MUST NOT** emit `cube_coord`: the cross would
+  point at a cell computed over other lines.
 
 ### 16.7 Two scales — intra-window and compose
 
@@ -2272,9 +2300,10 @@ the source of truth for any categorical marginal and does **not** reshape `stats
 
 ### 16.9 Determinism
 
-The cube is computed **in batch over the closed window** — a finite, frozen, ordered
-set — so it is a **pure function** of that set and **bit-identical across stdlibs and
-operating systems** (the standing cross-stdlib / cross-OS diagonal). Specifically:
+The cube is computed **in batch over the window's final set of lines** — a finite,
+frozen, ordered set — so it is a **pure function** of that set and **bit-identical
+across stdlibs and operating systems** (the standing cross-stdlib / cross-OS
+diagonal). Specifically:
 
 - `count` is integer; the closure and the border are set operations; cells and
   border cells **MUST** serialise in canonical (coord-sorted) order.
@@ -2284,7 +2313,7 @@ operating systems** (the standing cross-stdlib / cross-OS diagonal). Specificall
   carries **one** `canonicalization_version` bump and its golden cascade in the same
   pass.
 - The §16.10 collapse is **deterministic content**: the trigger reads only the
-  closed window (never wall-clock, never an environment budget); the policy is pure
+  window's lines (never wall-clock, never an environment budget); the policy is pure
   integer (`Δcells / cost` by cross-multiplication — no float); and the fixed
   candidate order (LEVEL before WHERE) **is** the declared total-order tie-break.
   The policy is **version-stamped** — changing its budget, costs, steps or
@@ -2304,7 +2333,7 @@ budget-driven dimensional collapse** — three separated objects:
   declaring it is what makes it knowable to the **consumer**. It dominates every
   other term of the size formula (§11.4), so an undeclared budget leaves the
   consumer unable to price the block at all.
-- **TRIGGER** — a pure function of the closed window's content: closed cells over
+- **TRIGGER** — a pure function of the window's content: closed cells over
   budget. **Closure-first, collapse-last**: when closure alone fits, nothing
   degrades — collapse is the rare guard, not the normal path.
 - **POLICY** — while over budget, apply the best **admissible** monotone coarsening

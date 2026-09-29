@@ -34,8 +34,10 @@ The spec follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ## [0.10.0] — UNRELEASED
 
 **Breaking** under [`GOVERNANCE.md`](GOVERNANCE.md) §2 — a new **required** member
-on `MetaLogDiff`, a rewritten §13.2 clause, and a `diff_version` rule (§13.1.1) that
-a producer stamping an older value now violates. It also adds one optional member
+on `MetaLogDiff`, a rewritten §13.2 clause, a `diff_version` rule (§13.1.1) that
+a producer stamping an older value now violates, and a definition of `window.start`
+and `window.end` (§2.2) that a producer writing its own bounds there now violates.
+It also adds one optional member
 (`withheld_signals`, §13.2.2), which is additive on its own. MINOR bump: MAJOR stays `0`, so
 §6's *"the MAJOR field of `metalog_version` must equal the MAJOR of the spec"* is
 satisfied unchanged and **both schema files keep their `v0` filenames** — a reader
@@ -53,7 +55,10 @@ no implementer to break. Folding them here rather than minting 0.11.0 also keeps
 one number across `SPEC.md`, `metalog_version` and `diff_version`, which is the
 whole point of the first of them. **The size headline withdrawn under *Removed* is
 not from that RFC either**: it is an editorial change, raised by the editor after a
-measurement, and it changes no document's validity.
+measurement, and it changes no document's validity. **Nor is the §2.2 window
+definition under *Changed***: it is a breaking change of its own, proposed and argued
+in pull request [#14](https://github.com/CodeRoasted/metalog-spec/pull/14) under its own
+14-day comment window.
 
 ### Changed
 
@@ -84,6 +89,23 @@ measurement, and it changes no document's validity.
   signal property added to the schema joins the witness set on arrival. The cost is
   stated rather than hidden: **§13.2 is no longer readable standalone**, and a reader
   must consult the schema to know the set.
+
+- **`window.start` and `window.end` are defined, and the specification stops assuming
+  how a producer decides a window's extent (§2.2).** The two instants had no
+  definition: a producer could write the bounds its own rule used or the times of the
+  lines it read, and a consumer could not tell which — so §12.1, which takes their
+  `min` and `max`, could compose two documents into an interval that meant neither.
+  They are now the earliest and the latest **event time** (a new glossary term) among
+  the lines the window contains, and a window with no line carries `start` equal to
+  `end`. Which lines a window contains, and how and when a producer decides it, is
+  implementation-defined; a producer **MAY** fix the extent only after reading beyond
+  it. The glossary, the §1 table, §5, §12.1, §16.6, §16.9, §16.10 and RATIONALE §R5
+  drop the wording that assumed a fixed interval closed as lines arrive: §5's
+  `previous_window_end` is the previous window's `window.end`, and §16.6's regime
+  note becomes a **MUST NOT**. §8 counts the empty-window equality among the window
+  relations the conformance validator decides. A producer that writes its own bounds
+  into `start`/`end` moves them to an extension (§7). RFC: pull request
+  [#14](https://github.com/CodeRoasted/metalog-spec/pull/14).
 
 ### Added
 
