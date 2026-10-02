@@ -1522,6 +1522,14 @@ not directly comparable.
 }
 ```
 
+**`branching_delta` rows.** A producer **MUST** emit a `branching_delta` row only for a
+`template_id` that has a `behavior.branching` entry in BOTH compared documents. A template
+with an entry on one side only has no row: an absent entry is not reported, never zero
+entropy (§4.2 does not require an entry for every node, and lets a producer cap the block).
+A consumer **MUST NOT** read a missing row, or a template absent from one side's
+`branching`, as an entropy of zero. The rule involves both input documents, which no schema
+keyword can see, so it is a producer obligation stated here and not a schema constraint.
+
 ### 13.1.1 `diff_version` — which version this is
 
 **`diff_version` is the version of THIS specification that the document
