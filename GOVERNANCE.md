@@ -29,8 +29,31 @@ that means for each change type; a reader should not have to infer it.
 |---|---|---|---|
 | **Editorial** | Typo, wording clarification, additional example | Editor merges. | Editor merges. |
 | **Additive** | New optional field, new enum value, new extension prefix | Editor merges. MINOR bump. **The 1-reviewer approval below activates once a reviewer roster exists.** | Editor merges after 1 reviewer approval. MINOR bump. |
-| **Breaking** | Remove a field, change a field type, change `template_id` algorithm | Editor merges after RFC issue + 14-day comment window. MAJOR bump (or MINOR during 0.x). | Requires RFC + 30-day comment window + at least 2 reviewer approvals. MAJOR bump. |
+| **Breaking** | Remove a field, change a field type, change `template_id` algorithm | Editor merges. MINOR bump. **No RFC issue and no comment window** — see *Breaking changes during 0.x* below. | Requires RFC + 30-day comment window + at least 2 reviewer approvals. MAJOR bump. |
 | **Profile** | "Streaming MetaLog", "Edge MetaLog" subset profiles | Same as breaking. | Same as breaking. |
+
+### Breaking changes during 0.x
+
+While the spec is in its `0.x` draft line, a breaking change needs **no `rfc:` issue
+and no comment window**: the editor merges it, with a MINOR bump (§6: during 0.x a
+MINOR may break). A comment window exists to protect implementers a change would
+break, and today the reference implementation is the only producer and consumer of
+MetaLog documents — so a window protects no one, and only holds back a correction
+the editor has already decided.
+
+**What replaces the window.** The pull request states the change as a diff against
+`SPEC.md` and gives its migration impact (items 2 and 4 of an RFC issue, below), and
+`CHANGELOG.md` records it as breaking in the same pull request. The record is kept
+whole; only the wait is waived.
+
+**The RFC comes back at freeze, and that is not discretionary.** From the moment
+v1.0 is frozen under [ADR 0001](adr/0001-v1-freeze-policy.md), every breaking change
+and every profile requires an `rfc:` issue and the *Process at 1.0+* column above.
+It comes back **earlier, while still 0.x, the day a second implementation is listed**
+in [`README.md`](README.md)'s implementation table — ADR 0001's first freeze
+condition requires one, so this always happens before the freeze. From that day a
+breaking change can break someone other than the editor, and every breaking change
+not yet merged takes an `rfc:` issue and a 14-day comment window.
 
 An **RFC issue** is a GitHub issue tagged `rfc:` containing:
 
@@ -73,8 +96,8 @@ generic.
 1. Comment on the relevant PR or issue.
 2. If unresolved, open an `rfc:` issue with the alternative
    proposal.
-3. If still unresolved after the comment window, the editor decides
-   and documents the rationale in the merged PR.
+3. If still unresolved — after the comment window, where §2 requires
+   one — the editor decides and documents the rationale in the merged PR.
 
 There is no appeal process during 0.x. After 1.0, a steering
 committee structure will be defined here if the implementer base

@@ -60,6 +60,13 @@ definition under *Changed***: it is a breaking change of its own, proposed and a
 in pull request [#14](https://github.com/CodeRoasted/metalog-spec/pull/14) under its own
 14-day comment window.
 
+**Process: RFC #8 is closed, and breaking changes need no RFC during 0.x.**
+[`GOVERNANCE.md`](GOVERNANCE.md) §2 now lets the editor merge a breaking change in the
+0.x line without an `rfc:` issue or a comment window, while the reference
+implementation is the only producer and consumer. The RFC comes back at the v1.0
+freeze, or earlier the day a second implementation is listed. P1, P3 and P4 stay
+proposed; any of them that is taken lands as an editor change recorded here.
+
 ### Changed
 
 - **§13.2 now quantifies over a VERDICT, not over field presence.** The old clause
