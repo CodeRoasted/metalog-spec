@@ -37,8 +37,10 @@ The spec follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 on `MetaLogDiff`, a rewritten §13.2 clause, a `diff_version` rule (§13.1.1) that
 a producer stamping an older value now violates, and a definition of `window.start`
 and `window.end` (§2.2) that a producer writing its own bounds there now violates,
-and a definition of `behavior.top_ngrams[].probability` (§4) that a producer writing a
-joint probability at `ngram_size` above 2 now violates.
+a definition of `behavior.top_ngrams[].probability` (§4) that a producer writing a
+joint probability at `ngram_size` above 2 now violates, and a rule on which templates get a
+`branching_delta` row (§13.1) that a producer emitting one for a template branching on one
+side only now violates.
 It also adds one optional member
 (`withheld_signals`, §13.2.2), which is additive on its own. MINOR bump: MAJOR stays `0`, so
 §6's *"the MAJOR field of `metalog_version` must equal the MAJOR of the spec"* is
@@ -132,6 +134,25 @@ proposed; any of them that is taken lands as an editor change recorded here.
   documents. **Breaking by the letter** — a producer that followed "joint" becomes
   non-conformant — and editor-merged under [`GOVERNANCE.md`](GOVERNANCE.md) §2's 0.x
   rule. No schema changed: the field was, and stays, a number in [0, 1].
+
+- **§13.1 — a `branching_delta` row exists only for a template with a `behavior.branching`
+  entry in BOTH compared documents.** The example showed the member and the schema fixed a
+  row's shape, but nothing said which templates get a row. The reference producer emitted
+  one for a template present in EITHER document's `branching`, writing `0.0` for the side
+  without an entry, so a template appearing with three equally likely successors reported
+  `previous_entropy_bits: 0.0, delta_bits: 1.58`: a shift from a value no window observed.
+  §4.2 makes the absence ambiguous on its own terms — an absent entry can mean the template
+  was not observed, had no outgoing edge (an empty distribution, whose entropy is undefined),
+  or was observed but not emitted or capped out — so zero is false in all three cases. A new
+  paragraph after the §13.1 example states the rule for producers and its mirror for
+  consumers: a missing row, or a template absent from one side's `branching`, is never an
+  entropy of zero. The array's vacuity (§13.2.1) is unchanged: it is emitted only when one of
+  the remaining rows moved, and unmoved rows survive beside the moved ones. **Breaking** — a
+  producer emitting one-sided rows becomes non-conformant — and editor-merged under
+  [`GOVERNANCE.md`](GOVERNANCE.md) §2's 0.x rule. No schema changed: the rule involves both
+  input documents, which no keyword can see. The reference implementation (insight-metalog)
+  adopts it in the same release; on its determinism corpus the rule removes 45 of 48 rows,
+  every one comparing a template the other window never held in `branching`.
 
 ### Added
 
