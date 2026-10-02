@@ -36,7 +36,9 @@ The spec follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 **Breaking** under [`GOVERNANCE.md`](GOVERNANCE.md) §2 — a new **required** member
 on `MetaLogDiff`, a rewritten §13.2 clause, a `diff_version` rule (§13.1.1) that
 a producer stamping an older value now violates, and a definition of `window.start`
-and `window.end` (§2.2) that a producer writing its own bounds there now violates.
+and `window.end` (§2.2) that a producer writing its own bounds there now violates,
+and a definition of `behavior.top_ngrams[].probability` (§4) that a producer writing a
+joint probability at `ngram_size` above 2 now violates.
 It also adds one optional member
 (`withheld_signals`, §13.2.2), which is additive on its own. MINOR bump: MAJOR stays `0`, so
 §6's *"the MAJOR field of `metalog_version` must equal the MAJOR of the spec"* is
@@ -113,6 +115,23 @@ proposed; any of them that is taken lands as an editor change recorded here.
   relations the conformance validator decides. A producer that writes its own bounds
   into `start`/`end` moves them to an extension (§7). RFC: pull request
   [#14](https://github.com/CodeRoasted/metalog-spec/pull/14).
+
+- **§4 — `top_ngrams[].probability` is p(last | first n − 1) at every `ngram_size`, among
+  sequences of the entry's own length; the *"joint prob otherwise"* text is withdrawn.**
+  The example's comment read *"p(next | prev) for n=2; joint prob otherwise"*, the only
+  definition the field had. It was wrong against the one shipped producer, which has
+  always emitted the conditional at every order, and wrong against the field's one
+  consumer in this specification: §13's `ngram_delta.rate_changed` compares the value
+  across two windows as a transition rate, and a joint value restates frequency, which
+  `count` already carries, so it would move with any change in traffic mix. A new
+  paragraph under §4 now defines the value: the entry's `count` over the summed `count`
+  of the window's counted sequences of the same length sharing its first n − 1 ids,
+  computed before the `top_ngrams_size` cut. The "same length" clause also fixes a
+  defect found in the reference implementation, which pooled sequences of two lengths
+  under one denominator when its `top_ngrams` carried both; the fix moves only such
+  documents. **Breaking by the letter** — a producer that followed "joint" becomes
+  non-conformant — and editor-merged under [`GOVERNANCE.md`](GOVERNANCE.md) §2's 0.x
+  rule. No schema changed: the field was, and stays, a number in [0, 1].
 
 ### Added
 
