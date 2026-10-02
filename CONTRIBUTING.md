@@ -68,8 +68,10 @@ merges these on sight.
    validates the example file against the shipped schema. Run both
    locally first — see [`conformance/README.md`](conformance/README.md).
 3. Editor (or a reviewer) reviews. Additive changes get merged
-   after one approval; breaking changes follow the RFC process in
-   [`GOVERNANCE.md`](GOVERNANCE.md).
+   after one approval; breaking changes follow [`GOVERNANCE.md`](GOVERNANCE.md)
+   §2 — merged by the editor during 0.x, and through an `rfc:` issue and
+   its comment window from the v1.0 freeze (or once a second
+   implementation is listed).
 4. Merged changes update `CHANGELOG.md`.
 
 ---
