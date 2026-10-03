@@ -38,9 +38,11 @@ on `MetaLogDiff`, a rewritten §13.2 clause, a `diff_version` rule (§13.1.1) th
 a producer stamping an older value now violates, and a definition of `window.start`
 and `window.end` (§2.2) that a producer writing its own bounds there now violates,
 a definition of `behavior.top_ngrams[].probability` (§4) that a producer writing a
-joint probability at `ngram_size` above 2 now violates, and a rule on which templates get a
+joint probability at `ngram_size` above 2 now violates, a rule on which templates get a
 `branching_delta` row (§13.1) that a producer emitting one for a template branching on one
-side only now violates.
+side only now violates, and a binding of each param to a whole-token wildcard (§3.5) that a
+producer emitting a param for a wildcard inside a token, or none for a whole-token wildcard,
+now violates.
 It also adds one optional member
 (`withheld_signals`, §13.2.2), which is additive on its own. MINOR bump: MAJOR stays `0`, so
 §6's *"the MAJOR field of `metalog_version` must equal the MAJOR of the spec"* is
@@ -153,6 +155,23 @@ proposed; any of them that is taken lands as an editor change recorded here.
   input documents, which no keyword can see. The reference implementation (insight-metalog)
   adopts it in the same release; on its determinism corpus the rule removes 45 of 48 rows,
   every one comparing a template the other window never held in `branching`.
+
+- **§3.5 — `param_index` is the ordinal among the template's whole-token wildcards, and a
+  producer MUST bind one param to each.** The comment called `param_index` a "0-based wildcard
+  position", which a template whose normalization writes a wildcard INSIDE a token (a path
+  segment, a bracketed index) makes ambiguous: counting every wildcard puts a param on a slot
+  that carries no value. A new paragraph after the §3.5 example requires a producer to emit
+  exactly one param for every template token that is the wildcard, in token order, and none
+  for a wildcard inside a token, so `param_index` *i* names the value under the (*i* + 1)-th
+  whole-token wildcard and a consumer can put each value back into its slot from the template
+  alone. The reference producer emitted no param for a whole token its normalization reduced to
+  the wildcard (a dashed UUID standing alone), so the indices after it pointed one slot early.
+  **Breaking** — a producer that emits a param for a wildcard inside a token, or none for a
+  whole-token wildcard, becomes non-conformant — and editor-merged under
+  [`GOVERNANCE.md`](GOVERNANCE.md) §2's 0.x rule. No schema changed: the rule relates a
+  template's text to its params, which no keyword can see. The reference implementation
+  adopts it in the same release; template text and ids do not move, and only templates
+  carrying such a whole-token wildcard gain a param.
 
 ### Added
 

@@ -448,7 +448,8 @@ paths, status codes) rather than only at the template level.
   "frequency": 0.0676,
   "param_histograms": [        // array, optional; one entry per tracked wildcard slot
     {
-      "param_index": 0,        // integer, required, 0-based wildcard position
+      "param_index": 0,        // integer, required, 0-based ordinal among the template's
+                               // tokens that are exactly the wildcard
       "value_counts": {        // object, required, top-N observed values → count
         "/api/users": 800,
         "/health":    200
@@ -466,6 +467,13 @@ paths, status codes) rather than only at the template level.
   ]
 }
 ```
+
+A producer **MUST** emit exactly one param for every template token that is the wildcard,
+in token order, and none for a wildcard inside a token, which is a normalization. So
+`param_index` *i* is the value under the (*i* + 1)-th whole-token wildcard: in
+`"GET <*> -> <*>"` it is 0 for the path and 1 for the status, and in
+`"fetch cache/<*> took <*> ms"` the only param, index 0, is the duration, because
+`cache/<*>` is one token that merely contains the wildcard.
 
 - A producer **MUST NOT** emit `param_histograms` for entries not in `top_k`.
 - The `value_counts` map **MUST** be bounded (producers **SHOULD** cap at a
