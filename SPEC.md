@@ -807,7 +807,7 @@ Captures *how* templates follow each other, beyond raw frequency.
   "ngram_size": 2,                     // integer, required, size of n-grams (2 = bigrams)
   "top_ngrams": [                      // array, required, ordered by count desc
     {
-      "sequence": ["h:8a3f...", "h:b104..."],  // array of template_ids
+      "sequence": ["h:8a3f...", "h:b104..."],  // array of ngram_size template_ids — see below
       "count": 8421,
       "probability": 0.677              // p(last | first n−1), among sequences of this length — see below
     }
@@ -829,15 +829,17 @@ Captures *how* templates follow each other, beyond raw frequency.
 }
 ```
 
+**`sequence` — consecutive records of one observation stream.** An entry's `sequence`
+is the template ids of `ngram_size` consecutive records of one observation stream, in
+observation order, so every entry of `top_ngrams` holds exactly `ngram_size` ids.
+
 **`probability` — a conditional, never a joint.** An entry's `probability` is
-p(last | prefix): its `count` divided by the summed `count` of every sequence **of the
-same length** the producer counted in the window whose first n − 1 template ids equal
-the entry's own, n being the length of the entry's `sequence`. At `ngram_size` 2 it is
-p(next | prev); at 3 it is p(third | first two). It is computed over every counted
-sequence, **before** the `top_ngrams_size` cut, so the retained entries sharing a
-prefix need not sum to 1. A sequence of another length never enters the sum: in a
-`top_ngrams` holding sequences of more than one length, each length is conditioned
-among its own. It is a conditional and not a joint probability because frequency is
+p(last | prefix): its `count` divided by the summed `count` of every sequence the
+producer counted in the window whose first n − 1 template ids equal the entry's own,
+n being `ngram_size`. At `ngram_size` 2 it is p(next | prev); at 3 it is
+p(third | first two). It is computed over every counted sequence, **before** the
+`top_ngrams_size` cut, so the retained entries sharing a prefix need not sum to 1.
+It is a conditional and not a joint probability because frequency is
 already carried by `count`, and because §13's `ngram_delta.rate_changed` compares this
 value across two windows as a transition RATE: a joint value would move with any change
 in traffic mix and would mean a different quantity at each `ngram_size`.
