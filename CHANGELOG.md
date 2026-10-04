@@ -261,6 +261,24 @@ proposed; any of them that is taken lands as an editor change recorded here.
 
 ### Clarified
 
+- **§4 — a `top_ngrams` `sequence` is `ngram_size` consecutive records of one
+  observation stream.** §4 sized the block by `ngram_size` (*"size of n-grams"*) and
+  described a *"sequence/transition fingerprint"*, but never said what a sequence IS, so
+  a producer could read it as any template-to-template relation it observes. A new
+  sentence under the example says it: the template ids of `ngram_size` consecutive
+  records of one observation stream, in observation order, so every entry holds exactly
+  `ngram_size` ids. What a producer treats as one observation stream (the whole window,
+  or a narrower scope such as one trace) stays its own; the sentence names no scope.
+  The probability paragraph loses the clause about a `top_ngrams` holding sequences of
+  more than one length, which no conforming document can now hold, and reads n as
+  `ngram_size`. The clause was added in this unreleased 0.10.0 line, after the
+  reference implementation was found putting a second relation (a declared link between
+  two records, not their adjacency) into the block at `ngram_size` 3; that producer now
+  carries such relations in `extensions` (§7), which is where a relation another
+  producer would not compute from the same records belongs. **Against every released
+  version this changes no document's validity**; against the unreleased 0.10.0 draft it
+  withdraws a clause that admitted two lengths. No schema changed.
+
 - **§8 — clause 2 is mechanically decidable for `window` (§2.2), and the closing
   paragraph now says so.** It read *"clauses 2 and 3 are not mechanically decidable
   today: clause 2 only as far as the schema expresses it"*. That understated what is
