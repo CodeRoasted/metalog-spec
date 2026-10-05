@@ -471,6 +471,12 @@ def collect_findings(docs, validator) -> tuple[list[dict], int]:
                 props[key].update(_offending_keys(err.schema, err.instance))
             elif err.validator == "required" and isinstance(err.instance, dict):
                 props[key].update(set(err.validator_value) - set(err.instance))
+            elif err.validator == "dependentRequired" and isinstance(err.instance, dict):
+                # The missing companions of every present member, as `required` names
+                # its missing members: the finding says what to add, not what triggered.
+                for present, companions in err.validator_value.items():
+                    if present in err.instance:
+                        props[key].update(set(companions) - set(err.instance))
 
     findings = [{
         "path": path,
@@ -710,11 +716,14 @@ def collect_cap_violations(docs, pairs: set[tuple[str, str]]) -> list[dict]:
 #   duration       — `duration_seconds` MUST equal `end - start` rounded to the
 #                    nearest second. Also a relation, and the one a producer gets
 #                    wrong silently: every member is individually well-typed.
-#   empty-extent   — a window containing no line (`lines_observed` 0) MUST carry
-#                    `start` equal to `end`. A relation among three members, and
-#                    decided on the two INSTANTS, never on the two strings: RFC 3339
-#                    spells one instant several ways (`Z`, `+00:00`, a fractional
-#                    `.000`), and §2.2 constrains the time, not its spelling.
+#   empty-extent   — a window containing no line (`lines_observed` 0) has no line
+#                    with an event time, so it MUST carry no envelope (v0.10.0;
+#                    before it, `start` equal to `end`). A relation between
+#                    `lines_observed` and the envelope's presence. That `start`,
+#                    `end` and `duration_seconds` are present together or absent
+#                    together is NOT decided here: the schema states it with
+#                    `dependentRequired`, so it is clause 1's, and on a document
+#                    that passed the schema an absent envelope is absent whole.
 #   estimated-flag — `extensions.org.metalog.lines_observed_estimated`, when
 #                    present, is `true`. It lives inside §7's OPEN extension
 #                    container, whose whole contract is that the schema does not
@@ -833,6 +842,18 @@ def collect_window_violations(docs, validator) -> tuple[list[dict], int]:
             # `window` disarms this clause through governs_window_rule, above.
             continue
 
+        flag = _estimated_flag(doc)
+        if flag is not _ABSENT and flag is not True:
+            note("estimated-flag",
+                 f"{ESTIMATED_EXT_NAMESPACE}.{ESTIMATED_EXT_MEMBER} is "
+                 f"{json.dumps(flag)}, and §2.2 admits only true", label)
+
+        # An absent envelope (§2.2, v0.10.0) has no instant to judge, and the schema
+        # has already held its three members to all-or-none; the relations below are
+        # relations between instants, so they are decided only where the instants are.
+        if "start" not in window:
+            continue
+
         start_ok, start = _utc_instant(window.get("start"))
         end_ok, end = _utc_instant(window.get("end"))
         if not start_ok:
@@ -856,18 +877,12 @@ def collect_window_violations(docs, validator) -> tuple[list[dict], int]:
                     note("duration",
                          f"duration_seconds declares {declared}, "
                          f"end - start is {delta:g}", label)
-            # Decided apart from ordering: a window with no line and `start` after
-            # `end` breaks both relations, and each is reported by its own clause.
-            if window.get("lines_observed") == 0 and start != end:
-                note("empty-extent",
-                     f"lines_observed is 0 and start {window['start']} is not end "
-                     f"{window['end']}", label)
-
-        flag = _estimated_flag(doc)
-        if flag is not _ABSENT and flag is not True:
-            note("estimated-flag",
-                 f"{ESTIMATED_EXT_NAMESPACE}.{ESTIMATED_EXT_MEMBER} is "
-                 f"{json.dumps(flag)}, and §2.2 admits only true", label)
+        # Decided apart from the instants' readability: a window with no line has no
+        # event time, so carrying an envelope at all is the defect, whatever it says.
+        if window.get("lines_observed") == 0:
+            note("empty-extent",
+                 f"lines_observed is 0 and the window carries an envelope "
+                 f"[{window['start']} .. {window['end']}]", label)
 
     return sorted(
         ({"clause": clause, "detail": detail, "documents": len(entry["documents"]),
@@ -1516,9 +1531,12 @@ REQUIRED_CONTROLS = {
     "window-empty-extent",          # forecloses can't-FAIL on §2.2's empty-window
                                     # relation: `start` equal to `end` when the
                                     # window contains no line
-    "window-empty-equal-instants",  # forecloses the same relation decided on the
-                                    # two STRINGS, which reds a conformant empty
-                                    # window whose instants are spelled apart
+    "window-no-envelope",           # forecloses a schema or an arm that still
+                                    # demands an envelope from a window none of
+                                    # whose lines has an event time
+    "window-half-envelope",         # forecloses half an envelope (one bound, no
+                                    # duration) reading conformant, or reaching
+                                    # the window arm as a time defect
     "withheld-signal-is-a-witness", # forecloses a §13.2.2 escape that cannot be
                                     # taken: the whole point of `withheld_signals`
                                     # is that a NON-EMPTY one carries the outcome,

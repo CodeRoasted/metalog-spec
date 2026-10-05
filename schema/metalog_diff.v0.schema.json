@@ -20,7 +20,8 @@
             "properties": {
                 "window": {
                     "type": "object",
-                    "required": ["start", "end"],
+                    "description": "That document's `window.start` and `window.end`, both or neither: empty when it has no envelope (SPEC §2.2). Optional since v0.10.0.",
+                    "dependentRequired": { "start": ["end"], "end": ["start"] },
                     "properties": {
                         "start": { "type": "string", "format": "date-time" },
                         "end": { "type": "string", "format": "date-time" }
@@ -39,7 +40,8 @@
             "properties": {
                 "window": {
                     "type": "object",
-                    "required": ["start", "end"],
+                    "description": "That document's `window.start` and `window.end`, both or neither: empty when it has no envelope (SPEC §2.2). Optional since v0.10.0.",
+                    "dependentRequired": { "start": ["end"], "end": ["start"] },
                     "properties": {
                         "start": { "type": "string", "format": "date-time" },
                         "end": { "type": "string", "format": "date-time" }
