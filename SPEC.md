@@ -78,7 +78,7 @@ top-level fields:
 | `window` | object | yes | The line count and, when any line has one, the event-time envelope of the lines the window contains. See §2.2. |
 | `source` | object | yes | What was observed (service, host, fleet). See §2.3. |
 | `canonicalization_version` | string | no | Opaque identifier for the canonicalization rules in effect. Gates `compose()`/diff comparability. See §2.4. |
-| `retention_profile` | string | no | Opaque identifier for the retention parameters (top_k, reservoir, salience weights, diversity caps). Gates `compose()`/diff comparability. See §2.4. |
+| `retention_profile` | string | no | Opaque identifier for the retention parameters (top_k, reservoir, salience weights, diversity caps, `behavior.ngram_size`). Gates `compose()`/diff comparability. See §2.4. |
 | `stats` | object | yes | Per-template counts and frequency metrics. See §3. |
 | `templates` | object | no | Optional dedup map `template_id → template_str`. See §3.4. **RESERVED** — see §2. |
 | `behavior` | object | no | Sequence/transition fingerprint. See §4. |
@@ -233,10 +233,14 @@ A MetaLog **MAY** carry two opaque processing-identifier strings that name the
   templates and structural metadata). It **MUST** be bumped when those rules'
   *output-affecting* semantics change; a binary rebuild with no rule change
   **MUST NOT** bump it. It is **not** a binary build id.
-- `retention_profile` — names the **retention parameters** in effect: `top_k`
-  size (§3.1), reservoir admission weights and size and diversity caps (§3.7),
-  and the salience arithmetic. It **MUST** be bumped when any of those
-  parameters change.
+- `retention_profile` — names the **retention parameters** in effect: every
+  parameter that fixes which entries a bounded block retains, how they are ranked,
+  and **what an entry's key denotes**. At this version those are `top_k` size
+  (§3.1), the reservoir admission weights, size and diversity caps and the salience
+  arithmetic (§3.7), and `behavior.ngram_size` (§4) — the sequence order, which
+  fixes the *domain* of `top_ngrams` rather than a bound on it. That list
+  illustrates the rule and does not close it: a parameter meeting the rule joins it
+  without an edit here. It **MUST** be bumped when any such parameter changes.
 
 The values are **opaque strings**. This spec defines neither a registry of names
 nor a canonical format; producers and consumers within an environment **MUST**
@@ -1364,6 +1368,21 @@ to a 1-hour MetaLog).
 - `C.behavior.dominant_path` is re-derived greedily from the merged
   graph; consumers **MUST NOT** assume it equals the path of either
   input.
+- `C.behavior` **MUST** be omitted entirely when both inputs carry a `behavior` block
+  and their `ngram_size` values **differ**. An order-`m` key and an order-`n` key with
+  `m ≠ n` denote different objects, so there is no merged n-gram population to derive:
+  counts across the two orders are not comparable (every order-`n` occurrence implies
+  an order-`m` one for `m < n`, so a joint ranking is biased toward the shorter order)
+  and `probability` is conditioned to a different depth on each side. Where the two
+  agree, `C.behavior.ngram_size` is that value. A composer **MUST NOT** instead take
+  the smaller order, nor carry one input's block through unchanged: the first declares
+  an order the merged array does not hold or silently drops one input's n-grams, and
+  the second describes one input's lines under a `window` covering both. Omitting the
+  block also drops `dropped_ngram_observations`; that **loses** a count and does not
+  falsify one, because §4's omission rule governs the field inside a present block,
+  not the block. The precondition is block-grained, like the `cube` clause below: the
+  rest of `C` composes as usual. It is the residual case only — whenever both inputs
+  carry a `retention_profile`, §2.4's gate refuses the pair before composition begins.
 - `C.stability` **MUST** be omitted (it is meaningless across
   composed inputs); consumers wanting a current-vs-prior view of a
   composed document should use §13 Diff explicitly.
