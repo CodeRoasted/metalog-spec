@@ -75,7 +75,7 @@ top-level fields:
 |---|---|---|---|
 | `metalog_version` | string | yes | Spec version this document conforms to. SemVer string (e.g. `"0.10.0"`). The `MetaLogDiff` (§13) carries the same axis as `diff_version` — see §13.1.1. |
 | `producer` | object | yes | Identifies the producing implementation. See §2.1. |
-| `window` | object | yes | The event-time envelope of the lines the window contains. See §2.2. |
+| `window` | object | yes | The line count and, when any line has one, the event-time envelope of the lines the window contains. See §2.2. |
 | `source` | object | yes | What was observed (service, host, fleet). See §2.3. |
 | `canonicalization_version` | string | no | Opaque identifier for the canonicalization rules in effect. Gates `compose()`/diff comparability. See §2.4. |
 | `retention_profile` | string | no | Opaque identifier for the retention parameters (top_k, reservoir, salience weights, diversity caps). Gates `compose()`/diff comparability. See §2.4. |
@@ -164,9 +164,9 @@ that as a coupling.
 
 ```jsonc
 {
-  "start": "2026-04-24T10:00:00Z",   // RFC 3339, UTC, required
-  "end":   "2026-04-24T10:05:00Z",   // RFC 3339, UTC, required
-  "duration_seconds": 300,            // number, required, MUST equal end - start
+  "start": "2026-04-24T10:00:00Z",   // RFC 3339, UTC; present iff some line has an event time
+  "end":   "2026-04-24T10:05:00Z",   // RFC 3339, UTC; present iff `start` is
+  "duration_seconds": 300,            // integer; present iff `start` is, MUST equal end - start
   "lines_observed": 184273            // integer, required, count of log lines that fed this MetaLog
 }
 ```
@@ -192,11 +192,20 @@ its own — the interval its rule for deciding the extent used —
 
 `start` **MUST** be less than or equal to `end`; the two are equal
 when every line the window contains carries the same event time, a
-window of one line included. For a window containing no line
-(`lines_observed` 0), `start` **MUST** equal `end`, and both name the
-time the producer attributes to the window.
-`duration_seconds` **MUST** equal `end - start` rounded to the
-nearest second. If a producer cannot count `lines_observed` exactly,
+window of one line included. `duration_seconds` **MUST** equal
+`end - start` rounded to the nearest second.
+
+**A window with no event time has no envelope.** When the producer
+attributes an event time to none of the lines the window contains —
+a window containing no line (`lines_observed` 0) included — `start`,
+`end` and `duration_seconds` **MUST** all be absent, and
+`lines_observed` is the window's only member. The three are present
+together or absent together. A producer **MUST NOT** write into
+`start` or `end` an instant it did not attribute to a line of the
+window: a fixed value, an epoch sentinel, or the time the window was
+opened or closed is not an event time, and a reader cannot tell any
+of them from one. A consumer **MUST** read an absent envelope as "no
+line of this window has an event time", never as an instant. If a producer cannot count `lines_observed` exactly,
 it **MUST** emit its best estimate and **SHOULD** emit an
 `extensions.org.metalog.lines_observed_estimated: true` flag.
 
@@ -920,7 +929,7 @@ order.
 
 ```jsonc
 {
-  "previous_window_end": "2026-04-24T10:00:00Z",  // RFC 3339, required, the previous window's `window.end`
+  "previous_window_end": "2026-04-24T10:00:00Z",  // RFC 3339, the previous window's `window.end`; absent when it has none
   "kl_divergence": 0.043,        // number ≥ 0, KL(current || previous) over template freqs
   "js_divergence": 0.021,        // number in [0, 1], symmetric Jensen-Shannon
   "new_templates": 3,            // integer, templates seen now but not in previous window
@@ -929,7 +938,11 @@ order.
 }
 ```
 
-A producer **MAY** include only a subset of these fields. The
+A producer **MAY** include only a subset of these fields.
+`previous_window_end` **MUST** be present when the previous window
+carries a `window.end` and **MUST** be absent when it carries none
+(§2.2): the block still compares the two template distributions,
+which exist whether or not either window has an event time. The
 `stability_score` is producer-defined; consumers **MUST NOT** assume
 two producers compute it the same way and **SHOULD** prefer the
 explicit divergences (`kl_divergence`, `js_divergence`) for
@@ -1081,17 +1094,22 @@ the file. Clause 2 is mechanically decidable in exactly one place. `window`
 (§2.2) is the only required block whose definition states relations
 **between** its members — `start` at or before `end`,
 `duration_seconds` equal to their difference rounded to the nearest
-second, both instants in UTC, and `start` equal to `end` when
-`lines_observed` is 0. None of the four is expressible in JSON
+second, both instants in UTC, and no envelope at all when
+`lines_observed` is 0. The first three are not expressible in JSON
 Schema at any draft (`format: date-time` constrains the grammar,
-never the offset, and no keyword relates two siblings), and all four
-follow from the document alone, so
+never the offset, and no keyword compares two siblings' values); the
+fourth could be written as a conditional schema but is decided beside
+them, so that every relation of §2.2 is reported by one arm; and all
+four follow from the document alone, so
 [`conformance/metalog_validate.py`](conformance/metalog_validate.py)
 decides them — together with the §7
 `org.metalog.lines_observed_estimated` flag, which §2.2 admits only
 as `true` and which lives inside an extension container the schema
 does not type by design. The **types** of those members are clause
-1's business and are not re-decided there. Every **other** required
+1's business and are not re-decided there, and so is the one window
+relation the schema does state: that `start`, `end` and
+`duration_seconds` are present together or absent together, which it
+writes with `dependentRequired`. Every **other** required
 field is checked only as far as the schema expresses it, and clause
 3 is not mechanically decidable at all until a pinned
 cross-implementation digest vector exists.
@@ -1320,6 +1338,9 @@ to a 1-hour MetaLog).
 - `C.window.start = min(A.window.start, B.window.start)`
 - `C.window.end   = max(A.window.end,   B.window.end)`
 - `C.window.duration_seconds = C.window.end - C.window.start` (the event-time envelope of both inputs' lines, **not** the sum of their durations)
+- an input with no envelope (§2.2) contributes no bound: `C` carries
+  the other input's envelope unchanged, and no envelope when neither
+  input has one
 - `C.window.lines_observed = A.window.lines_observed + B.window.lines_observed`
 - `C.source` is `A.source` if equal to `B.source`, otherwise the
   most-specific common prefix (e.g. same `fleet`, drop differing
@@ -1443,7 +1464,7 @@ When emitted, `provenance` is an array of objects:
 ```jsonc
 [
   {
-    "window":  { "start": "...", "end": "..." },
+    "window":  { "start": "...", "end": "..." },   // the input's bounds; {} when it has none
     "source":  { "service": "checkout-api", "host": "checkout-3" },
     "lines_observed": 91204,
     "document_id": "sha256:..."   // optional, content hash of the composed input
@@ -1477,7 +1498,7 @@ not directly comparable.
 {
   "diff_version": "0.10.0",            // string, REQUIRED — the SPEC version, §13.1.1
   "comparison_outcome": "changed",     // string, REQUIRED — "changed" | "unchanged", §13.2
-  "current":  { "window": { "start": "...", "end": "..." }, "document_id": "sha256:..." },
+  "current":  { "window": { "start": "...", "end": "..." }, "document_id": "sha256:..." },  // window {} when that document has no envelope (§2.2)
   "previous": { "window": { "start": "...", "end": "..." }, "document_id": "sha256:..." },
   "kl_divergence": 0.043,
   "js_divergence": 0.021,

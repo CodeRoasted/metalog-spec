@@ -75,6 +75,30 @@ proposed; any of them that is taken lands as an editor change recorded here.
 
 ### Changed
 
+- **A window with no event time has no envelope (§2.2).** `window.start`, `window.end` and
+  `window.duration_seconds` are present together, or absent together when the producer
+  attributes an event time to none of the window's lines — a window with no line
+  (`lines_observed` 0) included. Until now the three were required, so a producer whose
+  lines carried no readable time had to write an instant it never observed (a fixed value,
+  an epoch sentinel, the window's opening time), and a reader could not tell it from a real
+  one; composition (§12.1) then took that value into a composed `window.start`. A producer
+  **MUST NOT** write such a value, and a consumer reads an absent envelope as "no line of
+  this window has an event time". The empty-window clause changes with it: an empty window
+  carried `start` equal to `end`, and now carries no envelope. Consequences, each stated in
+  its section: §5's `previous_window_end` is absent when the previous window has no
+  envelope; §12.1 takes the envelope of the input that has one, and none when neither does;
+  §12.4's `provenance[].window` and §13.1's `current.window` / `previous.window` are `{}`
+  for a document with no envelope. **Schemas:** the document `window` requires only
+  `lines_observed` and binds the three envelope members with `dependentRequired`;
+  `stability` no longer requires `previous_window_end`; the provenance and diff `window`
+  objects no longer require `start` and `end` and bind them to each other. **Conformance
+  tool:** the window arm judges instants only where they exist, the empty-extent clause
+  reports an envelope on an empty window, a `dependentRequired` finding names the missing
+  companions, and the `window-empty-equal-instants` control is replaced by
+  `window-no-envelope` and `window-half-envelope`. **Breaking by the letter** — a producer
+  that writes an envelope on an empty window, or a consumer that requires one, becomes
+  non-conformant — and editor-merged under [`GOVERNANCE.md`](GOVERNANCE.md) §2's 0.x rule.
+
 - **§13.2 now quantifies over a VERDICT, not over field presence.** The old clause
   required *"at least one of"* nine named fields to be **present**. Presence is
   satisfied by every producer regardless of what it found — `template_deltas` is a

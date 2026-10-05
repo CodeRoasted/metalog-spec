@@ -44,12 +44,15 @@
         },
         "window": {
             "type": "object",
+            "description": "SPEC §2.2. `start`, `end` and `duration_seconds` are the window's event-time envelope: present together, or absent together when no line of the window has an event time (a window with no line included). Optional since v0.10.0; before it the three were required and a producer with no event time had to write a value it did not observe.",
             "required": [
-                "start",
-                "end",
-                "duration_seconds",
                 "lines_observed"
             ],
+            "dependentRequired": {
+                "start": ["end", "duration_seconds"],
+                "end": ["start", "duration_seconds"],
+                "duration_seconds": ["start", "end"]
+            },
             "properties": {
                 "start": {
                     "type": "string",
@@ -334,9 +337,7 @@
         },
         "stability": {
             "type": "object",
-            "required": [
-                "previous_window_end"
-            ],
+            "description": "SPEC §5. `previous_window_end` is the previous window's `window.end`, absent exactly when that window has no envelope (§2.2); optional since v0.10.0.",
             "properties": {
                 "previous_window_end": {
                     "type": "string",
@@ -420,10 +421,11 @@
                 "properties": {
                     "window": {
                         "type": "object",
-                        "required": [
-                            "start",
-                            "end"
-                        ],
+                        "description": "The composed input's `window.start` and `window.end`, both or neither: empty when that input has no envelope (SPEC §2.2, §12.4). Optional since v0.10.0.",
+                        "dependentRequired": {
+                            "start": ["end"],
+                            "end": ["start"]
+                        },
                         "properties": {
                             "start": {
                                 "type": "string",

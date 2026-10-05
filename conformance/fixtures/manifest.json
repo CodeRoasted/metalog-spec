@@ -87,7 +87,7 @@
             "path": "invalid/window_empty_extent.metalog.jsonl",
             "kind": "metalog",
             "control": "window-empty-extent",
-            "why": "SPEC §2.2: a window containing no line (`lines_observed` 0) carries `start` equal to `end`, and §8 counts that equality among the window relations this validator decides. One SCHEMA-VALID document with `lines_observed` 0 whose `start` precedes its `end` by 600 seconds, and whose `duration_seconds` is that 600, so the ordering and duration clauses both hold and the empty-extent clause is the only thing that can catch it. Before this clause existed the validator read this document CONFORMANT, exit 0.",
+            "why": "SPEC §2.2 (v0.10.0): a window containing no line (`lines_observed` 0) has no line with an event time, so it carries NO envelope, and §8 counts that among the window relations this validator decides. One SCHEMA-VALID document with `lines_observed` 0 that carries an envelope anyway, whose `start` precedes its `end` by 600 seconds and whose `duration_seconds` is that 600, so the ordering and duration clauses both hold and the empty-extent clause is the only thing that can catch it. Before v0.10.0 the clause read `start` equal to `end`, and this document was caught for its unequal instants; it is still caught, now for carrying instants at all.",
             "expect": {
                 "exit": 1,
                 "documents": 1,
@@ -96,7 +96,7 @@
                 "window_violations": [
                     [
                         "empty-extent",
-                        "lines_observed is 0 and start 2026-04-24T10:00:00Z is not end 2026-04-24T10:10:00Z",
+                        "lines_observed is 0 and the window carries an envelope [2026-04-24T10:00:00Z .. 2026-04-24T10:10:00Z]",
                         1
                     ]
                 ],
@@ -104,10 +104,10 @@
             }
         },
         {
-            "path": "valid/window_empty_equal_instants.metalog.jsonl",
+            "path": "valid/window_no_envelope.metalog.jsonl",
             "kind": "metalog",
-            "control": "window-empty-equal-instants",
-            "why": "The empty-extent clause's positive witness: two SCHEMA-VALID documents with `lines_observed` 0 and `start` equal to `end`, which §2.2 admits and which MUST read CONFORMANT. The second spells `end` as `2026-04-24T10:00:00.000+00:00`, the same instant as its `start` `2026-04-24T10:00:00Z` in another legal RFC 3339 spelling, so a clause that compared the two strings rather than the two instants reds here. A clause tested only by its violation passes forever as `always red on an empty window`.",
+            "control": "window-no-envelope",
+            "why": "The absent envelope's positive witness (SPEC §2.2, v0.10.0): two SCHEMA-VALID documents whose `window` carries `lines_observed` alone — one with no line, one with three lines none of which has an event time — and the second also carries a `stability` block with no `previous_window_end` (§5). Both MUST read CONFORMANT. A schema that still required `start`, `end` and `duration_seconds`, or an arm that decided ordering or duration on a window that has no instants, reds here; a rule tested only by its violation passes forever as `always red on a window without event time`.",
             "expect": {
                 "exit": 0,
                 "documents": 2,
@@ -115,6 +115,30 @@
                 "undescribed": [],
                 "window_violations": [],
                 "window_unjudged": 0
+            }
+        },
+        {
+            "path": "invalid/window_half_envelope.metalog.jsonl",
+            "kind": "metalog",
+            "control": "window-half-envelope",
+            "why": "SPEC §2.2 (v0.10.0): `start`, `end` and `duration_seconds` are present together or absent together, and the schema states it with `dependentRequired`, so this is a clause 1 finding and the window arm withholds its verdict. One document carrying `start` alone: both missing companions are named, one error each. Without the keyword the document would validate and reach the window arm, which would report a missing `end` as an unreadable instant — a shape defect sent to the reader as a time defect.",
+            "expect": {
+                "exit": 1,
+                "documents": 1,
+                "findings": [
+                    [
+                        "window",
+                        "dependentRequired",
+                        [
+                            "duration_seconds",
+                            "end"
+                        ],
+                        2,
+                        1
+                    ]
+                ],
+                "undescribed": [],
+                "window_unjudged": 1
             }
         },
         {
