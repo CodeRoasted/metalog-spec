@@ -42,7 +42,8 @@ joint probability at `ngram_size` above 2 now violates, a rule on which template
 `branching_delta` row (§13.1) that a producer emitting one for a template branching on one
 side only now violates, and a binding of each param to a whole-token wildcard (§3.5) that a
 producer emitting a param for a wildcard inside a token, or none for a whole-token wildcard,
-now violates.
+now violates, and two rules on `behavior.ngram_size` (§2.4, §12.1) that a producer keeping one
+`retention_profile` across two orders, or a composer merging two orders' blocks, now violates.
 It also adds one optional member
 (`withheld_signals`, §13.2.2), which is additive on its own. MINOR bump: MAJOR stays `0`, so
 §6's *"the MAJOR field of `metalog_version` must equal the MAJOR of the spec"* is
@@ -71,9 +72,35 @@ in pull request [#14](https://github.com/CodeRoasted/metalog-spec/pull/14) under
 0.x line without an `rfc:` issue or a comment window, while the reference
 implementation is the only producer and consumer. The RFC comes back at the v1.0
 freeze, or earlier the day a second implementation is listed. P1, P3 and P4 stay
-proposed; any of them that is taken lands as an editor change recorded here.
+proposed; any of them that is taken lands as an editor change recorded here. **P3's item (f)**,
+the order-dependent `behavior.ngram_size`, is the first taken: see the §2.4 / §12.1 entry under
+*Changed*. The rest of P3 (the caps rule) stays proposed.
 
 ### Changed
+
+- **§2.4 — `retention_profile` names `behavior.ngram_size`, and §12.1 omits `behavior` when
+  two composed inputs differ in it.** `ngram_size` was in neither identifier's list, so two
+  documents produced at different sequence orders could carry equal identifiers and pass
+  §2.4's comparability gate. `compose()` then had to pick one input's `ngram_size` — a
+  required field — so `compose(A, B)` and `compose(B, A)` declared different values, against
+  §12.2's commutativity MUST; and a `MetaLogDiff` across the pair reported every n-gram of
+  one side as vanished and every n-gram of the other as new, which §13.2 counts as a witness
+  of `"changed"`. An order-`m` key and an order-`n` key denote different objects, so no
+  minimum repairs it: the smaller order either declares an order the array does not hold or
+  drops one input's n-grams with no field reporting the loss. Two changes. **§2.4** states
+  what `retention_profile` names as a rule — every parameter that fixes which entries a
+  bounded block retains, how they are ranked, and what an entry's key denotes — with the
+  existing items and `behavior.ngram_size` as its examples, so the existing gate refuses a
+  cross-order `compose()` and `MetaLogDiff` at both sites with no new mechanism. **§12.1**
+  covers the case §2.4's gate does not reach (an input without the identifier): when both
+  inputs carry `behavior` at different `ngram_size`, `C.behavior` **MUST** be omitted, never
+  merged at a minimum and never carried from one side; when they agree, `C.behavior.ngram_size`
+  is that value. Omitting the block also drops `dropped_ngram_observations`: a count lost,
+  not falsified. The §1 table and the schema's `retention_profile` description name the
+  parameter. **Breaking** — a producer keeping one `retention_profile` across two orders, or a
+  composer merging two orders' blocks, becomes non-conformant — and editor-merged under
+  [`GOVERNANCE.md`](GOVERNANCE.md) §2's 0.x rule. No document's validity changes: both
+  identifiers stay opaque strings and `behavior` stays optional. RFC #8, P3 (f).
 
 - **A window with no event time has no envelope (§2.2).** `window.start`, `window.end` and
   `window.duration_seconds` are present together, or absent together when the producer

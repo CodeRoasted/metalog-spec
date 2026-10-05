@@ -467,7 +467,7 @@
         },
         "retention_profile": {
             "type": "string",
-            "description": "Opaque identifier for the retention parameters — top_k size, reservoir admission weights/size/diversity caps, and the salience arithmetic; gates compose()/diff comparability (SPEC §2.4). Added in v0.5.0."
+            "description": "Opaque identifier for the retention parameters — top_k size, reservoir admission weights/size/diversity caps, the salience arithmetic, and behavior.ngram_size; gates compose()/diff comparability (SPEC §2.4). Added in v0.5.0."
         },
         "coordinate": {
             "description": "Re-derivation coordinate addressing this window back to its source: raw(window) = replay(source, bounds) (SPEC §15). A raw coordinate XOR a composed coordinate. Added in v0.5.0.",
