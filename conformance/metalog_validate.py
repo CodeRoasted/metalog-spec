@@ -1543,6 +1543,10 @@ REQUIRED_CONTROLS = {
                                     # and a reader that judged it by presence would
                                     # pass the empty array the family's other three
                                     # documents all carry
+    "incomparable-signal-is-not-a-witness",  # forecloses the §13.2.3 member read
+                                    # as a finding: a comparison NOT performed
+                                    # would then witness `changed`, and a config
+                                    # difference would read as a change
 }
 
 

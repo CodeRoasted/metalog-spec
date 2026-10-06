@@ -43,9 +43,11 @@ joint probability at `ngram_size` above 2 now violates, a rule on which template
 side only now violates, and a binding of each param to a whole-token wildcard (§3.5) that a
 producer emitting a param for a wildcard inside a token, or none for a whole-token wildcard,
 now violates, and two rules on `behavior.ngram_size` (§2.4, §12.1) that a producer keeping one
-`retention_profile` across two orders, or a composer merging two orders' blocks, now violates.
-It also adds one optional member
-(`withheld_signals`, §13.2.2), which is additive on its own. MINOR bump: MAJOR stays `0`, so
+`retention_profile` across two orders, or a composer merging two orders' blocks, now violates,
+and a rule on `ngram_delta` across two orders (§13.1, §13.2.3) that a diff producer computing the
+delta across them, or omitting it without saying so, now violates.
+It also adds two optional members
+(`withheld_signals`, §13.2.2, and `incomparable_signals`, §13.2.3), each additive on its own. MINOR bump: MAJOR stays `0`, so
 §6's *"the MAJOR field of `metalog_version` must equal the MAJOR of the spec"* is
 satisfied unchanged and **both schema files keep their `v0` filenames** — a reader
 who expects a `v1` schema and a MAJOR check that starts refusing documents will
@@ -101,6 +103,25 @@ the order-dependent `behavior.ngram_size`, is the first taken: see the §2.4 / �
   composer merging two orders' blocks, becomes non-conformant — and editor-merged under
   [`GOVERNANCE.md`](GOVERNANCE.md) §2's 0.x rule. No document's validity changes: both
   identifiers stay opaque strings and `behavior` stays optional. RFC #8, P3 (f).
+
+- **§13.1, §13.2.3 — a `MetaLogDiff` across two n-gram orders withholds `ngram_delta` and
+  says so, with its reason.** §2.4's gate binds only when both inputs carry
+  `retention_profile`, so an unstamped pair at two orders still reaches §13, and the text
+  said nothing about its `ngram_delta`. Computing it reports total turnover — no key can
+  match across orders — which §13.2 counts as a witness of `"changed"`; omitting it, as the
+  reference implementation did, makes the document read like a comparison that found no
+  n-gram movement, an all-clear no reader can tell from a true one. When both inputs carry
+  `behavior` at different `ngram_size`, a producer now **MUST** omit `ngram_delta` and
+  **MUST** carry `incomparable_signals.ngram_delta` with the reason `ngram_size_differs`
+  and both orders (§13.2.3, under *Added*). It **MUST NOT** reduce one order to the other:
+  `top_ngrams` is truncated, so a marginal over it is a lower bound of unknown slack, and
+  `probability` is conditioned at a different depth on each side with neither the pre-cut
+  denominator nor the longer prefixes' weights on the wire. The rest of the diff is computed
+  as usual. **Breaking by the letter** — a producer that computes the delta across two
+  orders, or omits it without the statement, becomes non-conformant — and editor-merged
+  under [`GOVERNANCE.md`](GOVERNANCE.md) §2's 0.x rule. No existing document's validity
+  changes: the member is new and optional. Decision and alternatives:
+  [ADR 0007](adr/0007-a-comparison-not-performed-is-stated.md).
 
 - **A window with no event time has no envelope (§2.2).** `window.start`, `window.end` and
   `window.duration_seconds` are present together, or absent together when the producer
@@ -242,7 +263,7 @@ the order-dependent `behavior.ngram_size`, is the first taken: see the §2.4 / �
   signal property whose shape nobody anticipated writes the predicate that decides it
   and needs no change to this section.
 
-  **All thirteen** optional signal properties of `metalog_diff.v0.schema.json`
+  **All fourteen** optional signal properties of `metalog_diff.v0.schema.json`
   carry one. Coverage is a MUST and an absent declaration is a **defect of the schema, not
   a permission**: a validator deciding §13.2 **MUST** refuse to run rather than
   return a verdict about a finding it cannot define.
@@ -309,6 +330,19 @@ the order-dependent `behavior.ngram_size`, is the first taken: see the §2.4 / �
   is being fixed now — the hole is cheapest to close before anyone has fallen into it.
   Producers unaffected: the member is optional and a producer that serialises every
   finding it makes never emits it.
+
+- **§13.2.3 — `incomparable_signals`, a comparison this document did not perform.** An
+  optional object at the `MetaLogDiff` root, keyed by the name of a signal property the
+  document omits because its two inputs cannot be compared on it; each value carries a
+  `reason` from a vocabulary the schema closes, and the evidence for it. At this version the
+  vocabulary holds one entry: `ngram_delta`, reason `ngram_size_differs`, with
+  `previous_ngram_size` and `current_ngram_size`. It is declared a **descriptor** (§13.2.1
+  clause 5), never a witness: a comparison not performed is evidence of neither outcome, so
+  `"unchanged"` stands beside it and a consumer reads neither outcome as covering a property
+  it names. The schema closes the vocabulary and, with a root `dependentSchemas`, refuses a
+  document that carries a named property or names it in `withheld_signals`. The
+  conformance tool gains three fixtures and the `incomparable-signal-is-not-a-witness`
+  control. A new key or reason is an additive change.
 
 ### Clarified
 

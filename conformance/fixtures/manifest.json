@@ -393,6 +393,56 @@
             }
         },
         {
+            "path": "valid/cross_order_ngram_incomparable.diff.json",
+            "kind": "diff",
+            "control": "incomparable-signal-is-not-a-witness",
+            "why": "the diff of an UNSTAMPED pair at two n-gram orders (previous at ngram_size 2, current at 3) whose comparisons found nothing else: the same bytes as valid/unchanged_all_vacuous.diff.json with `ngram_delta` removed and `incomparable_signals.ngram_delta` added, reason `ngram_size_differs`, both orders stated. SPEC §13.1 obliges the producer to omit the delta and say so, and §13.2.3 declares the statement a DESCRIPTOR: a comparison not performed is evidence of neither outcome, so `unchanged` stands beside it and the document is CONFORMANT. Give the member a witness-shaped declaration (`maxProperties: 0`, the way `withheld_signals` declares `maxItems: 0`) and this fixture reds as `unchanged` carrying a witness while its twin invalid/changed_on_incomparable_only.diff.json turns green: a configuration difference would then be a change, which is the total-turnover witness §13.1 exists to stop, reached by a second door.",
+            "expect": {
+                "exit": 0,
+                "documents": 1,
+                "findings": [],
+                "undescribed": []
+            }
+        },
+        {
+            "path": "invalid/changed_on_incomparable_only.diff.json",
+            "kind": "diff",
+            "why": "the twin of valid/cross_order_ngram_incomparable.diff.json with ONE token changed, `comparison_outcome` from `unchanged` to `changed`. Every signal property it holds is vacuous and `incomparable_signals` is a descriptor, so the document asserts a change it carries no witness for — the shape of a producer that reads `ngram_size_differs` as a finding. SPEC §13.2.3: the member never makes `changed` legal. The finding names no member, as on every `changed`-arm violation: the defect is an absence.",
+            "expect": {
+                "exit": 1,
+                "documents": 1,
+                "findings": [],
+                "witness_violations": [
+                    [
+                        "changed",
+                        [],
+                        1
+                    ]
+                ],
+                "undescribed": []
+            }
+        },
+        {
+            "path": "invalid/cross_order_ngram_delta_beside_marker.diff.json",
+            "kind": "diff",
+            "why": "the twin of valid/cross_order_ngram_incomparable.diff.json with the omitted delta carried anyway: an `ngram_delta` at `ngram_size` 3 (one side's order) beside `incomparable_signals.ngram_delta`. SPEC §13.2.3 requires every key of the member to be absent from the document, and the schema states it at the root with `dependentSchemas`, so this is a clause-1 finding at `<root>` on the `not` keyword, and the witness rule is withheld from the document. Without that keyword a producer could state the incomparability and serialise a delta computed across it, and a consumer would read both.",
+            "expect": {
+                "exit": 1,
+                "witness_unjudged": 1,
+                "documents": 1,
+                "findings": [
+                    [
+                        "<root>",
+                        "not",
+                        [],
+                        1,
+                        1
+                    ]
+                ],
+                "undescribed": []
+            }
+        },
+        {
             "path": "invalid/unchanged_with_witness.diff.json",
             "kind": "diff",
             "control": "witness-rule-unchanged-arm",

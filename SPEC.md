@@ -1566,6 +1566,8 @@ not directly comparable.
     ]
   },
   "withheld_signals": [ ],             // array, optional — see §13.2.2 (new in v0.10.0)
+  // "incomparable_signals": { ... }   // object, optional — see §13.2.3 (new in v0.10.0); never beside
+                                       // a property it names, so not shown with the ngram_delta above
   "extensions": {                      // object, optional — vendor data, §7 (placement granted in v0.9.0)
     "com.example.deploy_window": "2026-01-14.3"
   }
@@ -1579,6 +1581,18 @@ entropy (§4.2 does not require an entry for every node, and lets a producer cap
 A consumer **MUST NOT** read a missing row, or a template absent from one side's
 `branching`, as an entropy of zero. The rule involves both input documents, which no schema
 keyword can see, so it is a producer obligation stated here and not a schema constraint.
+
+**`ngram_delta` across two orders.** When both compared documents carry `behavior` and their
+`behavior.ngram_size` values **differ**, a producer **MUST** omit `ngram_delta` and **MUST**
+state the omission in `incomparable_signals.ngram_delta` (§13.2.3), with the reason
+`ngram_size_differs` and both orders. An order-`m` key and an order-`n` key with `m ≠ n` denote
+different objects (§12.1), so no key can match across the pair: a delta computed anyway reports
+every n-gram of one side as vanished and every n-gram of the other as new, a turnover produced by
+the configuration rather than by the workload. Nor may the producer reduce one order to the
+other — see §13.2.3 for why no reduction is exact. The rule binds whether or not the inputs carry
+`retention_profile`: when both do, their values differ by §2.4's bump MUST and the gate refuses
+the pair first, so this is what a pair the gate does not reach receives. When either document carries no `behavior`, this rule does not
+apply.
 
 ### 13.1.1 `diff_version` — which version this is
 
@@ -1633,8 +1647,10 @@ will catch it.
 - `comparison_outcome` is `"changed"` or `"unchanged"`. It is the
   producer's **assertion about the comparison it performed**, not a
   summary of which fields it chose to serialise.
-- `"unchanged"` means *the comparison ran and found no change*. That is
-  a **positive result**, not an empty document: an instrument that
+- `"unchanged"` means *the comparison ran and found no change* in the
+  signal properties it compared; `incomparable_signals` (§13.2.3) names
+  any it could not compare, and `"unchanged"` says nothing about those.
+  That is a **positive result**, not an empty document: an instrument that
   cannot say "I compared and found nothing" is an instrument whose
   silence is unreadable. A document whose `comparison_outcome` is
   `"unchanged"` **MAY** carry signal properties and is **NOT** required
@@ -1651,7 +1667,9 @@ will catch it.
   `js_divergence` is emitted whenever computable, so presence alone is
   satisfied by every producer regardless of what it found. A producer whose
   only finding lies in a property it does not serialise reports it in
-  `withheld_signals`, which is its witness — see §13.2.2.
+  `withheld_signals`, which is its witness — see §13.2.2. A property the
+  producer could not compare at all is neither a witness nor the absence
+  of one, and is named in `incomparable_signals` — see §13.2.3.
 - The witness set is **every optional signal property of
   [`schema/metalog_diff.v0.schema.json`](schema/metalog_diff.v0.schema.json)**
   — derived from the schema, never enumerated here. A signal property
@@ -1738,8 +1756,11 @@ defect.** §13.7 forbids emitting `reservoir_delta` with all three of its
 lists empty, which is exactly the state its declaration calls vacuous —
 so in a conformant document the property witnesses whenever it is
 present. Clause 1 forbids the two boolean spellings, so this is the only
-conformant way to write that declaration; a reader should simply not
-expect all twelve to be able to decide both ways.
+conformant way to write that declaration. **Its mirror is never a witness,
+and that is not a defect either:** `incomparable_signals` (§13.2.3) is
+declared a descriptor under clause 5, because a comparison not performed
+is evidence of neither outcome. A reader should simply not expect every
+declaration to be able to decide both ways.
 
 **Coverage.** Every property of the root `properties` object that is neither
 listed in the root `required` array nor the §7 `extensions` container **MUST**
@@ -1819,6 +1840,8 @@ of it alone.
   document** — absent from it, or present at its declared vacuous value. Naming
   a property whose serialised value already witnesses is a false statement about
   what the document withholds.
+- A member **MUST NOT** name a key of `incomparable_signals` (§13.2.3): a
+  property whose inputs were not compared has no finding to withhold.
 - A producer **MUST NOT** name a property merely because it does not implement
   one. This member reports a **finding**, not an inventory of omissions: a
   producer that computes no cube computes no `cube_diff` finding and has nothing
@@ -1852,6 +1875,96 @@ the schema by three members; and sortedness is not a JSON Schema assertion. The
 schema carries `uniqueItems` and nothing more. Like §13.1.1's version rule and
 §13.7's orderings, these bind the **producer** and are decidable by an
 implementer over its own output.
+
+### 13.2.3 `incomparable_signals` — a comparison this document did not perform (new in v0.10.0)
+
+§13.2.2 covers a change the producer **found** and did not serialise. The opposite
+state exists too: a signal property whose two inputs cannot be compared at all, so
+the producer has found nothing about it — neither a change nor its absence. Omitting
+the property is the only correct thing to do with its value. Omitting it **silently**
+is the one wrong thing to do with the fact: under §13.2.1 step 3 an absent property
+is not a witness, so the document then reads exactly like a comparison that ran and
+found the property unmoved — an all-clear no reader can tell from a true one.
+
+**`incomparable_signals`** (object, optional) states the omission. Each member is
+keyed by the name of a signal property this document omits because its inputs are
+incomparable on it, and its value carries the reason, from a vocabulary the schema
+declares, with the evidence for it:
+
+```jsonc
+{
+  "diff_version": "0.10.0",
+  "comparison_outcome": "unchanged",
+  "current":  { "window": { "start": "...", "end": "..." } },
+  "previous": { "window": { "start": "...", "end": "..." } },
+  "js_divergence": 0,
+  "incomparable_signals": {
+    "ngram_delta": { "reason": "ngram_size_differs", "previous_ngram_size": 2, "current_ngram_size": 3 }
+  }
+}
+```
+
+- It is a **descriptor** (§13.2.1 clause 5): its `x-metalog-vacuous` declaration
+  carries no assertion keyword, so it is **never a witness**. A comparison that was
+  not performed is evidence of neither outcome, so this member never makes
+  `"changed"` legal and never makes `"unchanged"` false. A producer whose inputs
+  differ only in a property they cannot be compared on has found no change, and
+  reports `"unchanged"` beside this member.
+- A consumer **MUST NOT** read `comparison_outcome`, of either value, as a statement
+  about a property this member names, and **MUST NOT** read that property's absence
+  as "no change".
+- Every key **MUST** be absent from the document, and **MUST NOT** be named in
+  `withheld_signals` (§13.2.2).
+- The member is omitted when nothing was incomparable; when present it carries at
+  least one key.
+- **The vocabulary is closed, in the schema.** Which properties can be incomparable,
+  and for which reasons, is declared in
+  [`schema/metalog_diff.v0.schema.json`](schema/metalog_diff.v0.schema.json); a
+  producer **MUST NOT** use this member for a property or a reason the schema does
+  not declare. Adding one is an additive change under
+  [`GOVERNANCE.md`](GOVERNANCE.md) §2. At this version the vocabulary holds one
+  entry.
+
+**`ngram_delta`, reason `ngram_size_differs`.** Emitted exactly when both compared
+documents carry `behavior` and their `behavior.ngram_size` values differ (§13.1).
+`previous_ngram_size` and `current_ngram_size` **MUST** equal `previous`'s and
+`current`'s `behavior.ngram_size`, and so differ from each other; the schema types
+them, and the inequality, which relates two members, is the producer's obligation.
+
+**Why no reduction from one order to the other.** A producer **MUST NOT** derive an
+`ngram_delta` by reducing either side to the other's order, because no such reduction
+is exact on what a document carries:
+
+- **Down (order `n` to order `m < n`, summing over the trailing ids).** `top_ngrams`
+  is a **truncated** table: every key below the `top_ngrams_size` cut, and every
+  observation refused before counting (`dropped_ngram_observations`, §4), is missing
+  from the sum with no record of which order-`m` key it would have fed. The reduced
+  counts are lower bounds of unknown slack, and the reduced ranking can be wrong.
+  The table also loses the last `n − m` order-`m` sequences of every observation
+  stream, which have no order-`n` extension, so the sum undercounts even when nothing
+  was truncated.
+- **`probability` cannot be carried across at all.** It is p(last | first n − 1),
+  normalised over every counted sequence sharing the prefix **before** the cut (§4).
+  The conditional at one depth does not determine the conditional at another without
+  the weight of every longer prefix, and neither those weights nor the pre-cut
+  denominator is on the wire. A `rate_changed` row across two orders would compare
+  two different quantities.
+- **Up (order `m` to order `n > m`)** needs sequences the order-`m` table never held.
+
+Any cross-order n-gram number would therefore be computed from what the documents do
+not carry. The incomparability is confined to one block, so the rest of the diff is
+computed as usual — the same block-grained precondition §12.1 applies to `behavior`
+under composition.
+
+**Also stated rather than left implicit: the schema reaches only part of this.** It
+closes the vocabulary, requires the reason and both orders, and refuses a document
+that carries `ngram_delta` beside `incomparable_signals.ngram_delta` or names
+`ngram_delta` in `withheld_signals` beside it. That the two orders equal the inputs'
+and differ from each other relates the diff to its inputs, which no keyword can see,
+and binds the producer.
+
+[`adr/0007-a-comparison-not-performed-is-stated.md`](adr/0007-a-comparison-not-performed-is-stated.md)
+carries the decision and the alternatives it was chosen against.
 
 ### 13.3 Direction and sign
 

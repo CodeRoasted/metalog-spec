@@ -379,9 +379,40 @@
             "description": "The signal properties in which THIS comparison found a change that this document does not carry (SPEC §13.2.2). It is the witness of last resort: a producer that finds a change only in a property it does not serialise has, without this member, no conformant outcome -- `changed` would carry no witness and `unchanged` would be false. Every member MUST name a property of the witness set (§13.2.1 step 2), MUST NOT name `withheld_signals` itself, and MUST name a property that is NOT a witness in this document; the array MUST be sorted ascending and carries no duplicates. The membership and ordering MUSTs are §13.2.2's: an enum here would be the hand-kept list §13.2 deleted, and sortedness is not a keyword. Added in v0.10.0.",
             "items": { "type": "string", "minLength": 1 }
         },
+        "incomparable_signals": {
+            "x-metalog-vacuous": {
+                "description": "A DESCRIPTOR, never a witness (SPEC 13.2.3): it names a comparison this document did NOT perform, which is evidence neither of a change nor of its absence. It makes no `changed` legal and no `unchanged` false."
+            },
+            "type": "object",
+            "minProperties": 1,
+            "description": "The signal properties this document omits because its two inputs cannot be compared on them, each with its reason (SPEC §13.2.3). Keyed by the omitted property's name; the vocabulary of keys and reasons is CLOSED here, and adding one is additive under GOVERNANCE.md §2. Every key MUST be absent from the document and MUST NOT be named in withheld_signals. Omitted when nothing was incomparable. Added in v0.10.0.",
+            "properties": {
+                "ngram_delta": {
+                    "type": "object",
+                    "description": "ngram_delta is omitted because both inputs carry behavior at DIFFERENT ngram_size (SPEC §13.1, §13.2.3): an order-m key and an order-n key denote different objects, and no reduction of one order to the other is exact on a truncated top_ngrams table. The two orders MUST equal the inputs' behavior.ngram_size and so differ -- a relation to the inputs no keyword can see.",
+                    "required": ["reason", "previous_ngram_size", "current_ngram_size"],
+                    "properties": {
+                        "reason": { "type": "string", "enum": ["ngram_size_differs"] },
+                        "previous_ngram_size": { "type": "integer", "minimum": 2 },
+                        "current_ngram_size": { "type": "integer", "minimum": 2 }
+                    },
+                    "additionalProperties": false
+                }
+            },
+            "additionalProperties": false
+        },
         "extensions": {
             "description": "Document-level vendor-specific data on a MetaLogDiff (SPEC §7). This placement was granted in v0.9.0. The root itself is open — its `additionalProperties` declares the openness and constrains nothing — so a bare vendor member written beside this container validates while violating §7: the container is where such data belongs, and at an open root the schema does not tell the two apart.",
             "$ref": "#/$defs/extensions"
+        }
+    },
+    "dependentSchemas": {
+        "incomparable_signals": {
+            "description": "A property named in incomparable_signals is absent, and is not named in withheld_signals (SPEC §13.2.3). Written over the member's presence rather than per key because ngram_delta is the one key the vocabulary admits and minProperties is 1, so presence IS that key; a second key restates this per key.",
+            "not": { "required": ["ngram_delta"] },
+            "properties": {
+                "withheld_signals": { "not": { "contains": { "const": "ngram_delta" } } }
+            }
         }
     },
     "$defs": {
