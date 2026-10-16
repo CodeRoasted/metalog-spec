@@ -13,7 +13,7 @@ name: Conformance
 # (conformance/README.md § Where it runs). A green below means the standard's own
 # artifacts are self-consistent — nothing about any producer.
 #
-# `runs-on: ubuntu-latest` IS HARDCODED and must stay that way. This is a public,
+# `runs-on: ubuntu-24.04` IS HARDCODED and must stay that way. This is a public,
 # vendor-neutral repository that accepts outside pull requests; routing it onto a
 # self-hosted runner — including via a repository variable that "just" defaults to
 # hosted — would put fork-authored code on a persistent box. The cost side is
@@ -40,7 +40,7 @@ concurrency:
 
 jobs:
   conformance:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1

@@ -47,7 +47,7 @@ happens to be edited here, not a component of a product.
   repo set from `*/.github/workflows/lint.yml` and then hard-fails any armed repo in
   which it walks zero C++ files — this repo has none, so that filename would red a
   gate in a different repository for a defect that does not exist. And this is a
-  PUBLIC repo taking outside pull requests: `runs-on` is hardcoded `ubuntu-latest`
+  PUBLIC repo taking outside pull requests: `runs-on` is hardcoded `ubuntu-24.04`
   so fork-authored code can never land on the shared self-hosted box.
 - The superproject's planning tiers (`WIP` / `ROADMAP` / `DONE`) do **not** extend here. <!-- docs-lint: allow names the tier only to disclaim it -->
   Spec work in flight is an issue or a PR, per `GOVERNANCE.md`.
