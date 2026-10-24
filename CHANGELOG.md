@@ -80,6 +80,26 @@ the order-dependent `behavior.ngram_size`, is the first taken: see the §2.4 / �
 
 ### Changed
 
+- **§12.2 — `compose()` is commutative in BYTES: `compose(A, B)` and `compose(B, A)` are the same
+  document, and §12.1 resolves every member the inputs disagree on by a rule over the values,
+  never by operand position.** §12.2 required the two orders to *"agree on all required
+  fields"*, which left four order-dependent choices legal: a template's `level`, `component`,
+  `structural_role` or `cube_coord` where-path taken from whichever input was read first; the
+  order of `provenance` entries and of equal-count `top_k` and `top_ngrams` entries; and a
+  `producer` block copied from the left input. Each produces a different document for the other
+  operand order while every required field agrees, so two conformant composers — or one composer
+  fed its inputs in the other order — emit different bytes for the same windows. Now: a
+  per-template label takes the value of the input that contributed the higher count of that
+  template, the lexicographically smaller value at equal counts (the rule §3.8 already gives
+  `component` inside one window); `top_k`, `reservoir` and `top_ngrams` entries are ordered by
+  their ranking value, then by `template_id` or key; `provenance` is sorted by its window bounds,
+  then by the RFC 8785 canonical bytes of each entry; `C.producer` is the composer's own block
+  and `C.metalog_version` the version it writes. **Breaking** — a composer that takes a member
+  from an input by position becomes non-conformant — and editor-merged under
+  [`GOVERNANCE.md`](GOVERNANCE.md) §2's 0.x rule. No document's validity changes: no member is
+  added, removed or retyped. Decision and alternatives:
+  [ADR 0008](adr/0008-compose-is-commutative-in-bytes.md).
+
 - **§2.4 — `retention_profile` names `behavior.ngram_size`, and §12.1 omits `behavior` when
   two composed inputs differ in it.** `ngram_size` was in neither identifier's list, so two
   documents produced at different sequence orders could carry equal identifiers and pass
