@@ -1353,14 +1353,27 @@ to a 1-hour MetaLog).
   `service`); empty if no common prefix.
 - `C.stats.top_k` is recomputed from the union of per-template
   counts (sum across `A.stats.top_k`, `B.stats.top_k`, and best-effort
-  attribution of tail mass), then truncated to `top_k_size`.
+  attribution of tail mass), then truncated to `top_k_size`. Its entries
+  are ordered by `count` descending and, at equal counts, by `template_id`
+  ascending; that order also decides which template takes the last slot at
+  the `top_k_size` boundary.
+- A **per-template label** the two inputs disagree on — `level`,
+  `component` or `structural_role` on a `top_k` or `reservoir` entry, and
+  the where-path of a `cube_coord` — takes the value carried by the input
+  that contributed the **higher count** of that template; at equal counts it
+  takes the **lexicographically smaller** value (a where-path compared
+  element by element, a shorter path first when one is a prefix of the
+  other). A label present in only one input is carried. A composer **MUST
+  NOT** take a label from an input by its position as `A` or `B` (§12.2).
 - `C.stats.tail_count` is `A.tail_count + B.tail_count` plus any
   templates that fell out of the new top-K.
 - `C.stats.tail_unique` and `C.stats.unique_templates` are
   recomputed from the union.
 - `C.stats.entropy_bits` is recomputed from the merged counts.
 - `C.behavior.top_ngrams` is recomputed from the union of per-key
-  counts and re-truncated to `top_ngrams_size`.
+  counts and re-truncated to `top_ngrams_size`, its entries ordered by
+  count descending and, at equal counts, by their key sequence compared
+  element by element.
 - `C.behavior.dropped_ngram_observations` is the SUM of both inputs'
   values (absent counts as zero); it is omitted when that sum is zero.
 - `C.behavior.graph_edge_count` is the union edge count.
@@ -1397,7 +1410,10 @@ to a 1-hour MetaLog).
   derived** over the merged per-template counts (rarity shifts on merge),
   `structural_surprise` and `novelty` are carried as the **max** across inputs,
   and carried entries remain **excluded** from the tail (§3.7.3). The composed
-  reservoir is therefore present at every pyramid scale.
+  reservoir is therefore present at every pyramid scale. Its entries are
+  ordered by `salience` descending and, at equal salience, by `template_id`
+  ascending — §3.7.2's admission order — and each entry's labels follow the
+  per-template label rule above.
 - `C.stats.top_k[*].param_histograms` are **carried** through composition. For
   each `(template_id, param_index)` pair present in **both** inputs'
   histograms, the composer **MUST** merge: union the `value_counts` keys, sum
@@ -1426,7 +1442,16 @@ to a 1-hour MetaLog).
 - `C.templates` is the union of `A.templates` and `B.templates`
   (both keyed by `template_id`; values are byte-equal by §3.2 so
   conflicts cannot arise).
-- `C.provenance` is `A.provenance ∪ B.provenance ∪ [{window: A.window, source: A.source, lines_observed: A.window.lines_observed, document_id: <id of A if known>}, {window: B.window, source: B.source, ...}]`.
+- `C.provenance` is `A.provenance ∪ B.provenance ∪ [{window: A.window, source: A.source, lines_observed: A.window.lines_observed, document_id: <id of A if known>}, {window: B.window, source: B.source, ...}]`,
+  with its entries **sorted**: by `window.start` ascending, an entry whose
+  `window` carries no bounds first; then by `window.end` ascending; then by
+  the byte order of the entries' canonical serialisations under
+  [RFC 8785](https://www.rfc-editor.org/rfc/rfc8785) (JSON Canonicalization
+  Scheme). Two entries equal under that order are equal documents, so
+  their relative order cannot be observed.
+- `C.producer` is the **composer's own** `producer` block (§2.1): the
+  composer produced `C`. It is never copied from either input, and
+  `C.metalog_version` is the version the composer writes `C` in.
 
 ### 12.2 Algebraic properties
 
@@ -1435,8 +1460,16 @@ to a 1-hour MetaLog).
   required fields agree exactly. Behavior fields (`dominant_path`,
   `branching`, `top_ngrams` ordering) **MAY** differ in tie-breaking;
   the underlying counts **MUST** agree.
-- **Commutativity:** `compose(A, B)` and `compose(B, A)` **MUST**
-  agree on all required fields.
+- **Commutativity:** `compose(A, B)` and `compose(B, A)` **MUST** be
+  the **same document**: every member present in one is present in the
+  other with an equal value, and every array holds equal elements in the
+  same order — optional members, array order, every entry's labels and
+  `provenance` included. A producer that serialises deterministically
+  therefore emits byte-identical output for either operand order. No
+  member of `C` is taken from an input by its position as `A` or `B`:
+  wherever the inputs disagree, §12.1 resolves the value by a rule over the
+  values themselves (counts first, then a lexicographic or canonical
+  order).
 - **Identity:** `compose(A, ZERO)` **MUST** equal `A`, where `ZERO`
   is a MetaLog with `lines_observed = 0` and empty stats.
 
