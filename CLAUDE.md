@@ -41,13 +41,9 @@ happens to be edited here, not a component of a product.
   and nothing outside this repo cites them. Do not "canonicalize" them into the
   registry grammar: the number space is this repo's, and the two series are
   unrelated despite looking alike.
-- **The CI file here is `conformance.yml` and must never be renamed `lint.yml`, and
-  it must never take its runner from a repository variable.** Two independent
-  reasons, both measured: the superproject's `format-sweep` job derives its armed
-  repo set from `*/.github/workflows/lint.yml` and then hard-fails any armed repo in
-  which it walks zero C++ files — this repo has none, so that filename would red a
-  gate in a different repository for a defect that does not exist. And this is a
-  PUBLIC repo taking outside pull requests: `runs-on` is hardcoded `ubuntu-24.04`
-  so fork-authored code can never land on the shared self-hosted box.
+- **The CI file here, `conformance.yml`, must never take its runner from a
+  repository variable.** This is a PUBLIC repo taking outside pull requests:
+  `runs-on` is hardcoded `ubuntu-24.04` so fork-authored code can never land on the
+  shared self-hosted box.
 - The superproject's planning tiers (`WIP` / `ROADMAP` / `DONE`) do **not** extend here. <!-- docs-lint: allow names the tier only to disclaim it -->
   Spec work in flight is an issue or a PR, per `GOVERNANCE.md`.
