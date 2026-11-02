@@ -18,12 +18,6 @@ name: Conformance
 # self-hosted runner — including via a repository variable that "just" defaults to
 # hosted — would put fork-authored code on a persistent box. The cost side is
 # negligible: two checkout-free steps and a pure-Python run, seconds of hosted time.
-#
-# THE FILENAME IS LOAD-BEARING. It is `conformance.yml`, never `lint.yml`: the
-# superproject's format-sweep job derives its armed repo set from
-# `*/.github/workflows/lint.yml` and then hard-fails any armed repo in which it walks
-# zero C++ files. This repository has none, so a file named `lint.yml` here would red
-# a gate in a different repository for a defect that does not exist.
 
 on:
   push:
