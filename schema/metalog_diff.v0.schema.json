@@ -360,8 +360,8 @@
                                 "enum": ["up", "down"],
                                 "description": "Oriented previous -> current: up = crossed INTO the frontier, down = crossed OUT. Signed and polarity-mute — whether that is an escalation or a recovery is the consumer's reading, not this document's claim."
                             },
-                            "previous_level": { "type": "string" },
-                            "current_level": { "type": "string" }
+                            "previous_level": { "type": "string", "x-metalog-observed-text": { "description": "Observed text, capped by max_text_bytes where the document declares it (SPEC §2.6)." } },
+                            "current_level": { "type": "string", "x-metalog-observed-text": { "description": "Observed text, capped by max_text_bytes where the document declares it (SPEC §2.6)." } }
                         },
                         "additionalProperties": false
                     }
@@ -401,6 +401,14 @@
             },
             "additionalProperties": false
         },
+        "max_text_bytes": {
+            "x-metalog-vacuous": {
+                "description": "A DESCRIPTOR, never a witness (SPEC §13.1): it states the cap on observed text both compared documents declare, which is evidence neither of a change nor of its absence."
+            },
+            "type": "integer",
+            "enum": [32, 64, 128, 256, 512, 1024, 2048, 4096],
+            "description": "The cap on observed text both compared documents declare (SPEC §2.6, §13.1): every member marked x-metalog-observed-text in this schema is shorter than this many UTF-8 bytes, or exactly this long as a digest form. ABSENT when neither document declares one; a producer refuses a pair that declares different values, or of which only one declares it. Added in v0.10.0."
+        },
         "extensions": {
             "description": "Document-level vendor-specific data on a MetaLogDiff (SPEC §7). This placement was granted in v0.9.0. The root itself is open — its `additionalProperties` declares the openness and constrains nothing — so a bare vendor member written beside this container validates while violating §7: the container is where such data belongs, and at an open root the schema does not tell the two apart.",
             "$ref": "#/$defs/extensions"
@@ -424,8 +432,8 @@
                 "template_id": { "type": "string", "pattern": "^[a-z]+:.+$" },
                 "count": { "type": "integer", "minimum": 0 },
                 "salience": { "type": "integer", "minimum": 0 },
-                "level": { "type": "string" },
-                "structural_role": { "type": "string" }
+                "level": { "type": "string", "x-metalog-observed-text": { "description": "Observed text, capped by max_text_bytes where the document declares it (SPEC §2.6)." } },
+                "structural_role": { "type": "string", "x-metalog-observed-text": { "description": "Observed text, capped by max_text_bytes where the document declares it (SPEC §2.6)." } }
             },
             "additionalProperties": false
         },
@@ -465,8 +473,8 @@
             "description": "A cube cell coordinate, generic over axes (SPEC §16.4). Each key is a cube axis NAME; an absent axis means aggregated (*). Categorical value = string; chain value = ordered prefix-path array. Mirrors metalog.v0.schema.json #/$defs/cube_coord.",
             "additionalProperties": {
                 "oneOf": [
-                    { "type": "string", "minLength": 1 },
-                    { "type": "array", "items": { "type": "string", "minLength": 1 } }
+                    { "type": "string", "minLength": 1, "x-metalog-observed-text": { "description": "Observed text, capped by max_text_bytes where the document declares it (SPEC §2.6)." } },
+                    { "type": "array", "items": { "type": "string", "minLength": 1, "x-metalog-observed-text": { "description": "Observed text, capped by max_text_bytes where the document declares it (SPEC §2.6)." } } }
                 ]
             }
         },
