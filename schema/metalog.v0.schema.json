@@ -136,6 +136,16 @@
                     "minimum": 0,
                     "description": "The producer's cap on the reservoir array (SPEC \u00a73.7). Optional; declaring it is what makes the block's envelope contribution computable (SPEC \u00a711.1) and its bound checkable (SPEC \u00a78 clause 4). Added in v0.9.0."
                 },
+                "param_histograms_size": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "description": "The most histograms a top_k entry carries (SPEC §3.5): the producer tracks the wildcard slots whose param_index is below this value. Optional; declaring it is what makes stats.top_k[].param_histograms priceable (SPEC §11.1) and its bound checkable (SPEC §8 clause 4). Added in v0.10.0."
+                },
+                "value_counts_size": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "description": "The most keys a param_histograms[].value_counts map holds (SPEC §3.5). Optional; declaring it is what makes the map priceable (SPEC §11.1) and its bound checkable (SPEC §8 clause 4). Added in v0.10.0."
+                },
                 "tail_count": {
                     "type": "integer",
                     "minimum": 0
@@ -201,11 +211,13 @@
                                 "maximum": 1
                             },
                             "level": {
-                                "type": "string"
+                                "type": "string",
+                                "x-metalog-observed-text": { "description": "Observed text, capped by max_text_bytes where the document declares it (SPEC §2.6)." }
                             },
                             "component": {
                                 "type": "string",
                                 "minLength": 1,
+                                "x-metalog-observed-text": { "description": "Observed text, capped by max_text_bytes where the document declares it (SPEC §2.6)." },
                                 "description": "The functional source (logger / module / unit / subsystem) that dominates this template's occurrences in the window (SPEC §3.8). Same species as `level`: a categorical label the window carries, not a producer-internal state. OMITTED when the format carried no component — never the empty string, which would be an absent location masquerading as a present one. Added in v0.8.0."
                             },
                             "extensions": {
@@ -467,7 +479,12 @@
         },
         "retention_profile": {
             "type": "string",
-            "description": "Opaque identifier for the retention parameters — top_k size, reservoir admission weights/size/diversity caps, the salience arithmetic, and behavior.ngram_size; gates compose()/diff comparability (SPEC §2.4). Added in v0.5.0."
+            "description": "Opaque identifier for the retention parameters — top_k size, reservoir admission weights/size/diversity caps, the salience arithmetic, behavior.ngram_size, max_text_bytes and the two histogram caps; gates compose()/diff comparability (SPEC §2.4). Added in v0.5.0."
+        },
+        "max_text_bytes": {
+            "type": "integer",
+            "enum": [32, 64, 128, 256, 512, 1024, 2048, 4096],
+            "description": "The cap on observed text the producer applied (SPEC §2.6): every member marked x-metalog-observed-text in this schema is shorter than this many UTF-8 bytes, or exactly this long as a digest form whose last 16 bytes are lowercase hexadecimal. ABSENT means the document is uncapped. A power of two from 32 to 4096. compose() and MetaLogDiff refuse two inputs that declare different values, or of which only one declares it (SPEC §12.1, §13). Added in v0.10.0."
         },
         "coordinate": {
             "description": "Re-derivation coordinate addressing this window back to its source: raw(window) = replay(source, bounds) (SPEC §15). A raw coordinate XOR a composed coordinate. Added in v0.5.0.",
@@ -624,15 +641,18 @@
                     "minLength": 1
                 },
                 "level": {
-                    "type": "string"
+                    "type": "string",
+                    "x-metalog-observed-text": { "description": "Observed text, capped by max_text_bytes where the document declares it (SPEC §2.6)." }
                 },
                 "component": {
                     "type": "string",
                     "minLength": 1,
+                    "x-metalog-observed-text": { "description": "Observed text, capped by max_text_bytes where the document declares it (SPEC §2.6)." },
                     "description": "The functional source that dominates this entry's occurrences (SPEC §3.8) — the same member as `stats.top_k[].component`, on the sibling object. Added in v0.8.0."
                 },
                 "structural_role": {
-                    "type": "string"
+                    "type": "string",
+                    "x-metalog-observed-text": { "description": "Observed text, capped by max_text_bytes where the document declares it (SPEC §2.6)." }
                 },
                 "structural_surprise": {
                     "type": "integer",
@@ -791,13 +811,15 @@
                 "oneOf": [
                     {
                         "type": "string",
-                        "minLength": 1
+                        "minLength": 1,
+                        "x-metalog-observed-text": { "description": "Observed text, capped by max_text_bytes where the document declares it (SPEC §2.6)." }
                     },
                     {
                         "type": "array",
                         "items": {
                             "type": "string",
-                            "minLength": 1
+                            "minLength": 1,
+                            "x-metalog-observed-text": { "description": "Observed text, capped by max_text_bytes where the document declares it (SPEC §2.6)." }
                         }
                     }
                 ]
@@ -818,6 +840,9 @@
                 },
                 "value_counts": {
                     "type": "object",
+                    "propertyNames": {
+                        "x-metalog-observed-text": { "description": "Each key is observed text, capped by max_text_bytes where the document declares it (SPEC §2.6)." }
+                    },
                     "additionalProperties": {
                         "type": "integer",
                         "minimum": 0

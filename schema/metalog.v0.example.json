@@ -22,6 +22,7 @@
     },
     "canonicalization_version": "canon-1.5.3-cube",
     "retention_profile": "tier3-cube",
+    "max_text_bytes": 64,
     "templates": {
         "h:90585f810bb26f3ccb3193975150dd40": "User <*> logged in from <*>",
         "h:6c05dc06a24a45a267b3818679e456dd": "GET /api/v1/cart/<*> 200 <*>ms",

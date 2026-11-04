@@ -78,7 +78,8 @@ top-level fields:
 | `window` | object | yes | The line count and, when any line has one, the event-time envelope of the lines the window contains. See §2.2. |
 | `source` | object | yes | What was observed (service, host, fleet). See §2.3. |
 | `canonicalization_version` | string | no | Opaque identifier for the canonicalization rules in effect. Gates `compose()`/diff comparability. See §2.4. |
-| `retention_profile` | string | no | Opaque identifier for the retention parameters (top_k, reservoir, salience weights, diversity caps, `behavior.ngram_size`). Gates `compose()`/diff comparability. See §2.4. |
+| `retention_profile` | string | no | Opaque identifier for the retention parameters (top_k, reservoir, salience weights, diversity caps, `behavior.ngram_size`, `max_text_bytes`, the histogram caps). Gates `compose()`/diff comparability. See §2.4. |
+| `max_text_bytes` | integer | no | The cap on observed text the producer applied; absent means uncapped. Not opaque: `compose()` and diff refuse two inputs declaring different values. See §2.6. |
 | `stats` | object | yes | Per-template counts and frequency metrics. See §3. |
 | `templates` | object | no | Optional dedup map `template_id → template_str`. See §3.4. **RESERVED** — see §2. |
 | `behavior` | object | no | Sequence/transition fingerprint. See §4. |
@@ -237,8 +238,9 @@ A MetaLog **MAY** carry two opaque processing-identifier strings that name the
   parameter that fixes which entries a bounded block retains, how they are ranked,
   and **what an entry's key denotes**. At this version those are `top_k` size
   (§3.1), the reservoir admission weights, size and diversity caps and the salience
-  arithmetic (§3.7), and `behavior.ngram_size` (§4) — the sequence order, which
-  fixes the *domain* of `top_ngrams` rather than a bound on it. That list
+  arithmetic (§3.7), `behavior.ngram_size` (§4) — the sequence order, which
+  fixes the *domain* of `top_ngrams` rather than a bound on it — the two histogram
+  caps (§3.5), and `max_text_bytes` (§2.6), which fixes what a long member denotes. That list
   illustrates the rule and does not close it: a parameter meeting the rule joins it
   without an edit here. It **MUST** be bumped when any such parameter changes.
 
@@ -253,6 +255,13 @@ a `MetaLogDiff` operation (§13) carry `canonicalization_version`, the values
 `retention_profile`. When an input omits an identifier, the operation **MAY**
 proceed but the consumer **SHOULD** treat the result with caution — the
 documents may have been produced under incompatible contracts.
+
+The text cap is gated a second time, and the second gate does not depend on these
+identifiers: `max_text_bytes` is a **declared** member, not an opaque one, so
+`compose()` and a `MetaLogDiff` compare it directly and refuse two inputs that
+declare different values, or of which only one declares it (§2.6, §12.1, §13). A
+consumer **MUST NOT** read a cap out of `retention_profile`: the identifier is
+opaque, and the value is declared where a reader can read it.
 
 The `cube` block (§16) is part of these contracts: its **axis set**, each axis's
 **chain** levels, and the frozen **`floor_depth`** are fixed by the
@@ -308,6 +317,91 @@ should be read: a large divergence across a green→red pair is the finding, whi
 the same divergence between two failed runs may be the difference between two
 unrelated failures. And an `aborted` window is truncated by construction — a
 template that appears to have *vanished* may simply never have been reached.
+
+### 2.6 `max_text_bytes` — the cap on observed text (optional)
+
+> **New in v0.10.0.** An optional integer at the root of a MetaLog and of a
+> `MetaLogDiff` (§13.1).
+
+Some members of a document are copied from the observed stream, and nothing else
+bounds their length: a `value_counts` key (§3.5) is a slice of one log line. A
+producer **MAY** cap them. **The members a cap binds** are every member copied from
+observed text:
+
+- each `value_counts` key (§3.5);
+- each `component` (§3.8);
+- each `level` and `structural_role`, on a `top_k` or `reservoir` entry, and on a
+  `MetaLogDiff` member that copies one;
+- each value of a cube coordinate (§16.4), and each element of a chain value.
+
+Each such position is marked in the schema by an `x-metalog-observed-text`
+annotation, on a string for a value and on a `propertyNames` subschema for a map's
+keys. Like `x-metalog-vacuous` (§13.2.1) it asserts nothing about a document, and a
+generic validator ignores it; it is what lets a conformance tool find the positions
+without a list kept here.
+
+**Template strings are not capped.** `template_id` is computed over them (§3.2), and
+a capped string would no longer verify.
+
+**The declaration.** A producer that caps **MUST** declare the cap as the root
+member `max_text_bytes`, a power of two from 32 to 4 096. **A document that omits
+`max_text_bytes` is uncapped**: its members are the observed values, whatever their
+length. A producer **MUST NOT** emit a capped member in a document that does not
+declare the cap, since a reader would take it for an observed value.
+
+**The form.** A producer that declares `max_text_bytes` = `L` replaces each such
+member `v` (its UTF-8 bytes, well-formed) by `T(v)`:
+
+- if `len(v) < L`, `T(v) = v`;
+- otherwise `T(v) = p ‖ t ‖ h`, where `p` is the longest prefix of `v` of at most
+  `L − 17` bytes whose next byte is not a UTF-8 continuation byte (`0x80`–`0xBF`);
+  `t` is `L − 16 − len(p)` tilde characters (`~`, one to four); and `h` is the first
+  8 bytes of SHA-256 over the whole of `v`, written as 16 lowercase hexadecimal
+  digits in byte order. `len(T(v))` is exactly `L`.
+
+A value of exactly `L` bytes is mapped. **Recognition is by length alone**: in a
+document that declares `L`, a capped member of exactly `L` bytes is a **digest
+form**, its last 16 bytes are the digest of the whole value, and no capped member is
+longer. Nothing is parsed for a separator, so a genuine value that happens to end in
+a tilde and 16 hexadecimal digits is never misread: it is shorter than `L` and kept,
+or it is mapped.
+
+**`T` is applied once, to an observed value, when the producer builds the window's
+document.** No operation applies `T` to a member of a document: not `compose()`
+(§12), not a `MetaLogDiff` (§13), and not a consumer. The document is what its
+producer would have emitted had every occurrence carried `T(v)`, so every rule this
+specification states over these members operates on `T(v)`: the `component`
+tie-break (§3.8), the per-template label rule (§12.1), the order of `value_counts`
+keys under a cap, and the order of cube cells (§16.4). `T` is injective up to a
+64-bit collision, so counts, cardinalities and divergences over keys are those of
+the uncapped values; only the text of a long value changes. A collision merges two
+values' counts in one key: it loses recall and invents no value.
+
+**What a consumer shows.** A consumer **MUST NOT** present a digest form as an
+observed value. It shows the prefix (the bytes before `h`, the tilde run removed)
+with a visible truncation marker, and carries the whole member as the value's
+identity wherever it is machine-read, so a downstream join stays exact.
+
+**Examples** (computed with the rule above):
+
+| `max_text_bytes` | input (bytes) | `T(v)` |
+|---|---|---|
+| 64 | `GET /api/v1/accounts/7f3a9c2e-1b44-4d0e-9a51-0c6e2f8d1b7a/transactions?page=2` (77) | `GET /api/v1/accounts/7f3a9c2e-1b44-4d0e-9a51-0c~48863986431d4229` |
+| 32 | same | `GET /api/v1/acc~48863986431d4229` |
+| 32 | `service.payments.réconciliation.worker-pool-17.shard-0042` (58) | `service.payment~f57ec726cef4d47c` |
+| 64 | same | unchanged (58 < 64) |
+| 32 | `01234567890123456789012345678901` (exactly 32) | `012345678901234~861009ec4d599fab` |
+
+**Two inputs at different caps are refused, never reconciled.** `compose()` (§12.1)
+and a `MetaLogDiff` (§13) refuse two inputs that declare different `max_text_bytes`,
+or of which only one declares it. Re-capping the input with the larger cap would
+reproduce each of its members exactly, but not every **selection** among them: the
+`component` tie-break, the label rule at equal counts and a truncation at equal
+counts keep one member by its order and drop the members it was compared with, and
+`T` at two caps can order two values differently. The re-capped winner is then not
+the member a producer at the smaller cap would have chosen, and two conformant
+composers would emit different documents for the same observations. See
+[`adr/0009-a-text-cap-is-declared-and-never-reconciled.md`](adr/0009-a-text-cap-is-declared-and-never-reconciled.md).
 
 ---
 
@@ -491,6 +585,14 @@ in token order, and none for a wildcard inside a token, which is a normalization
 - A producer **MUST NOT** emit `param_histograms` for entries not in `top_k`.
 - The `value_counts` map **MUST** be bounded (producers **SHOULD** cap at a
   configurable limit, default 256, and count overflows in `total`).
+- A producer that emits `param_histograms` **SHOULD** declare the caps it
+  applied: `stats.param_histograms_size` (an integer ≥ 1), the most histograms a
+  `top_k` entry carries, and `stats.value_counts_size` (an integer ≥ 1), the most
+  keys a `value_counts` map holds. A producer that tracks only some wildcard slots
+  **MUST** track those whose `param_index` is below `param_histograms_size`. *(New
+  in v0.10.0.)*
+- Each `value_counts` key is observed text, capped where the document declares
+  `max_text_bytes` (§2.6).
 - A consumer **MUST** treat an absent `param_histograms` array as equivalent to
   an empty array (the slot was not tracked).
 - **The whole histogram is cross-machine bit-identical (determinism).** The
@@ -1064,9 +1166,14 @@ A producer is **conformant** with this spec at version *X.Y.Z* if:
    and — where the producer declares them — `stats.reservoir` by
    `stats.reservoir_size`, `behavior.top_ngrams` by
    `behavior.top_ngrams_size`, `behavior.branching` by
-   `behavior.branching_size`, `cube.cells` by `cube.cell_budget`.
-   A cap a producer does **not** declare is not a claim, and its
-   absence is not a violation.
+   `behavior.branching_size`, `cube.cells` by `cube.cell_budget`,
+   every `stats.top_k[].param_histograms` by `stats.param_histograms_size`,
+   and every `value_counts` map, by its number of keys, by
+   `stats.value_counts_size`. Every member of observed text (§2.6) is at
+   most `max_text_bytes` UTF-8 bytes long, and exactly that long only as
+   a digest form, whose last 16 bytes are lowercase hexadecimal digits
+   preceded by a tilde. A cap a producer does **not** declare is not a
+   claim, and its absence is not a violation.
 5. Every string it emits is escaped as §2 requires: no character in
    the range U+0000–U+001F appears raw inside a string, at any
    depth, in any member name or value, `extensions` included.
@@ -1084,7 +1191,12 @@ for clause 1.** Clause 4 is not reachable from the schema — JSON
 Schema's `maxItems` takes a constant, while the bound here is the
 value of a sibling field — but it *is* decidable from the document
 alone, and [`conformance/metalog_validate.py`](conformance/metalog_validate.py)
-decides it. Clause 5 is not reachable from the schema either, and
+decides it, reading the positions of observed text from the schema's
+`x-metalog-observed-text` annotations (§2.6). One rule over the text cap is not
+decidable from a document at all: that `compose()` and a `MetaLogDiff` refuse two
+inputs declaring different `max_text_bytes` (§12.1, §13) is a rule over two
+documents, so it is a producer obligation stated there and not a conformance
+clause. Clause 5 is not reachable from the schema either, and
 for a stronger reason than clause 4: a document that violates it is
 not JSON, so no parser hands it to a schema validator and no
 keyword can fire. It *is* decidable from the document's **bytes**,
@@ -1202,7 +1314,8 @@ document is bounded — but by a **set** of parameters, not by `k` alone:
 |---|---|---|
 | `stats.top_k` | top-k size | `stats.top_k_size` (required) |
 | `stats.reservoir` (§3.7) | reservoir size | `stats.reservoir_size` |
-| `stats.top_k[].param_histograms` (§3.5) | per-template histogram cap, and the `value_counts` cap within each | *not declared* — see §11.5 |
+| `stats.top_k[].param_histograms` (§3.5) | per-template histogram cap, and the `value_counts` cap within each | `stats.param_histograms_size` × `stats.value_counts_size` |
+| every member of observed text (§2.6) | the text cap | `max_text_bytes` (bytes per member) |
 | `behavior.top_ngrams` (§4) | n-gram retention size | `behavior.top_ngrams_size` (required when `behavior` is present) |
 | `behavior.branching` (§4.2) | branching size | `behavior.branching_size` |
 | `cube.cells` (§16) | the closed-cell budget of §16.10 | `cube.cell_budget` |
@@ -1315,14 +1428,14 @@ entries to ~6.3 KB, each before the ~460-byte fixed envelope.
 The measurement and the alternatives considered are recorded in
 [`adr/0006-no-size-per-line-count.md`](adr/0006-no-size-per-line-count.md).
 
-**Two residuals, stated rather than hidden.** `param_histograms`
-(§3.5) is bounded by two producer parameters — a per-template
-histogram cap and the `value_counts` cap (§3.5 recommends a default of
-256) — and **neither is declared in the document today**. And the
-per-entry costs above are *this* document's; no parameter caps the
-length of a template string, a `component` or an extension payload,
-so a producer whose content is larger will measure larger costs. For
-both reasons producers **SHOULD** report their
+**One residual, stated rather than hidden.** The per-entry costs above
+are *this* document's. `max_text_bytes` (§2.6) caps the length of every
+member copied from observed text where a producer declares it, and
+`stats.param_histograms_size` and `stats.value_counts_size` (§3.5) bound
+the histograms; no parameter caps the length of a template string or an
+extension payload, so a producer whose content is larger will measure
+larger costs. For that reason, and for the producer that declares none
+of these caps, producers **SHOULD** report their
 actual envelope size in
 `extensions.org.metalog.envelope_bytes` (or equivalent), which is the
 only figure that is exact rather than estimated.
@@ -1406,6 +1519,17 @@ to a 1-hour MetaLog).
   or **both** inputs omit the identifier, the composer **MAY** proceed but
   **MUST NOT** synthesize a value (omit it in `C`). The same rule applies to
   `C.retention_profile`.
+- `C.max_text_bytes` is the inputs' common `max_text_bytes`, omitted when
+  neither declares it. When the inputs declare **different** values, or only
+  one of them declares it, `compose()` **MUST** fail; it **MUST NOT** re-cap
+  either input (§2.6). This gate does not depend on `retention_profile`: it
+  binds whether or not the inputs carry one.
+- `C.stats.param_histograms_size` and `C.stats.value_counts_size` are each the
+  **minimum** of the inputs' declared values, and a declared cap is never
+  stripped by an input that omits it. A histogram whose `param_index` is not
+  below `C.stats.param_histograms_size` is dropped from both inputs before the
+  merge. When neither input declares `value_counts_size`, the composer truncates
+  at a cap of its own and declares it as `C.stats.value_counts_size`.
 - `C.stats.reservoir` is **carried** through composition: salience is **re-
   derived** over the merged per-template counts (rarity shifts on merge),
   `structural_surprise` and `novelty` are carried as the **max** across inputs,
@@ -1417,7 +1541,7 @@ to a 1-hour MetaLog).
 - `C.stats.top_k[*].param_histograms` are **carried** through composition. For
   each `(template_id, param_index)` pair present in **both** inputs'
   histograms, the composer **MUST** merge: union the `value_counts` keys, sum
-  the counts, truncate to the producer's `max_param_histograms` cap (keeping
+  the counts, truncate to `C.stats.value_counts_size` (keeping
   the top-N by count); set `total = A.total + B.total`; recompute
   `entropy_bits` over the (possibly-truncated) merged `value_counts`;
   `approximate_cardinality` **MAY** be merged via a sketch union when the
@@ -1546,12 +1670,20 @@ mismatched processing identifiers **MUST** fail or be signalled as
 incompatible — the templates and salience scores under different contracts are
 not directly comparable.
 
+The text cap is gated the same way, and whether or not the inputs carry
+`retention_profile`: when the two inputs declare different `max_text_bytes`, or
+only one of them declares it, diffing them **MUST** fail or be signalled as
+incompatible, and a producer **MUST NOT** re-cap either input to compare them
+(§2.6). Compared without it, every long value of one side reads as vanished and
+every long value of the other as new.
+
 ### 13.1 Document structure
 
 ```jsonc
 {
   "diff_version": "0.10.0",            // string, REQUIRED — the SPEC version, §13.1.1
   "comparison_outcome": "changed",     // string, REQUIRED — "changed" | "unchanged", §13.2
+  "max_text_bytes": 64,                // integer, optional — the inputs' common text cap, §2.6 (new in v0.10.0)
   "current":  { "window": { "start": "...", "end": "..." }, "document_id": "sha256:..." },  // window {} when that document has no envelope (§2.2)
   "previous": { "window": { "start": "...", "end": "..." }, "document_id": "sha256:..." },
   "kl_divergence": 0.043,
@@ -1606,6 +1738,12 @@ not directly comparable.
   }
 }
 ```
+
+**`max_text_bytes`.** A `MetaLogDiff` copies observed text from its inputs (a
+`level`, a `structural_role`, a cube coordinate), so a reader needs the cap to tell a
+digest form from an observed value. A producer **MUST** declare `max_text_bytes`
+when its two inputs declare it, with their common value, and **MUST** omit it when
+neither does. It is a **descriptor** (§13.2.1): never a witness of either outcome.
 
 **`branching_delta` rows.** A producer **MUST** emit a `branching_delta` row only for a
 `template_id` that has a `behavior.branching` entry in BOTH compared documents. A template

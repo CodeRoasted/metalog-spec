@@ -36,10 +36,12 @@ them is not a failure at all. This tool never adds them together.
 false`), a `required` member is missing, a value failed its `type`/`pattern`/bound.
 This is §8 clause 1 failing. **Exit 1.**
 
-**CAP-EXCEEDED** — an array is longer than the cap the *same document* declares
-for it: `stats.top_k` past `stats.top_k_size`, `stats.reservoir` past
+**CAP-EXCEEDED** — an array or map is longer than the cap the *same document*
+declares for it: `stats.top_k` past `stats.top_k_size`, `stats.reservoir` past
 `stats.reservoir_size`, `behavior.branching` past `behavior.branching_size`,
-`cube.cells` past `cube.cell_budget`. This is §8 clause 4 failing. **Exit 1.**
+`cube.cells` past `cube.cell_budget`, a `stats.top_k[].param_histograms` array past
+`stats.param_histograms_size`, a `value_counts` map past `stats.value_counts_size`.
+This is §8 clause 4 failing. **Exit 1.**
 
 The schema cannot reach this defect, and that is not an oversight in the schema:
 JSON Schema's `maxItems` takes a *constant*, while the bound here is the *value
@@ -50,8 +52,11 @@ still lie about its own bound — which is exactly what the
 The pair set is **derived from the schema**, never hand-kept: an integer
 property `<x>_size` whose sibling `<x>` is an array is a cap and its array, so a
 pair added to the schema tomorrow is checked on arrival. `cube.cell_budget` is
-the one declared exception, because it is named for §16.10's BUDGET object
-rather than for the array it bounds. Objects under `extensions` are skipped —
+one declared exception, because it is named for §16.10's BUDGET object
+rather than for the array it bounds. The two §3.5 histogram caps are the other
+two: each sits in `stats` and bounds a member one level below it, inside every
+`top_k` entry, and `value_counts_size` bounds a map's keys rather than an array,
+so no sibling rule can derive them. Objects under `extensions` are skipped —
 that is vendor space (§7), and a vendor's own `foo_size` is not a claim this
 standard may adjudicate. **This standard's own `x-metalog-*` schema keywords are
 skipped too**, and for the mirror-image reason: an annotation is a *predicate*, not
@@ -62,6 +67,18 @@ without the skip on the shipped v0.10.0 pair, and on a copy whose annotation was
 given such a pair the unskipped walk mints `('shard_size', 'shard')` while this one
 mints nothing. The rule is stated over the **prefix** rather than over one keyword,
 so `x-metalog-reserved` (SPEC §2's RESERVED level) needed no second pass.
+
+**TEXT-CAP-EXCEEDED** — a member of observed text breaks the `max_text_bytes` the
+*same document* declares (SPEC §2.6): it is longer than the cap, or exactly that
+long without being a digest form (a tilde followed by 16 lowercase hexadecimal
+digits at its end). This is §8 clause 4 failing too. **Exit 1.** The members are
+read from the **schema**, never listed here: each position that holds observed text
+carries an `x-metalog-observed-text` annotation, on a string for a value and on a
+`propertyNames` subschema for a map's keys, and the walk reaches a position exactly
+where the schema places one. A document that declares no `max_text_bytes` is
+uncapped and is not checked. The one §2.6 rule this cannot decide is the refusal:
+`compose()` and a `MetaLogDiff` refuse two inputs that declare different caps, and a
+reader holding one document does not hold the other.
 
 **An undeclared cap is not a violation.** A producer that omits
 `behavior.branching_size` declares no cap (§4.2); the tool reads that as a
@@ -100,7 +117,7 @@ verdict: a missing declaration, a boolean one, a `$`-keyword at any depth inside
 one, one with no `description`, one that is not a valid Draft 2020-12 schema. An
 absent declaration is the load-bearing case, because absence is the one defect that
 reads as *permission* — skipping an undeclared property would silently shrink the
-witness set. The self-test prints the denominator every run (`12 of 12 optional
+witness set. The self-test prints the denominator every run (`15 of 15 optional
 signal properties declared`), because an arm armed at zero is unobservable.
 
 **LEGAL-BUT-UNDESCRIBED** — a member that an *open* container permits and that no
@@ -162,10 +179,13 @@ have gone green while blind:
 | `undescribed-false-positive` | The schema opens several containers on purpose (`extensions`, `source.tags`, cube coordinates keyed by axis name, `param_histogram.value_counts`, `attribution.sketch_params`, `provenance[].source`). A walker that reports those has invented findings, and a false positive from a prescriptive instrument costs more than a miss: it sends someone to delete a field the schema does describe. This fixture exercises all of them and must report zero. The last two were added on 2026-08-24, and their absence was not cosmetic: the fixture carried no `attribution` block at all while its own entry claimed "sketch-shaped free objects", so the two positions whose disposition the closure walk had to rule on were the two this control could not see. |
 | `closed-object-violation` | The instrument must detect the real defect shape, not a toy one — extra members inside `stats.top_k[]` and `cube.axes[]`, the same two instance paths the reference implementation trips today. |
 | `declared-cap-violation` | §8 clause 4 is unreachable from the schema — `maxItems` takes a constant, the bound is the value of a sibling field — so a document can be **schema-valid and cap-violating**, which is exactly what a schema-only validator reports `CONFORMANT`. This fixture is that document, violating at two locations (`stats` and `behavior`) so a `top_k`-only checker reds, and carrying a vendor `shard_size`/`shard` pair under `extensions` that must **not** be reported. |
+| `declared-histogram-cap-violation` | The two §3.5 caps bound a member one level **below** their own object, and one of them bounds a map, so the sibling rule that derives every other pair cannot reach them. The fixture overruns both in a schema-valid document; a validator relying on the derived pairs alone reports it `CONFORMANT`. |
+| `declared-text-cap-violation` | §2.6's cap over four positions the schema marks `x-metalog-observed-text`: a `component` and a `level` longer than the cap, a `value_counts` key of exactly the cap kept verbatim, and a reservoir `structural_role` of exactly the cap that ends in 16 hexadecimal digits with no tilde before them. A second key in the same map **is** a digest form and is not reported. A checker that reads only `component`, or recognises a digest form by its hexadecimal tail alone, misses part of it. |
+| `text-cap-digest-form-admitted` | The positive witness. One document declares 32 and carries digest forms of exactly 32 bytes, among them the digest form of a value that was itself exactly 32 bytes, which §2.6 maps; a second carries the same long values verbatim and declares no cap. Both are `CONFORMANT`: an arm that reds every member of exactly the cap, or applies a cap to a document that declares none, reds here. |
 | `instrument-failure` | A truncated corpus, a `--pointer` that does not resolve, and a pointer whose envelope changed shape underneath it must all exit 2. **There is no code path that skips a line or a file**: every non-blank line is either a section header or a document, anything else stops the run, and an unreachable pointer refuses rather than dropping the file. A parser bug cannot express itself as a smaller document count — only as a refusal to answer. Each of these fixtures also pins the *reason*, not only the number: exit 2 is a class, and an instrument refusing for a reason nobody intended would otherwise satisfy a fixture that reads the code alone. |
 | `pointer-array-every-element` | An envelope carries as many documents as its producer performed comparisons, and the shape it takes is a **list**. A pointer that resolves to one document judges the first and prints the same confident verdict over the rest — not a smaller check, a green covering a subject nobody chose. This fixture is a four-entry envelope whose violation sits at entry **2**, and its `/raw/0/diff` twin in the same manifest pins what the single-document reading does with those exact bytes: **exit 0, CONFORMANT**. The contrast is executable rather than remembered. |
 | `pointer-empty-selection` | The other way a corpus reaches zero, and the only one no exception-shaped guard can see: the pointer resolves perfectly onto an array that is **empty**. Every path taken is correct and the subject is nothing. Exit 2 — a verdict over zero documents is green for the one reason that matters, that it never looked. |
-| `vacuity-is-declared-not-shaped` | §8 clause 6 asks whether a signal property carries a **finding**, and its JSON *shape* does not answer that. The fixture is a conformant `"unchanged"` diff carrying **twelve of the fourteen** optional signal properties, every one present and vacuous by its own `x-metalog-vacuous` declaration. A **presence** reader finds twelve witnesses on a document that carries none — the exact clause 0.10.0 deleted. An **emptiness** reader finds three (`template_deltas` holds a row whose `delta` is `0`; `tail_delta` holds nine members and no array; `cube_diff.axes` is a required non-empty **descriptor**). A reader that assumed `const: 0` for every scalar finds a fourth, `stability_score: 1`. Two properties are absent on purpose. `reservoir_delta`: §13.7 forbids emitting an all-empty block, so its declared vacuous state is unreachable by construction and writing it here would have made a "valid" fixture violate §13.7. `incomparable_signals`: it is omitted when nothing was incomparable (§13.2.3), and its own control is the row below. |
+| `vacuity-is-declared-not-shaped` | §8 clause 6 asks whether a signal property carries a **finding**, and its JSON *shape* does not answer that. The fixture is a conformant `"unchanged"` diff carrying **twelve of the fifteen** optional signal properties, every one present and vacuous by its own `x-metalog-vacuous` declaration. A **presence** reader finds twelve witnesses on a document that carries none — the exact clause 0.10.0 deleted. An **emptiness** reader finds three (`template_deltas` holds a row whose `delta` is `0`; `tail_delta` holds nine members and no array; `cube_diff.axes` is a required non-empty **descriptor**). A reader that assumed `const: 0` for every scalar finds a fourth, `stability_score: 1`. Three properties are absent on purpose. `max_text_bytes` is a descriptor with its own fixture, `valid/text_cap_unchanged.diff.json`. `reservoir_delta`: §13.7 forbids emitting an all-empty block, so its declared vacuous state is unreachable by construction and writing it here would have made a "valid" fixture violate §13.7. `incomparable_signals`: it is omitted when nothing was incomparable (§13.2.3), and its own control is the row below. |
 | `witness-rule-changed-arm` | `"changed"` obliges a witness. The fixture is the control above with **one token** changed, so the exit-code difference between the two is attributable to that token and nothing else. The finding names no member, because on this arm the defect *is* an absence. |
 | `witness-rule-unchanged-arm` | `"unchanged"` forbids one, and a rule that binds only the other arm is satisfied forever by a producer that always writes `"unchanged"`. The fixture is the same control with **one row** changed — `template_deltas[0]` from `delta: 0` to `delta: 3`, with `current_count` moved to match (§13.3) — so the witness sits inside an array that is non-empty and the same length in both documents, where a presence reader and an emptiness reader are blind to the mutation. |
 | `witness-set-from-schema` | §13.2.1 step 2 reads the witness set from the **schema**, never from the document. The fixture carries a bare `vendor_private_counter` at the diff root, which is open: legal-but-undescribed, exit 0, and **not** a witness. Read the set from the document instead and it becomes one — a producer could then manufacture a witness by inventing a member at an open root. Measured 2026-09-01: that mutation passed the other twenty-five fixtures **25/25**, so until this entry existed the sentence had no arm at all. |
@@ -301,7 +321,11 @@ Declared, because an instrument's silence is read as coverage.
   block is unbounded on that block and cannot be caught here. `stats.top_k_size` is
   required, so `top_k` is always covered; `reservoir_size`, `branching_size` and
   `cell_budget` are optional, so those three blocks are covered only for producers
-  that declare them. An omission is reported as a posture, never as a pass.
+  that declare them, and so are the two histogram caps and `max_text_bytes`. An
+  omission is reported as a posture, never as a pass. **The text-cap refusal is not
+  reached at all:** that `compose()` and a `MetaLogDiff` refuse two inputs declaring
+  different `max_text_bytes` (§12.1, §13) is a rule over two documents, and this tool
+  judges one at a time.
 - **`format` is an annotation, not an assertion.** Draft 2020-12's default
   vocabulary treats `format` as annotation-only, so `date-time` and `uri` are *not*
   enforced by default — asserting them would be stricter than clause 1 says. Pass

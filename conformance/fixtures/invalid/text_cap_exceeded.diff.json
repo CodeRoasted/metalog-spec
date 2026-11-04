@@ -1,0 +1,29 @@
+{
+    "diff_version": "0.10.0",
+    "comparison_outcome": "changed",
+    "max_text_bytes": 64,
+    "current": {
+        "window": {
+            "start": "2026-01-01T00:01:00Z",
+            "end": "2026-01-01T00:02:00Z"
+        },
+        "document_id": "window-2"
+    },
+    "previous": {
+        "window": {
+            "start": "2026-01-01T00:00:00Z",
+            "end": "2026-01-01T00:01:00Z"
+        },
+        "document_id": "window-1"
+    },
+    "reservoir_delta": {
+        "new_salient": [
+            {
+                "template_id": "h:9aa0000000000000000000000000000a",
+                "count": 3,
+                "salience": 87,
+                "level": "LLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLL"
+            }
+        ]
+    }
+}

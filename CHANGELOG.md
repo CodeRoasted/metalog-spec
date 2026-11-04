@@ -46,8 +46,9 @@ now violates, and two rules on `behavior.ngram_size` (§2.4, §12.1) that a prod
 `retention_profile` across two orders, or a composer merging two orders' blocks, now violates,
 and a rule on `ngram_delta` across two orders (§13.1, §13.2.3) that a diff producer computing the
 delta across them, or omitting it without saying so, now violates.
-It also adds two optional members
-(`withheld_signals`, §13.2.2, and `incomparable_signals`, §13.2.3), each additive on its own. MINOR bump: MAJOR stays `0`, so
+It also adds optional members
+(`withheld_signals`, §13.2.2, `incomparable_signals`, §13.2.3, and `max_text_bytes` with the two
+histogram caps, §2.6 and §3.5), each additive on its own. MINOR bump: MAJOR stays `0`, so
 §6's *"the MAJOR field of `metalog_version` must equal the MAJOR of the spec"* is
 satisfied unchanged and **both schema files keep their `v0` filenames** — a reader
 who expects a `v1` schema and a MAJOR check that starts refusing documents will
@@ -267,6 +268,50 @@ the order-dependent `behavior.ngram_size`, is the first taken: see the §2.4 / �
 
 ### Added
 
+- **§2.6, §3.5 — a declared cap on observed text, `max_text_bytes`, and the two histogram caps,
+  `stats.param_histograms_size` and `stats.value_counts_size`.** Issue
+  [#26](https://github.com/CodeRoasted/metalog-spec/issues/26). Before this, nothing bounded the
+  length of a member copied from the observed stream, so a consumer that retained documents could
+  bound a `value_counts` key only by the longest line its transport admits, and the histogram
+  block was bounded by two parameters no document declared (§11.5's two residuals).
+  - **The text cap.** A producer **MAY** cap every member copied from observed text: each
+    `value_counts` key, `component`, `level`, `structural_role` and cube coordinate value. A
+    producer that caps **MUST** declare `max_text_bytes` at the root, a power of two from 32 to
+    4 096, and replaces each member of `L` bytes or more by an exactly-`L`-byte digest form: a
+    prefix cut on a code-point boundary, one to four tildes, and the first 8 bytes of SHA-256 of
+    the whole value in lowercase hex. A digest form is recognised by its length alone. A document
+    that omits the member is uncapped. `T` is applied once, to an observed value, when the
+    producer builds the window's document; no operation applies it to a member of a document. A
+    consumer **MUST NOT** present a digest form as an observed value. Template strings are not
+    capped, since `template_id` is computed over them.
+  - **Two caps are refused, never reconciled.** `compose()` (§12.1) and a `MetaLogDiff` (§13)
+    refuse two inputs that declare different `max_text_bytes`, or of which only one declares it,
+    whether or not they carry `retention_profile`. Re-capping the larger input reproduces each
+    member exactly, but not a selection among them (the `component` tie-break, the label rule and
+    a truncation at equal counts). A `MetaLogDiff` declares the inputs' common cap at its root, as
+    a descriptor, never a witness (§13.2.1).
+  - **The histogram caps.** A producer that emits `param_histograms` **SHOULD** declare both, and
+    tracks the slots whose `param_index` is below `param_histograms_size`. `compose()` takes the
+    minimum of each; when neither input declares `value_counts_size`, the composer truncates at a
+    cap of its own and declares it. The histogram clause's *"the producer's
+    `max_param_histograms` cap"*, a parameter no document carried, now reads
+    `C.stats.value_counts_size`.
+  - **Comparability.** §2.4 names the three caps among the retention parameters, and adds that a
+    consumer **MUST NOT** read a cap out of the opaque `retention_profile`.
+  - **Conformance.** §8 clause 4 bounds every `param_histograms` array by
+    `stats.param_histograms_size`, every `value_counts` map by `stats.value_counts_size`, and every
+    member of observed text by `max_text_bytes`. The schema marks each position of observed text
+    with a new annotation, `x-metalog-observed-text`, which asserts nothing; as with
+    `x-metalog-vacuous`, only a strict-mode validator must allowlist it. `metalog_validate.py`
+    gains the two histogram caps under CAP-EXCEEDED and a TEXT-CAP-EXCEEDED arm, with six fixtures
+    and three new self-test controls. The refusal is a rule over two documents and is stated as a
+    producer obligation, not a conformance clause. §11.1's table and §11.5 follow: the residual is
+    now template strings and extension payloads.
+  - **Additive:** every new member is optional, capping is a MAY, and the compose and diff rules
+    bind only documents that declare a member no earlier version defined, so no existing document
+    or implementation changes conformance. Decision and alternatives:
+    [ADR 0009](adr/0009-a-text-cap-is-declared-and-never-reconciled.md).
+
 - **§13.2.1 — `x-metalog-vacuous`, a per-property vacuity declaration.** The witness
   rule asks whether a property carries a **finding**, and a property's JSON *shape*
   does not answer that: a descriptor member (`cube_diff.axes`,
@@ -283,7 +328,7 @@ the order-dependent `behavior.ngram_size`, is the first taken: see the §2.4 / �
   signal property whose shape nobody anticipated writes the predicate that decides it
   and needs no change to this section.
 
-  **All fourteen** optional signal properties of `metalog_diff.v0.schema.json`
+  **All fifteen** optional signal properties of `metalog_diff.v0.schema.json`
   carry one. Coverage is a MUST and an absent declaration is a **defect of the schema, not
   a permission**: a validator deciding §13.2 **MUST** refuse to run rather than
   return a verdict about a finding it cannot define.

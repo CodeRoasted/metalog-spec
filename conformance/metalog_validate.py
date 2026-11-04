@@ -13,6 +13,11 @@ MetaLogDiff) and it reports, separately:
                        this clause is unreachable from the schema and is checked
                        here instead. An UNDECLARED cap is not a violation: a
                        producer that omits the field declares no cap (SPEC §4.2).
+  * TEXT-CAP-EXCEEDED  a member the schema marks `x-metalog-observed-text` is longer
+                       than the `max_text_bytes` the SAME document declares, or
+                       exactly that long without being a digest form (SPEC §2.6)
+                       -> §8 clause 4 fails. Exit 1. A document that declares no
+                       `max_text_bytes` is uncapped, and nothing is checked.
   * WITNESS-VIOLATION  a MetaLogDiff's `comparison_outcome` disagrees with the
                        document's own signal properties -> §8 clause 6 fails.
                        Exit 1. `"changed"` with no non-vacuous signal property, or
@@ -695,6 +700,167 @@ def collect_cap_violations(docs, pairs: set[tuple[str, str]]) -> list[dict]:
     )
 
 
+# Two caps of SPEC §3.5 bound a member one level BELOW their sibling, so the
+# sibling rule above cannot derive them: `stats.param_histograms_size` bounds every
+# `stats.top_k[].param_histograms` array, and `stats.value_counts_size` bounds the
+# key count of every `stats.top_k[].param_histograms[].value_counts` map, an object
+# rather than an array. They are DECLARED here, beside `DECLARED_CAP_PAIRS`, for
+# the same reason that one is: the schema names them for the quantity they bound,
+# not for a sibling. Each entry is (the cap's member under `stats`, the path of the
+# bounded member as the report prints it, how to reach it from one `top_k` entry).
+DECLARED_HISTOGRAM_CAPS = (
+    ("param_histograms_size", "stats.top_k[].param_histograms"),
+    ("value_counts_size", "stats.top_k[].param_histograms[].value_counts"),
+)
+
+
+def collect_histogram_cap_violations(docs) -> list[dict]:
+    """Where `stats` declares a histogram cap and a histogram member overruns it."""
+    by_class: dict[tuple[str, str, int, int], set[int]] = defaultdict(set)
+    for index, (_, doc) in enumerate(docs):
+        stats = doc.get("stats") if isinstance(doc, dict) else None
+        if not isinstance(stats, dict) or not isinstance(stats.get("top_k"), list):
+            continue
+        caps = {}
+        for cap_key, path in DECLARED_HISTOGRAM_CAPS:
+            cap = stats.get(cap_key)
+            if isinstance(cap, int) and not isinstance(cap, bool):
+                caps[cap_key] = (cap, path)
+        if not caps:
+            continue
+        for entry in stats["top_k"]:
+            histograms = entry.get("param_histograms") if isinstance(entry, dict) else None
+            if not isinstance(histograms, list):
+                continue
+            if "param_histograms_size" in caps:
+                cap, path = caps["param_histograms_size"]
+                if len(histograms) > cap:
+                    by_class[(path, "stats.param_histograms_size", cap,
+                              len(histograms))].add(index)
+            if "value_counts_size" in caps:
+                cap, path = caps["value_counts_size"]
+                for histogram in histograms:
+                    counts = (histogram.get("value_counts")
+                              if isinstance(histogram, dict) else None)
+                    if isinstance(counts, dict) and len(counts) > cap:
+                        by_class[(path, "stats.value_counts_size", cap,
+                                  len(counts))].add(index)
+    return [{"path": path, "cap": cap_key, "declared": declared, "actual": actual,
+             "documents": len(indexes)}
+            for (path, cap_key, declared, actual), indexes in by_class.items()]
+
+
+# --------------------------------------------------------------------------
+# SPEC §8 clause 4, over §2.6's text cap — TEXT-CAP-EXCEEDED.
+#
+# The members a cap binds are DECLARED in the schema, never enumerated here: each
+# position carries an `x-metalog-observed-text` annotation, a string position for a
+# value and a `propertyNames` subschema for a map's keys. A member the schema marks
+# tomorrow is checked on arrival. The walk is the undescribed walker's co-walk of
+# instance and schema, so it reaches a position exactly where the schema places one.
+#
+# The rule, from §2.6, decided from the member's UTF-8 bytes alone:
+#   over    — longer than the document's `max_text_bytes`. No capped member is.
+#   at-cap  — exactly that long and not a digest form: a digest form ends in a tilde
+#             followed by 16 lowercase hexadecimal digits. A value of exactly the cap
+#             is mapped, so a verbatim member of that length is a producer defect.
+# A document declaring no `max_text_bytes` is uncapped (§2.6), and that is a posture,
+# never a pass: nothing is checked, as for an undeclared array cap.
+# --------------------------------------------------------------------------
+
+OBSERVED_TEXT_KEYWORD = METALOG_KEYWORD_PREFIX + "observed-text"
+TEXT_CAP_MEMBER = "max_text_bytes"
+DIGEST_HEX_CHARS = 16
+DIGEST_FORM_RE = re.compile(rb"~[0-9a-f]{16}\Z")
+
+
+def _marks_text(subschemas: list[dict]) -> bool:
+    return any(OBSERVED_TEXT_KEYWORD in s for s in subschemas)
+
+
+def _walk_observed_text(instance, subschemas: list[dict], root: dict, path: str,
+                        out: list[tuple[str, str]], depth: int) -> None:
+    if depth > MAX_INSTANCE_DEPTH:
+        raise InstrumentError(
+            f"document nesting exceeded {MAX_INSTANCE_DEPTH} at {path or '<root>'}"
+        )
+    if isinstance(instance, str):
+        if _marks_text(subschemas):
+            out.append((path or "<root>", instance))
+        return
+    if isinstance(instance, dict):
+        key_schemas: list[dict] = []
+        fallback: list[dict] = []
+        for s in subschemas:
+            if isinstance(s.get("propertyNames"), dict):
+                key_schemas += applicable(s["propertyNames"], root)
+            extra = s.get("additionalProperties")
+            if isinstance(extra, dict):
+                fallback += applicable(extra, root)
+        keys_marked = _marks_text(key_schemas)
+        for key in sorted(instance):
+            child_path = f"{path}.{key}" if path else key
+            if keys_marked:
+                out.append((f"{path}{{}}" if path else "{}", key))
+            children: list[dict] = []
+            for s in subschemas:
+                declared = s.get("properties", {})
+                if key in declared:
+                    children += applicable(declared[key], root)
+                for pattern, sub in (s.get("patternProperties") or {}).items():
+                    if re.search(pattern, key):
+                        children += applicable(sub, root)
+            if not children:
+                children = fallback
+            if children:
+                _walk_observed_text(instance[key], children, root, child_path, out,
+                                    depth + 1)
+    elif isinstance(instance, list):
+        for index, item in enumerate(instance):
+            children = []
+            for s in subschemas:
+                prefix = s.get("prefixItems")
+                if isinstance(prefix, list) and index < len(prefix):
+                    children += applicable(prefix[index], root)
+                elif isinstance(s.get("items"), dict):
+                    children += applicable(s["items"], root)
+            if children:
+                _walk_observed_text(item, children, root, f"{path}[]", out, depth + 1)
+
+
+def is_digest_form(member: bytes, cap: int) -> bool:
+    """§2.6's recognition rule, by length alone: exactly `cap` bytes, ending in a
+    tilde and the 16 hexadecimal digits of the whole value's digest."""
+    return len(member) == cap and DIGEST_FORM_RE.search(member) is not None
+
+
+def collect_text_cap_violations(docs, schema: dict) -> list[dict]:
+    """Where a document declares `max_text_bytes` and a capped member breaks §2.6."""
+    by_class: dict[tuple[str, int, int], set[int]] = defaultdict(set)
+    for index, (_, doc) in enumerate(docs):
+        if not isinstance(doc, dict):
+            continue
+        cap = doc.get(TEXT_CAP_MEMBER)
+        if isinstance(cap, bool) or not isinstance(cap, int):
+            continue
+        found: list[tuple[str, str]] = []
+        _walk_observed_text(doc, applicable(schema, schema), schema, "", found, 0)
+        for path, member in found:
+            # `surrogatepass`: JSON can carry an escaped lone surrogate, which has no
+            # UTF-8 form; its three-byte encoding is counted rather than refused here,
+            # and a member carrying one is never a digest form.
+            encoded = member.encode("utf-8", "surrogatepass")
+            if len(encoded) > cap or (len(encoded) == cap
+                                      and not is_digest_form(encoded, cap)):
+                by_class[(path, cap, len(encoded))].add(index)
+    return sorted(
+        ({"path": path, "declared": declared, "actual": actual,
+          "documents": len(indexes)}
+         for (path, declared, actual), indexes in by_class.items()),
+        key=lambda v: (v["path"], v["declared"], v["actual"]),
+    )
+
+
 # --------------------------------------------------------------------------
 # SPEC §8 clause 2, over §2.2 `window` — the cross-field relations a schema cannot
 # reach. Clause 2 is "every required field is populated according to its definition
@@ -1134,15 +1300,30 @@ def render(report: dict, stream) -> None:
     w()
 
     if report["cap_violations"]:
-        w("CAP-EXCEEDED — an array is longer than the cap its own document declares. "
-          "§8 clause 4 FAILS:")
+        w("CAP-EXCEEDED — an array or map is longer than the cap its own document "
+          "declares. §8 clause 4 FAILS:")
         for v in report["cap_violations"]:
             w(f"  {v['path']} — {v['cap']} declares {v['declared']}, "
-              f"array holds {v['actual']} "
+              f"it holds {v['actual']} "
               f"({v['documents']}/{acc['documents']} documents)")
     else:
-        w("CAP-EXCEEDED — none. Every DECLARED cap bounds its array. A cap a "
+        w("CAP-EXCEEDED — none. Every DECLARED cap bounds its array or map. A cap a "
           "producer does not declare is not checked and is not a violation.")
+    w()
+
+    if report["text_cap_violations"]:
+        w("TEXT-CAP-EXCEEDED — a member of observed text breaks the `max_text_bytes` "
+          "its own document declares (§2.6). §8 clause 4 FAILS:")
+        for v in report["text_cap_violations"]:
+            shape = ("longer than the cap" if v["actual"] > v["declared"]
+                     else "exactly the cap and not a digest form")
+            w(f"  {v['path']} — max_text_bytes declares {v['declared']}, a member of "
+              f"{v['actual']} bytes is {shape} "
+              f"({v['documents']}/{acc['documents']} documents)")
+    else:
+        w("TEXT-CAP-EXCEEDED — none. Every member of observed text is within the "
+          "`max_text_bytes` its document declares, and exactly at it only as a digest "
+          "form. A document that declares none is uncapped and is not checked.")
     w()
 
     declared = report["witness_declarations"]
@@ -1250,7 +1431,8 @@ def render(report: dict, stream) -> None:
     # as "conformant"; it tests ONE of §8's four clauses, and saying so here is the
     # difference between an instrument and an instrument's reputation.
     w("SCOPE — this tests SPEC §8 clause 1 (schema validation), clause 4 (an array")
-    w("  is truthfully bounded by the cap the same document declares), on a MetaLog")
+    w("  or map is truthfully bounded by the cap the same document declares, and")
+    w("  observed text by its `max_text_bytes`), on a MetaLog")
     w("  clause 2 over §2.2's `window` ONLY, and on a MetaLogDiff clause 6")
     w("  (comparison_outcome agrees with the document's own witness).")
     w("  Clause 2's own limit, and it is narrow: `window` is the one required block")
@@ -1271,6 +1453,10 @@ def render(report: dict, stream) -> None:
     w("  `window` itself: that `start` and `end` ARE the earliest and latest event")
     w("  time among the window's lines is a relation to lines the document does")
     w("  not carry, and no reader of the document alone can decide it.")
+    w("  Clause 4 also covers §2.6's text cap, over the members the schema marks")
+    w("  `x-metalog-observed-text`. That compose() and a MetaLogDiff refuse two")
+    w("  inputs declaring different caps is a rule over TWO documents, and no")
+    w("  reader of one document can decide it.")
     w("  Clause 4's own limit: a cap that is not DECLARED cannot be checked. A")
     w("  producer that omits `behavior.branching_size` declares no cap (§4.2), and")
     w("  this tool reads that as a posture, never as a pass.")
@@ -1353,7 +1539,11 @@ def run(corpora, kind: str, schema_dir: Path, spec_text: str, check_formats: boo
 
     findings, _ = collect_findings(docs, validator)
     undescribed = collect_undescribed(docs, schema)
-    cap_violations = collect_cap_violations(docs, derive_cap_pairs(schema))
+    cap_violations = sorted(
+        collect_cap_violations(docs, derive_cap_pairs(schema))
+        + collect_histogram_cap_violations(docs),
+        key=lambda v: (v["path"], v["cap"]))
+    text_cap_violations = collect_text_cap_violations(docs, schema)
     witness_violations, witness_unjudged = (
         collect_witness_violations(docs, schema, validator, declarations)
         if declarations is not None else ([], 0))
@@ -1371,6 +1561,7 @@ def run(corpora, kind: str, schema_dir: Path, spec_text: str, check_formats: boo
         "accounting": accounting,
         "findings": findings,
         "cap_violations": cap_violations,
+        "text_cap_violations": text_cap_violations,
         "witness_violations": witness_violations,
         "witness_unjudged": witness_unjudged,
         "witness_declarations": None if declarations is None else len(declarations),
@@ -1379,8 +1570,8 @@ def run(corpora, kind: str, schema_dir: Path, spec_text: str, check_formats: boo
         "window_governed": governs_window_rule(schema),
         "undescribed": undescribed,
         "spec_mentions": spec_mentions(names, spec_text),
-        "verdict": "NONCONFORMANT" if (findings or cap_violations or witness_violations
-                                       or window_violations)
+        "verdict": "NONCONFORMANT" if (findings or cap_violations or text_cap_violations
+                                       or witness_violations or window_violations)
                    else "CONFORMANT",
         "environment": {
             "jsonschema": metadata.version("jsonschema"),
@@ -1506,6 +1697,13 @@ REQUIRED_CONTROLS = {
     "closed-object-violation",      # forecloses can't-FAIL on species 1
     "instrument-failure",           # forecloses a corrupt corpus reading as clean
     "declared-cap-violation",       # forecloses can't-FAIL on §8 clause 4
+    "declared-histogram-cap-violation",  # forecloses a clause 4 that reads only
+                                    # SIBLING caps and never the two §3.5 caps,
+                                    # which bound a member one level below them
+    "declared-text-cap-violation",  # forecloses can't-FAIL on §2.6's text cap
+    "text-cap-digest-form-admitted",  # forecloses a text arm that reds the one
+                                    # member of exactly the cap §2.6 admits, or a
+                                    # cap checked on a document that declares none
     "pointer-array-every-element",  # forecloses judging element 0 of an N-element
                                     # envelope and printing the verdict of all N
     "pointer-empty-selection",      # forecloses an array that shrank to zero
@@ -1781,6 +1979,10 @@ def _cap_tuples(entries):
             for v in entries]
 
 
+def _text_cap_tuples(entries):
+    return [(v["path"], v["declared"], v["actual"], v["documents"]) for v in entries]
+
+
 def _window_tuples(entries):
     return [(e["clause"], e["detail"], e["documents"]) for e in entries]
 
@@ -1922,6 +2124,7 @@ def selftest(schema_dir: Path, spec_text: str, stream) -> int:
             report = run([path], fx["kind"], schema_dir, spec_text, False,
                          want.get("documents"), fx.get("pointer"))
             code = 1 if (report["findings"] or report["cap_violations"]
+                         or report["text_cap_violations"]
                          or report["witness_violations"]
                          or report["window_violations"]) else 0
             got = {
@@ -1929,6 +2132,7 @@ def selftest(schema_dir: Path, spec_text: str, stream) -> int:
                 "documents": report["accounting"]["documents"],
                 "findings": _tuples(report["findings"]),
                 "cap_violations": _cap_tuples(report["cap_violations"]),
+                "text_cap_violations": _text_cap_tuples(report["text_cap_violations"]),
                 "witness_violations": _witness_tuples(report["witness_violations"]),
                 "witness_unjudged": report["witness_unjudged"],
                 "window_violations": _window_tuples(report["window_violations"]),
@@ -1938,7 +2142,8 @@ def selftest(schema_dir: Path, spec_text: str, stream) -> int:
             }
         except InstrumentError as exc:
             got = {"exit": 2, "documents": None, "findings": None,
-                   "cap_violations": None, "witness_violations": None,
+                   "cap_violations": None, "text_cap_violations": None,
+                   "witness_violations": None,
                    "witness_unjudged": None, "window_violations": None,
                    "window_unjudged": None, "undescribed": None,
                    "first_documents": None, "why": str(exc)}
@@ -1950,6 +2155,10 @@ def selftest(schema_dir: Path, spec_text: str, stream) -> int:
                          for t in want.get("findings", [])] if want["exit"] != 2 else None,
             "cap_violations": [tuple(t) for t in want.get("cap_violations", [])]
                               if want["exit"] != 2 else None,
+            # Compared on EVERY non-refusal fixture, defaulting to none: a fixture
+            # that drops the expectation cannot thereby stop asserting the arm.
+            "text_cap_violations": [tuple(t) for t in want.get("text_cap_violations", [])]
+                                   if want["exit"] != 2 else None,
             # Compared on EVERY non-refusal fixture, defaulting to none and to zero.
             # A clause whose expectation is optional is a clause a fixture can drop
             # silently, and `witness_unjudged` is the withheld verdict: leaving it

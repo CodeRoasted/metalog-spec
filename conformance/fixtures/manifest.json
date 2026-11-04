@@ -673,8 +673,137 @@
             "expect": {
                 "exit": 2
             }
+        },
+        {
+            "path": "valid/text_cap.metalog.jsonl",
+            "kind": "metalog",
+            "control": "text-cap-digest-form-admitted",
+            "why": "Two documents. The first declares `max_text_bytes` 32 and carries every capped shape §2.6 admits: a `component` that is a digest form of exactly 32 bytes (a 58-byte value whose prefix ends on a two-byte code point, so the cut moves back one byte), two `value_counts` keys of exactly 32 bytes that are digest forms (one of them the digest form of a value that was itself exactly 32 bytes, which §2.6 maps), and short members kept verbatim. It also declares both histogram caps and stays inside them. The second document carries the same long values VERBATIM and declares no `max_text_bytes`: it is uncapped, and that is a posture, not a violation. An arm that reds a member of exactly the cap without reading its digest form, or that applies a cap to a document that declares none, reds this conformant pair.",
+            "expect": {
+                "exit": 0,
+                "documents": 2,
+                "findings": [],
+                "undescribed": []
+            }
+        },
+        {
+            "path": "invalid/text_cap_exceeded.metalog.jsonl",
+            "kind": "metalog",
+            "control": "declared-text-cap-violation",
+            "why": "§2.6's cap, violated in a SCHEMA-VALID document at four positions the schema marks `x-metalog-observed-text`, so the schema-derived walk is the only thing that can reach them: a 39-byte `component` and a 33-byte `level`, both longer than the declared 32; a `value_counts` key of exactly 32 bytes kept verbatim, which §2.6 would have mapped; and a reservoir `structural_role` of exactly 32 bytes that ends in 16 hexadecimal digits but carries no tilde before them, so it is not a digest form. A second `value_counts` key in the same map IS a digest form and must not be reported. A checker that reads only `component`, or that recognises a digest form by its hexadecimal tail alone, misses part of this.",
+            "expect": {
+                "exit": 1,
+                "documents": 1,
+                "findings": [],
+                "undescribed": [],
+                "text_cap_violations": [
+                    [
+                        "stats.reservoir[].structural_role",
+                        32,
+                        32,
+                        1
+                    ],
+                    [
+                        "stats.top_k[].component",
+                        32,
+                        39,
+                        1
+                    ],
+                    [
+                        "stats.top_k[].level",
+                        32,
+                        33,
+                        1
+                    ],
+                    [
+                        "stats.top_k[].param_histograms[].value_counts{}",
+                        32,
+                        32,
+                        1
+                    ]
+                ]
+            }
+        },
+        {
+            "path": "invalid/histogram_cap_exceeded.metalog.jsonl",
+            "kind": "metalog",
+            "control": "declared-histogram-cap-violation",
+            "why": "The two §3.5 caps, each overrun in a SCHEMA-VALID document: `stats.param_histograms_size` declares 1 and a `top_k` entry carries two histograms, and `stats.value_counts_size` declares 2 and one histogram's `value_counts` holds three keys. Both caps bound a member one level BELOW their own object, and the second bounds a map rather than an array, so the sibling rule that derives every other clause 4 pair cannot reach either: a validator relying on it alone reports this document CONFORMANT.",
+            "expect": {
+                "exit": 1,
+                "documents": 1,
+                "findings": [],
+                "undescribed": [],
+                "cap_violations": [
+                    [
+                        "stats.top_k[].param_histograms",
+                        "stats.param_histograms_size",
+                        1,
+                        2,
+                        1
+                    ],
+                    [
+                        "stats.top_k[].param_histograms[].value_counts",
+                        "stats.value_counts_size",
+                        2,
+                        3,
+                        1
+                    ]
+                ]
+            }
+        },
+        {
+            "path": "invalid/max_text_bytes_not_a_power_of_two.metalog.jsonl",
+            "kind": "metalog",
+            "why": "`max_text_bytes` 100. §2.6 admits a power of two from 32 to 4096 and nothing else, because the exactness of a digest form's prefix rule and the length-only recognition both rest on it. The schema states the set as an `enum`, so this is clause 1's finding, and the window arm withholds its verdict on the schema-invalid document.",
+            "expect": {
+                "exit": 1,
+                "documents": 1,
+                "findings": [
+                    [
+                        "max_text_bytes",
+                        "enum",
+                        [],
+                        1,
+                        1
+                    ]
+                ],
+                "undescribed": [],
+                "window_unjudged": 1
+            }
+        },
+        {
+            "path": "valid/text_cap_unchanged.diff.json",
+            "kind": "diff",
+            "why": "A MetaLogDiff declaring `max_text_bytes` 64 and nothing else optional, with `comparison_outcome` \"unchanged\". `max_text_bytes` is an optional root member of the diff schema, so it is in §13.2.1's witness set, and it is declared a DESCRIPTOR: the cap both documents declare is evidence of neither outcome. Declare it witness-shaped and this conformant document reds as an \"unchanged\" diff carrying a witness.",
+            "expect": {
+                "exit": 0,
+                "documents": 1,
+                "findings": [],
+                "undescribed": []
+            }
+        },
+        {
+            "path": "invalid/text_cap_exceeded.diff.json",
+            "kind": "diff",
+            "why": "§2.6's cap on a MetaLogDiff: the diff declares `max_text_bytes` 64 and a `reservoir_delta.new_salient[]` entry copies a 70-byte `level`. The diff schema marks the members a diff copies from its inputs with the same `x-metalog-observed-text` annotation, so the arm reaches a diff as it reaches a MetaLog. The document is otherwise conformant: `changed`, witnessed by the non-empty `reservoir_delta`.",
+            "expect": {
+                "exit": 1,
+                "documents": 1,
+                "findings": [],
+                "undescribed": [],
+                "text_cap_violations": [
+                    [
+                        "reservoir_delta.new_salient[].level",
+                        64,
+                        70,
+                        1
+                    ]
+                ]
+            }
         }
     ],
     "window_violations_encoding": "[clause, detail, documents affected]. SPEC §8 clause 2, over §2.2's `window` and nothing else. `clause` is one of `utc` / `ordering` / `duration` / `empty-extent` / `estimated-flag`; `detail` is the instrument's own sentence for that violation and is asserted VERBATIM, because the five clauses are decided by five different computations and a fixture pinning only the clause name would pass against an arm that fired the right label off the wrong arithmetic. Types are NOT among these clauses: `duration_seconds` and `lines_observed` are typed `integer, minimum 0` by the schema, so their non-negativity is clause 1's business and re-checking it here would be a second copy that can disagree with the first.",
-    "window_unjudged_encoding": "how many documents §2.2's relations were WITHHELD from, because they are not schema-valid. Defaults to 0 and is compared on every non-refusal fixture, the same discipline `witness_unjudged` carries and for the same reason: on an unvalidated document `start` may be an integer and `duration_seconds` a string, so judging one would report an arithmetic defect at a producer whose real defect is a type. A withheld verdict is not a pass, and leaving it unasserted would let an arm that stopped judging anything pass this suite green. Nonzero exactly on the metalog fixtures that carry a schema violation."
+    "window_unjudged_encoding": "how many documents §2.2's relations were WITHHELD from, because they are not schema-valid. Defaults to 0 and is compared on every non-refusal fixture, the same discipline `witness_unjudged` carries and for the same reason: on an unvalidated document `start` may be an integer and `duration_seconds` a string, so judging one would report an arithmetic defect at a producer whose real defect is a type. A withheld verdict is not a pass, and leaving it unasserted would let an arm that stopped judging anything pass this suite green. Nonzero exactly on the metalog fixtures that carry a schema violation.",
+    "text_cap_violations_encoding": "[instance path, max_text_bytes the document declares, the member's length in UTF-8 bytes, documents affected]. SPEC §8 clause 4 over §2.6's text cap. A length above the declared value is a member longer than the cap; a length EQUAL to it is a member of exactly the cap that is not a digest form. A map's keys are reported at the map's path followed by `{}`. Compared on every non-refusal fixture, defaulting to none."
 }
