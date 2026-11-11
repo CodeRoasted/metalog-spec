@@ -77,7 +77,14 @@ able to switch their log analyzer without re-training their
 dashboards, alerts, and LLM prompts — the format itself must be
 **open, versioned, and vendor-neutral**.
 
-That is what this spec is.
+That is what this spec aims to be, and today it is two of the three. It is
+**open**: the text is published under CC-BY-4.0 and the schemas under MIT.
+It is **versioned**: [`SPEC.md`](SPEC.md) declares its version, and the `0.x`
+line may still break ([`GOVERNANCE.md`](GOVERNANCE.md)). It is vendor-neutral
+by **design**, its fields describing log behaviour rather than any product, but
+not yet in **practice**: it has one editor and one implementation. It will
+claim neutrality outright once a second, independent implementation is
+listed here.
 
 ---
 
