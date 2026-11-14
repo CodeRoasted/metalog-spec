@@ -134,17 +134,17 @@
                 "reservoir_size": {
                     "type": "integer",
                     "minimum": 0,
-                    "description": "The producer's cap on the reservoir array (SPEC \u00a73.7). Optional; declaring it is what makes the block's envelope contribution computable (SPEC \u00a711.1) and its bound checkable (SPEC \u00a78 clause 4). Added in v0.9.0."
+                    "description": "The producer's cap on the reservoir array (SPEC \u00a73.7.2). A producer that keeps a reservoir MUST declare it in every document, whether or not it retained an entry; from v0.10.0 an absent stats.reservoir beside a declared reservoir_size is an EMPTY reservoir, and a diff reads the declaration as \"this input keeps a reservoir\" (SPEC \u00a713.7). Declaring it is also what makes the block's envelope contribution computable (SPEC \u00a711.1) and its bound checkable (SPEC \u00a78 clause 4). Added in v0.9.0; MUST in every document of a reservoir-keeping producer since v0.10.0."
                 },
                 "param_histograms_size": {
                     "type": "integer",
                     "minimum": 1,
-                    "description": "The most histograms a top_k entry carries (SPEC §3.5): the producer tracks the wildcard slots whose param_index is below this value. Optional; declaring it is what makes stats.top_k[].param_histograms priceable (SPEC §11.1) and its bound checkable (SPEC §8 clause 4). Added in v0.10.0."
+                    "description": "The most histograms a top_k entry carries (SPEC §3.5): the producer tracks the wildcard slots whose param_index is below this value. A producer that builds param_histograms MUST declare it in every document, whether or not an entry carries a histogram, and a diff reads the declaration as \"this input tracks histograms\" (SPEC §3.5.2). Declaring it is what makes stats.top_k[].param_histograms priceable (SPEC §11.1) and its bound checkable (SPEC §8 clause 4). Added in v0.10.0."
                 },
                 "value_counts_size": {
                     "type": "integer",
                     "minimum": 1,
-                    "description": "The most keys a param_histograms[].value_counts map holds (SPEC §3.5). Optional; declaring it is what makes the map priceable (SPEC §11.1) and its bound checkable (SPEC §8 clause 4). Added in v0.10.0."
+                    "description": "The most keys a param_histograms[].value_counts map holds (SPEC §3.5). A producer that builds param_histograms MUST declare it in every document, beside param_histograms_size. Declaring it is what makes the map priceable (SPEC §11.1) and its bound checkable (SPEC §8 clause 4). Added in v0.10.0."
                 },
                 "tail_count": {
                     "type": "integer",

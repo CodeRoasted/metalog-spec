@@ -443,6 +443,202 @@
             }
         },
         {
+            "path": "valid/one_sided_behavior_incomparable.diff.json",
+            "kind": "diff",
+            "control": "incomparable-signal-is-not-a-witness",
+            "why": "the same bytes as valid/cross_order_ngram_incomparable.diff.json, with `branching_delta` removed and `incomparable_signals` stating BOTH `ngram_delta` and `branching_delta` as `absent_in_one_input`, `absent_in` `previous`, `block` `behavior`: the diff of a pair where only `current` carries `behavior` (SPEC §13.1). A descriptor beside `unchanged`, so CONFORMANT. Before v0.10.0 this pair read exactly like a comparison that found the sequence structure unmoved.",
+            "expect": {
+                "exit": 0,
+                "documents": 1,
+                "findings": [],
+                "undescribed": []
+            }
+        },
+        {
+            "path": "valid/cross_order_branching_incomparable.diff.json",
+            "kind": "diff",
+            "control": "incomparable-signal-is-not-a-witness",
+            "why": "the same bytes as valid/cross_order_ngram_incomparable.diff.json, with `branching_delta` removed and stated beside `ngram_delta` under `ngram_size_differs`, both orders: §4.2 makes the transition graph a function of `ngram_size`, so rows across two orders compare two different quantities (SPEC §13.1). CONFORMANT beside `unchanged`.",
+            "expect": {
+                "exit": 0,
+                "documents": 1,
+                "findings": [],
+                "undescribed": []
+            }
+        },
+        {
+            "path": "valid/one_sided_branching_incomparable.diff.json",
+            "kind": "diff",
+            "control": "incomparable-signal-is-not-a-witness",
+            "why": "the same bytes as valid/cross_order_ngram_incomparable.diff.json, with a vacuous `ngram_delta` (both inputs carry `behavior` at one order) and `branching_delta` stated `absent_in_one_input`, `absent_in` `current`, `block` `behavior.branching`: only `previous` carries a non-empty `branching` (SPEC §13.1). The block value the schema admits for this key alone besides `behavior`.",
+            "expect": {
+                "exit": 0,
+                "documents": 1,
+                "findings": [],
+                "undescribed": []
+            }
+        },
+        {
+            "path": "valid/one_sided_cube_incomparable.diff.json",
+            "kind": "diff",
+            "control": "incomparable-signal-is-not-a-witness",
+            "why": "the same bytes as valid/cross_order_ngram_incomparable.diff.json, with a vacuous `ngram_delta`, `cube_diff` removed and stated `absent_in_one_input`, `absent_in` `previous`, `block` `cube` (SPEC §13.6): a one-sided cube is not an emerging border of everything on the present side.",
+            "expect": {
+                "exit": 0,
+                "documents": 1,
+                "findings": [],
+                "undescribed": []
+            }
+        },
+        {
+            "path": "valid/cube_axes_differ_incomparable.diff.json",
+            "kind": "diff",
+            "control": "incomparable-signal-is-not-a-witness",
+            "why": "the same bytes as valid/cross_order_ngram_incomparable.diff.json, with a vacuous `ngram_delta`, `cube_diff` removed and stated `cube_axes_differ` with both inputs' axis descriptors WITHOUT collapse stamps, one axis renamed (`level` to `severity`): the schemas differ, so no surjection maps one cube into the other (SPEC §13.6). Its twin invalid/cube_axes_differ_with_stamp.diff.json carries a `floor_depth` in the evidence and is refused.",
+            "expect": {
+                "exit": 0,
+                "documents": 1,
+                "findings": [],
+                "undescribed": []
+            }
+        },
+        {
+            "path": "valid/one_sided_reservoir_incomparable.diff.json",
+            "kind": "diff",
+            "control": "incomparable-signal-is-not-a-witness",
+            "why": "the same bytes as valid/cross_order_ngram_incomparable.diff.json, with a vacuous `ngram_delta` and `reservoir_delta` stated `absent_in_one_input`, `absent_in` `current`, `block` `stats.reservoir`: only `previous` keeps a reservoir (SPEC §13.7), and membership read against a side that keeps none would report configuration as births and deaths. `reservoir_delta` is absent, as §13.7 also requires of an all-empty block.",
+            "expect": {
+                "exit": 0,
+                "documents": 1,
+                "findings": [],
+                "undescribed": []
+            }
+        },
+        {
+            "path": "valid/one_sided_histograms_incomparable.diff.json",
+            "kind": "diff",
+            "control": "incomparable-signal-is-not-a-witness",
+            "why": "the same bytes as valid/cross_order_ngram_incomparable.diff.json, with a vacuous `ngram_delta`, `field_histogram_deltas` removed and stated `absent_in_one_input`, `absent_in` `previous`, `block` `stats.top_k[].param_histograms`: only `current` declares `stats.param_histograms_size` (SPEC §3.5.2).",
+            "expect": {
+                "exit": 0,
+                "documents": 1,
+                "findings": [],
+                "undescribed": []
+            }
+        },
+        {
+            "path": "valid/histogram_caps_differ_incomparable.diff.json",
+            "kind": "diff",
+            "control": "incomparable-signal-is-not-a-witness",
+            "why": "the same bytes as valid/cross_order_ngram_incomparable.diff.json, with a vacuous `ngram_delta`, `field_histogram_deltas` removed and stated `histogram_caps_differ` with the four declared caps (4 vs 8 histograms per entry, 64 values on both sides): two truncations at different sizes are not two distributions, and neither side may be reduced to the other (SPEC §3.5.2).",
+            "expect": {
+                "exit": 0,
+                "documents": 1,
+                "findings": [],
+                "undescribed": []
+            }
+        },
+        {
+            "path": "invalid/branching_delta_beside_marker.diff.json",
+            "kind": "diff",
+            "why": "the twin of valid/cross_order_branching_incomparable.diff.json with the omitted property carried anyway: an empty `branching_delta` beside `incomparable_signals.branching_delta`. SPEC §13.2.3 requires every key of the member to be absent from the document; the schema states it per key in the root `allOf`, so this is a clause-1 finding at `<root>` on the `not` keyword, and the witness rule is withheld.",
+            "expect": {
+                "exit": 1,
+                "witness_unjudged": 1,
+                "documents": 1,
+                "findings": [
+                    [
+                        "<root>",
+                        "not",
+                        [],
+                        1,
+                        1
+                    ]
+                ],
+                "undescribed": []
+            }
+        },
+        {
+            "path": "invalid/cube_diff_beside_marker.diff.json",
+            "kind": "diff",
+            "why": "the twin of valid/one_sided_cube_incomparable.diff.json with a `cube_diff` carried beside `incomparable_signals.cube_diff` — a border computed against a cube one input does not have. Clause-1 finding at `<root>` on `not`, from the root `allOf` entry for `cube_diff`.",
+            "expect": {
+                "exit": 1,
+                "witness_unjudged": 1,
+                "documents": 1,
+                "findings": [
+                    [
+                        "<root>",
+                        "not",
+                        [],
+                        1,
+                        1
+                    ]
+                ],
+                "undescribed": []
+            }
+        },
+        {
+            "path": "invalid/reservoir_delta_beside_marker.diff.json",
+            "kind": "diff",
+            "why": "the twin of valid/one_sided_reservoir_incomparable.diff.json with a `reservoir_delta` carried beside `incomparable_signals.reservoir_delta`: one `new_salient` entry, exactly the false birth a side keeping no reservoir manufactures. Clause-1 finding at `<root>` on `not`, so the witness rule is withheld rather than reading the entry as a change.",
+            "expect": {
+                "exit": 1,
+                "witness_unjudged": 1,
+                "documents": 1,
+                "findings": [
+                    [
+                        "<root>",
+                        "not",
+                        [],
+                        1,
+                        1
+                    ]
+                ],
+                "undescribed": []
+            }
+        },
+        {
+            "path": "invalid/field_histogram_deltas_beside_marker.diff.json",
+            "kind": "diff",
+            "why": "the twin of valid/histogram_caps_differ_incomparable.diff.json with an empty `field_histogram_deltas` carried beside `incomparable_signals.field_histogram_deltas`. Clause-1 finding at `<root>` on `not`, from the root `allOf` entry for `field_histogram_deltas`.",
+            "expect": {
+                "exit": 1,
+                "witness_unjudged": 1,
+                "documents": 1,
+                "findings": [
+                    [
+                        "<root>",
+                        "not",
+                        [],
+                        1,
+                        1
+                    ]
+                ],
+                "undescribed": []
+            }
+        },
+        {
+            "path": "invalid/cube_axes_differ_with_stamp.diff.json",
+            "kind": "diff",
+            "why": "the twin of valid/cube_axes_differ_incomparable.diff.json with a `floor_depth` on one axis of `previous_axes`. SPEC §13.6 states the evidence WITHOUT collapse stamps, because a stamp difference is comparable and the evidence must not point a reader at it; `$defs/cube_axis_schema` forbids the member, so neither branch of the key's `oneOf` admits the statement.",
+            "expect": {
+                "exit": 1,
+                "witness_unjudged": 1,
+                "documents": 1,
+                "findings": [
+                    [
+                        "incomparable_signals.cube_diff",
+                        "oneOf",
+                        [],
+                        1,
+                        1
+                    ]
+                ],
+                "undescribed": []
+            }
+        },
+        {
             "path": "invalid/unchanged_with_witness.diff.json",
             "kind": "diff",
             "control": "witness-rule-unchanged-arm",

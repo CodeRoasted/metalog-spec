@@ -45,7 +45,11 @@ producer emitting a param for a wildcard inside a token, or none for a whole-tok
 now violates, and two rules on `behavior.ngram_size` (§2.4, §12.1) that a producer keeping one
 `retention_profile` across two orders, or a composer merging two orders' blocks, now violates,
 and a rule on `ngram_delta` across two orders (§13.1, §13.2.3) that a diff producer computing the
-delta across them, or omitting it without saying so, now violates.
+delta across them, or omitting it without saying so, now violates, and a definition of the
+transition graph (§4.2), rules on every signal property one input cannot supply (§3.5.2, §13.1,
+§13.6, §13.7) and the reservoir and histogram caps declared in every document that keeps the block
+(§3.5, §3.7.2), which a producer building its graph otherwise, computing or silently dropping such a
+property, or declaring a cap only beside an emitted block, now violates.
 It also adds optional members
 (`withheld_signals`, §13.2.2, `incomparable_signals`, §13.2.3, and `max_text_bytes` with the two
 histogram caps, §2.6 and §3.5), each additive on its own. MINOR bump: MAJOR stays `0`, so
@@ -143,6 +147,36 @@ the order-dependent `behavior.ngram_size`, is the first taken: see the §2.4 / �
   under [`GOVERNANCE.md`](GOVERNANCE.md) §2's 0.x rule. No existing document's validity
   changes: the member is new and optional. Decision and alternatives:
   [ADR 0007](adr/0007-a-comparison-not-performed-is-stated.md).
+
+- **§3.5.2, §4.2, §13.1, §13.6, §13.7 — a `MetaLogDiff` states every comparison its PAIR made
+  impossible.** Four cases had §13.2.3's shape and still read as a comparison that found
+  nothing: only one input carries `behavior` (`ngram_delta` and `branching_delta` silently
+  absent), only one carries `cube`, the two cubes' axis schemas differ, and across two orders
+  `branching_delta` rows were emitted over two different graphs. Two more were worse: only one
+  input keeping a reservoir made `reservoir_delta` report every salient entry of the other as
+  born or dead, and one input tracking field histograms, or two tracking at different caps,
+  made `field_histogram_deltas` compare nothing or compare two truncations. Now: **§4.2**
+  defines the transition graph as the first two ids of every counted sequence, before the
+  `top_ngrams_size` cut, weighted by count — so the graph and every `branching` value are
+  functions of `ngram_size`, and a producer building it otherwise no longer conforms; **§13.1**
+  omits and states `branching_delta` across two orders (`ngram_size_differs`), and `ngram_delta`
+  and `branching_delta` when exactly one input carries `behavior`, or `branching_delta` when
+  exactly one carries a non-empty `branching` (`absent_in_one_input`), absence read before order;
+  **§13.6** emits `cube_diff` when the two axis SCHEMAS are equal — collapse stamps may differ,
+  the diff is computed at the minimal common collapse that `cube_diff.axes` declares — and states
+  a one-sided cube or a schema difference (`cube_axes_differ`); **§13.7** states a pair where
+  exactly one input keeps a reservoir; **§3.5.2** states a pair where exactly one tracks
+  histograms, or both at different declared caps (`histogram_caps_differ`), and forbids reducing
+  either side to the other's caps; **§3.7.2** and **§3.5** make the reservoir cap and the two
+  histogram caps **MUST** in every document of a producer keeping the block (was SHOULD, beside an
+  emitted block), so absence is decidable on the wire; an absent `stats.reservoir` beside a
+  declared `stats.reservoir_size` is an empty reservoir. When neither input carries a block,
+  nothing is stated: the pair holds no operand. §2.4's cube clause reads "axis schemas". A
+  pre-0.10.0 document that omitted the reservoir cap beside an empty reservoir reads as keeping
+  none, so its pair is stated incomparable — a true comparison withheld, never a false one made.
+  **Breaking by the letter** and editor-merged under [`GOVERNANCE.md`](GOVERNANCE.md) §2's 0.x
+  rule. No existing document's validity changes. Decision and alternatives:
+  [ADR 0010](adr/0010-every-comparison-a-pair-made-impossible-is-stated.md).
 
 - **A window with no event time has no envelope (§2.2).** `window.start`, `window.end` and
   `window.duration_seconds` are present together, or absent together when the producer
@@ -408,6 +442,20 @@ the order-dependent `behavior.ngram_size`, is the first taken: see the §2.4 / �
   document that carries a named property or names it in `withheld_signals`. The
   conformance tool gains three fixtures and the `incomparable-signal-is-not-a-witness`
   control. A new key or reason is an additive change.
+
+- **§13.2.3 — four keys and three reasons join `incomparable_signals`' vocabulary.** Keys
+  `branching_delta`, `cube_diff`, `reservoir_delta` and `field_histogram_deltas`; reasons
+  `absent_in_one_input` (with `absent_in` — `previous` or `current` — and `block`, closed per
+  key), `cube_axes_differ` (with `previous_axes` and `current_axes`, axis descriptors whose
+  collapse stamps the schema forbids, `$defs/cube_axis_schema`) and `histogram_caps_differ`
+  (with `previous_param_histograms_size`, `current_param_histograms_size`,
+  `previous_value_counts_size` and `current_value_counts_size`). `ngram_delta` now admits
+  `absent_in_one_input` beside `ngram_size_differs`. The root `dependentSchemas` written over the
+  member's presence becomes one `allOf` entry per key: if the key is present, its property is
+  absent and not named in `withheld_signals`. `cube_diff.axes` is described as the common
+  collapse (§13.6). The conformance tool gains eight valid fixtures (one per key and reason, each
+  under the `incomparable-signal-is-not-a-witness` control) and five invalid ones (each new key
+  carried beside its own statement, and a collapse stamp inside `cube_axes_differ`'s evidence).
 
 ### Clarified
 

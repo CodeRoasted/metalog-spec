@@ -267,7 +267,7 @@ The `cube` block (§16) is part of these contracts: its **axis set**, each axis'
 **chain** levels, and the frozen **`floor_depth`** are fixed by the
 `canonicalization_version` (WHERE grounding) and `retention_profile` (axis/floor
 configuration). Two cubes are diffable into a `cube_diff` (§13.6) **only** when both
-identifiers match **and** their `axes` are equal.
+identifiers match **and** their axis schemas are equal (§13.6).
 
 ### 2.5 `run_outcome` — terminal verdict of the run the window covers (optional)
 
@@ -585,12 +585,14 @@ in token order, and none for a wildcard inside a token, which is a normalization
 - A producer **MUST NOT** emit `param_histograms` for entries not in `top_k`.
 - The `value_counts` map **MUST** be bounded (producers **SHOULD** cap at a
   configurable limit, default 256, and count overflows in `total`).
-- A producer that emits `param_histograms` **SHOULD** declare the caps it
-  applied: `stats.param_histograms_size` (an integer ≥ 1), the most histograms a
+- A producer that builds `param_histograms` **MUST** declare the caps it
+  applied in **every** document, whether or not a `top_k` entry carries a
+  histogram: `stats.param_histograms_size` (an integer ≥ 1), the most histograms a
   `top_k` entry carries, and `stats.value_counts_size` (an integer ≥ 1), the most
-  keys a `value_counts` map holds. A producer that tracks only some wildcard slots
-  **MUST** track those whose `param_index` is below `param_histograms_size`. *(New
-  in v0.10.0.)*
+  keys a `value_counts` map holds. The declaration is how a `MetaLogDiff` tells an
+  input that tracks histograms from one that does not (§3.5.2). A producer that
+  tracks only some wildcard slots **MUST** track those whose `param_index` is below
+  `param_histograms_size`. *(New in v0.10.0.)*
 - Each `value_counts` key is observed text, capped where the document declares
   `max_text_bytes` (§2.6).
 - A consumer **MUST** treat an absent `param_histograms` array as equivalent to
@@ -667,6 +669,22 @@ cardinality delta:
   `current_cardinality / previous_cardinality > N` (e.g. N = 10) and
   `previous_cardinality < threshold` (baseline was low-cardinality).
 - `field_histogram_deltas` **MUST** be sorted by `js_divergence` descending.
+
+**One-sided and unequal caps (new in v0.10.0).** An input tracks histograms when it
+declares `stats.param_histograms_size`. When exactly one input tracks them, a producer
+**MUST** omit `field_histogram_deltas` and state it with the reason
+`absent_in_one_input` and `block` = `"stats.top_k[].param_histograms"` (§13.2.3). When
+both do and their declared `param_histograms_size` or `value_counts_size` differ, it
+**MUST** omit the block and state it with the reason `histogram_caps_differ` and the
+four declared values, and **MUST NOT** reduce either side to the other's caps: a slot
+at or above the smaller `param_histograms_size` exists on one side only, and a
+divergence over two value maps truncated at different sizes compares two truncations,
+not two distributions. At equal caps a row exists for a slot both sides hold; a slot
+one side lacks belongs to a template the other side's `top_k` lacks, which the
+template-level signals report. This applies to a producer that withholds the block
+too (§13.2.2): an incomparable block is stated, never left out of `withheld_signals`
+silently. The precondition is block-grained: the rest of the diff is computed as
+usual.
 
 **Composition (compose-visible).** `param_histograms` are **carried** through
 `compose()` — they are not lossy at composed scales. For each
@@ -822,13 +840,17 @@ never promotes a template). Admission is **salience-ranked**, subject to a
 **per-class diversity cap** (the reservoir covers *distinct* salient kinds, not
 many variants of one), and **bounded** by the configured reservoir size.
 
-A producer that emits `reservoir` **SHOULD** report the cap it applied
-in **`stats.reservoir_size`** (uint, optional, added in v0.9.0). The
-`retention_profile` identifier gates *comparability*; it is opaque, so
-it cannot tell a consumer how many entries the block can reach.
+A producer that keeps a reservoir **MUST** declare the cap it applies in
+**`stats.reservoir_size`** (uint, added in v0.9.0) in **every** document,
+whether or not it retained an entry. In a document declaring 0.10.0 or
+later, an absent `stats.reservoir` beside a declared `stats.reservoir_size`
+is an **empty** reservoir, and a `MetaLogDiff` reads the declaration as
+"this input keeps a reservoir" (§13.7). The `retention_profile` identifier
+gates *comparability*; it is opaque, so it cannot tell a consumer how many
+entries the block can reach, nor whether the block is kept at all.
 `reservoir_size` is what makes the block's contribution to the
 envelope computable (§11.1) and its bound checkable (§8 clause 4).
-Absent, the consumer knows only that some cap was applied.
+*(SHOULD, and only beside an emitted block, before v0.10.0.)*
 
 The exact weights, reservoir size, and diversity caps are the producer's
 **`retention_profile`** (§9), not fixed by this spec. Their **mechanism** is
@@ -1004,6 +1026,14 @@ For each node:
   outgoing distribution: `H = -Σ p_i log2(p_i)` where
   `p_i = count_i / total_outgoing`. Higher entropy = harder to
   predict next template = more branchy.
+
+The transition graph's edges are the ordered pairs formed by the first
+two template ids of every sequence the producer counted (§4), before the
+`top_ngrams_size` cut, each weighted by that sequence's `count`. At
+`ngram_size` 2 it is the bigram graph; at a larger order a pair is counted
+only when a further record followed it. The graph, and `graph_edge_count`,
+`dominant_path` and every `branching` value read from it, are therefore
+functions of `ngram_size`. *(New in v0.10.0.)*
 
 Producers **MUST** compute `branching` over the same observation
 window as `top_ngrams` (one is not allowed to span more events than
@@ -1752,6 +1782,10 @@ entropy (§4.2 does not require an entry for every node, and lets a producer cap
 A consumer **MUST NOT** read a missing row, or a template absent from one side's
 `branching`, as an entropy of zero. The rule involves both input documents, which no schema
 keyword can see, so it is a producer obligation stated here and not a schema constraint.
+When both documents carry `behavior` at different `ngram_size`, a producer **MUST** omit
+`branching_delta` and **MUST** state the omission in `incomparable_signals.branching_delta`
+with the reason `ngram_size_differs` and both orders: the two graphs are different objects
+(§4.2).
 
 **`ngram_delta` across two orders.** When both compared documents carry `behavior` and their
 `behavior.ngram_size` values **differ**, a producer **MUST** omit `ngram_delta` and **MUST**
@@ -1762,8 +1796,19 @@ every n-gram of one side as vanished and every n-gram of the other as new, a tur
 the configuration rather than by the workload. Nor may the producer reduce one order to the
 other — see §13.2.3 for why no reduction is exact. The rule binds whether or not the inputs carry
 `retention_profile`: when both do, their values differ by §2.4's bump MUST and the gate refuses
-the pair first, so this is what a pair the gate does not reach receives. When either document carries no `behavior`, this rule does not
-apply.
+the pair first, so this is what a pair the gate does not reach receives. When either document carries no `behavior`, the paragraph below applies
+instead.
+
+**One input carries a block the other does not.** When exactly one compared document
+carries `behavior`, a producer **MUST** omit `ngram_delta` and `branching_delta` and
+**MUST** state each in `incomparable_signals` with the reason `absent_in_one_input`,
+`absent_in` naming the input that lacks it and `block` = `"behavior"`. When both carry
+`behavior` and exactly one carries a non-empty `branching`, the same holds for
+`branching_delta` with `block` = `"behavior.branching"`. A key carries one reason:
+`absent_in_one_input` when it applies, else `ngram_size_differs`. When neither document
+carries the block, these rules do not apply: the pair holds no operand, and no comparison
+was made impossible. The same rule reaches `cube_diff` (§13.6), `reservoir_delta` (§13.7)
+and `field_histogram_deltas` (§3.5.2).
 
 ### 13.1.1 `diff_version` — which version this is
 
@@ -2093,14 +2138,41 @@ declares, with the evidence for it:
   [`schema/metalog_diff.v0.schema.json`](schema/metalog_diff.v0.schema.json); a
   producer **MUST NOT** use this member for a property or a reason the schema does
   not declare. Adding one is an additive change under
-  [`GOVERNANCE.md`](GOVERNANCE.md) §2. At this version the vocabulary holds one
-  entry.
+  [`GOVERNANCE.md`](GOVERNANCE.md) §2. At this version the vocabulary holds five
+  keys (`ngram_delta`, `branching_delta`, `cube_diff`, `reservoir_delta`,
+  `field_histogram_deltas`) and four reasons (`ngram_size_differs`,
+  `absent_in_one_input`, `cube_axes_differ`, `histogram_caps_differ`).
 
-**`ngram_delta`, reason `ngram_size_differs`.** Emitted exactly when both compared
-documents carry `behavior` and their `behavior.ngram_size` values differ (§13.1).
+**Reason `ngram_size_differs`** — keys `ngram_delta` and `branching_delta`. Emitted
+for `ngram_delta` exactly when both compared documents carry `behavior` and their
+`behavior.ngram_size` values differ (§13.1), and for `branching_delta` when, in
+addition, both carry a non-empty `branching` (§13.1, §4.2).
 `previous_ngram_size` and `current_ngram_size` **MUST** equal `previous`'s and
 `current`'s `behavior.ngram_size`, and so differ from each other; the schema types
 them, and the inequality, which relates two members, is the producer's obligation.
+
+**Reason `absent_in_one_input`** — every key. Emitted when exactly one compared
+document carries the block the property reads: `behavior` for `ngram_delta` and
+`branching_delta`, `behavior.branching` for `branching_delta` when both carry
+`behavior` (§13.1), `cube` for `cube_diff` (§13.6), a kept reservoir for
+`reservoir_delta` (§13.7), tracked histograms for `field_histogram_deltas` (§3.5.2).
+`absent_in` **MUST** name the input that lacks the block and `block` **MUST** name
+the block; the schema closes the `block` values per key, and which input lacks it is
+the producer's obligation. Never emitted when neither input carries the block.
+
+**Reason `cube_axes_differ`** — key `cube_diff`. Emitted when both compared documents
+carry a `cube` and their axis schemas differ (§13.6). `previous_axes` and
+`current_axes` **MUST** equal the inputs' `cube.axes` with the collapse stamps
+(`floor_depth`, `band_floor`) removed, and so differ from each other; the schema
+forbids the stamps in them, and the two relations to the inputs are the producer's
+obligation.
+
+**Reason `histogram_caps_differ`** — key `field_histogram_deltas`. Emitted when both
+compared documents track histograms and their declared `param_histograms_size` or
+`value_counts_size` differ (§3.5.2). The four members **MUST** equal the inputs'
+declared `stats.param_histograms_size` and `stats.value_counts_size`, with at least
+one pair unequal; the schema types them, and the relations are the producer's
+obligation.
 
 **Why no reduction from one order to the other.** A producer **MUST NOT** derive an
 `ngram_delta` by reducing either side to the other's order, because no such reduction
@@ -2128,9 +2200,9 @@ computed as usual — the same block-grained precondition §12.1 applies to `beh
 under composition.
 
 **Also stated rather than left implicit: the schema reaches only part of this.** It
-closes the vocabulary, requires the reason and both orders, and refuses a document
-that carries `ngram_delta` beside `incomparable_signals.ngram_delta` or names
-`ngram_delta` in `withheld_signals` beside it. That the two orders equal the inputs'
+closes the vocabulary, requires each reason's evidence, and refuses a document that
+carries a property beside its own key in `incomparable_signals` or names that property
+in `withheld_signals` beside it. That the two orders equal the inputs'
 and differ from each other relates the diff to its inputs, which no keyword can see,
 and binds the producer.
 
@@ -2203,7 +2275,7 @@ disappearance). Each border cell carries `coord` + `previous_count` +
 
 ```jsonc
 "cube_diff": {
-  "axes": [ /* MUST equal both inputs' cube axes */ ],
+  "axes": [ /* the inputs' common axis schema, at their minimal common collapse */ ],
   "emerging": {
     "lower": [ { "coord": { "level": "ERROR", "where": ["db", "pool"] }, "previous_count": 0, "current_count": 53 } ],
     "upper": [ { "coord": { "where": ["db"] },                            "previous_count": 0, "current_count": 57 } ]
@@ -2212,8 +2284,15 @@ disappearance). Each border cell carries `coord` + `previous_count` +
 }
 ```
 
-- A `cube_diff` **MUST** be emitted only when **both** inputs carried a `cube` **and**
-  their `axes` are equal (the §2.4 comparability gate plus an equal cube schema).
+- A `cube_diff` **MUST** be emitted only when both inputs carry a `cube` whose axis
+  SCHEMAS are equal — each axis's `name`, `kind` and chain levels, and the schema
+  floor of §16.3. Their collapse stamps (§16.2) **MAY** differ: the diff is then
+  computed at the minimal common collapse (§16.10), which `cube_diff.axes` declares,
+  and is exact at that granularity. When exactly one input carries a `cube`, the
+  producer **MUST** omit `cube_diff` and state it with the reason
+  `absent_in_one_input` and `block` = `"cube"`; when both do and their axis schemas
+  differ, with the reason `cube_axes_differ` and both inputs' axis descriptors
+  without their collapse stamps (§13.2.3).
 - Emergence **MUST** be defined by the two absolute thresholds, **never** a growth
   ratio (§16.5 MUST-2); the WHERE chain **MUST** be a single-parent tree (§16.5
   MUST-1). Either violated ⇒ the border is ill-defined.
@@ -2263,6 +2342,15 @@ two blocks jointly retain, and membership in it is the fact worth reporting.
 
 The two blocks are disjoint by construction (§3.7.1: a `reservoir` entry **MUST NOT**
 also appear in `top_k`), so the union is a plain set with no precedence rule.
+
+**One input keeps a reservoir (new in v0.10.0).** An input keeps a reservoir when it
+carries `stats.reservoir` or declares `stats.reservoir_size`. When exactly one input
+keeps one, a producer **MUST** omit `reservoir_delta` and state it with the reason
+`absent_in_one_input` and `block` = `"stats.reservoir"` (§13.2.3): membership read
+against a side that retains no salient entry by construction reports configuration as
+births and deaths. Two inputs that both keep one are compared as above, an empty
+reservoir included: a salient single beside a kept-and-empty reservoir is a true birth
+relative to what the other window retained by the same mechanism.
 
 #### 13.7.1 Entry shape
 
