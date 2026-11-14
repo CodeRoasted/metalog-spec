@@ -2285,14 +2285,17 @@ disappearance). Each border cell carries `coord` + `previous_count` +
 ```
 
 - A `cube_diff` **MUST** be emitted only when both inputs carry a `cube` whose axis
-  SCHEMAS are equal — each axis's `name`, `kind` and chain levels, and the schema
-  floor of §16.3. Their collapse stamps (§16.2) **MAY** differ: the diff is then
+  SCHEMAS are equal — each axis's `name`, its `kind` and, on a chain axis, its `chain`
+  levels, in order. Their collapse stamps (§16.2) **MAY** differ: the diff is then
   computed at the minimal common collapse (§16.10), which `cube_diff.axes` declares,
-  and is exact at that granularity. When exactly one input carries a `cube`, the
-  producer **MUST** omit `cube_diff` and state it with the reason
-  `absent_in_one_input` and `block` = `"cube"`; when both do and their axis schemas
-  differ, with the reason `cube_axes_differ` and both inputs' axis descriptors
-  without their collapse stamps (§13.2.3).
+  and is exact at that granularity. Two cubes whose schema floors (§16.3) differ are
+  compared the same way: no document carries a schema floor, a window's retained
+  depth is its `floor_depth` stamp, and reading both cubes at the smaller one is
+  prefix truncation (§16.3), exact whichever floor produced it. When exactly one
+  input carries a `cube`, the producer **MUST** omit `cube_diff` and state it with
+  the reason `absent_in_one_input` and `block` = `"cube"`; when both do and their
+  axis schemas differ, with the reason `cube_axes_differ` and both inputs' axis
+  descriptors without their collapse stamps (§13.2.3).
 - Emergence **MUST** be defined by the two absolute thresholds, **never** a growth
   ratio (§16.5 MUST-2); the WHERE chain **MUST** be a single-parent tree (§16.5
   MUST-1). Either violated ⇒ the border is ill-defined.

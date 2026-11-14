@@ -555,16 +555,12 @@
         },
         "cube_axis_schema": {
             "type": "object",
-            "description": "A cube axis descriptor WITHOUT its collapse stamps (SPEC §13.6, §16.2): the axis schema two cubes are compared on. floor_depth and band_floor are forbidden here, because the evidence of a schema difference must not point a reader at a stamp difference, which is comparable.",
+            "description": "A cube axis descriptor WITHOUT its collapse stamps (SPEC §13.6, §16.2): the axis schema two cubes are compared on. floor_depth and band_floor are forbidden here, because the evidence of a schema difference must not point a reader at a stamp difference, which is comparable. It cannot $ref cube_axis, whose then-clause requires floor_depth on a chain axis and so would admit no chain axis once the stamps are forbidden; each member's grammar is cube_axis's by pointer instead, so this definition cannot drift from the descriptor the two schemas mirror.",
             "required": ["name", "kind"],
             "properties": {
-                "name": { "type": "string", "minLength": 1 },
-                "kind": { "type": "string", "enum": ["categorical", "chain"] },
-                "chain": {
-                    "type": "array",
-                    "minItems": 1,
-                    "items": { "type": "string", "minLength": 1 }
-                }
+                "name": { "$ref": "#/$defs/cube_axis/properties/name" },
+                "kind": { "$ref": "#/$defs/cube_axis/properties/kind" },
+                "chain": { "$ref": "#/$defs/cube_axis/properties/chain" }
             },
             "additionalProperties": false,
             "if": { "properties": { "kind": { "const": "chain" } } },
