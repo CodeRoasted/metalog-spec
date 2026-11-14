@@ -299,13 +299,13 @@
                 }
             },
             "type": "object",
-            "description": "Emerging-border diff of two cube blocks (SPEC §13.6, §16). Present only when both inputs carried a cube and their axes are equal. Experimental, added in v0.6.0.",
+            "description": "Emerging-border diff of two cube blocks (SPEC §13.6, §16). Present only when both inputs carried a cube whose axis SCHEMAS are equal; their collapse stamps may differ, and the diff is then computed at the minimal common collapse (SPEC §16.10). Experimental, added in v0.6.0.",
             "required": ["axes"],
             "properties": {
                 "axes": {
                     "type": "array",
                     "minItems": 1,
-                    "description": "MUST equal both inputs' cube.axes.",
+                    "description": "The inputs' common axis schema at their minimal common collapse (SPEC §13.6, §16.10): per axis the coarser stamp of the two inputs, so it equals NEITHER input's cube.axes when their stamps differ.",
                     "items": { "$ref": "#/$defs/cube_axis" }
                 },
                 "emerging": {
@@ -385,18 +385,84 @@
             },
             "type": "object",
             "minProperties": 1,
-            "description": "The signal properties this document omits because its two inputs cannot be compared on them, each with its reason (SPEC §13.2.3). Keyed by the omitted property's name; the vocabulary of keys and reasons is CLOSED here, and adding one is additive under GOVERNANCE.md §2. Every key MUST be absent from the document and MUST NOT be named in withheld_signals. Omitted when nothing was incomparable. Added in v0.10.0.",
+            "description": "The signal properties this document omits because its two inputs cannot be compared on them, each with its reason (SPEC §13.2.3). Keyed by the omitted property's name; the vocabulary of keys and reasons is CLOSED here, and adding one is additive under GOVERNANCE.md §2. Every key MUST be absent from the document and MUST NOT be named in withheld_signals. Omitted when nothing was incomparable. Added in v0.10.0; the keys branching_delta, cube_diff, reservoir_delta and field_histogram_deltas and the reasons absent_in_one_input, cube_axes_differ and histogram_caps_differ joined in the same version.",
             "properties": {
                 "ngram_delta": {
-                    "type": "object",
-                    "description": "ngram_delta is omitted because both inputs carry behavior at DIFFERENT ngram_size (SPEC §13.1, §13.2.3): an order-m key and an order-n key denote different objects, and no reduction of one order to the other is exact on a truncated top_ngrams table. The two orders MUST equal the inputs' behavior.ngram_size and so differ -- a relation to the inputs no keyword can see.",
-                    "required": ["reason", "previous_ngram_size", "current_ngram_size"],
-                    "properties": {
-                        "reason": { "type": "string", "enum": ["ngram_size_differs"] },
-                        "previous_ngram_size": { "type": "integer", "minimum": 2 },
-                        "current_ngram_size": { "type": "integer", "minimum": 2 }
-                    },
-                    "additionalProperties": false
+                    "description": "ngram_delta is omitted because its inputs cannot be compared on it (SPEC §13.1, §13.2.3): exactly one input carries behavior (absent_in_one_input), or both carry it at DIFFERENT ngram_size (ngram_size_differs). A key carries one reason, absent_in_one_input when it applies.",
+                    "oneOf": [
+                        { "$ref": "#/$defs/incomparable_ngram_size_differs" },
+                        {
+                            "$ref": "#/$defs/incomparable_absent_in_one_input",
+                            "properties": { "block": { "const": "behavior" } }
+                        }
+                    ]
+                },
+                "branching_delta": {
+                    "description": "branching_delta is omitted because its inputs cannot be compared on it (SPEC §13.1, §4.2): exactly one input carries behavior (block behavior), or both do and exactly one carries a non-empty branching (block behavior.branching), or both carry branching at DIFFERENT ngram_size, whose transition graphs are different objects (ngram_size_differs). Absence is read before order. Added in v0.10.0.",
+                    "oneOf": [
+                        { "$ref": "#/$defs/incomparable_ngram_size_differs" },
+                        {
+                            "$ref": "#/$defs/incomparable_absent_in_one_input",
+                            "properties": { "block": { "enum": ["behavior", "behavior.branching"] } }
+                        }
+                    ]
+                },
+                "cube_diff": {
+                    "description": "cube_diff is omitted because its inputs cannot be compared on it (SPEC §13.6): exactly one input carries a cube (absent_in_one_input), or both do and their axis SCHEMAS differ (cube_axes_differ). Two cubes of one schema whose collapse stamps differ are comparable and never named here. Added in v0.10.0.",
+                    "oneOf": [
+                        {
+                            "type": "object",
+                            "required": ["reason", "previous_axes", "current_axes"],
+                            "properties": {
+                                "reason": { "type": "string", "enum": ["cube_axes_differ"] },
+                                "previous_axes": {
+                                    "type": "array",
+                                    "minItems": 1,
+                                    "description": "The previous input's cube.axes WITHOUT their collapse stamps: the evidence is the schema that differed. MUST differ from current_axes and equal the input's axes once stripped -- relations to the inputs no keyword can see.",
+                                    "items": { "$ref": "#/$defs/cube_axis_schema" }
+                                },
+                                "current_axes": {
+                                    "type": "array",
+                                    "minItems": 1,
+                                    "description": "The current input's cube.axes WITHOUT their collapse stamps.",
+                                    "items": { "$ref": "#/$defs/cube_axis_schema" }
+                                }
+                            },
+                            "additionalProperties": false
+                        },
+                        {
+                            "$ref": "#/$defs/incomparable_absent_in_one_input",
+                            "properties": { "block": { "const": "cube" } }
+                        }
+                    ]
+                },
+                "reservoir_delta": {
+                    "description": "reservoir_delta is omitted because exactly one input keeps a reservoir -- carries stats.reservoir or declares stats.reservoir_size (SPEC §13.7): membership read against a side that retains no salient entry by construction would report configuration as births and deaths. Added in v0.10.0.",
+                    "$ref": "#/$defs/incomparable_absent_in_one_input",
+                    "properties": { "block": { "const": "stats.reservoir" } },
+                    "additionalProperties": { "description": "Closed by the referenced $defs/incomparable_absent_in_one_input, whose additionalProperties is false; this position only narrows block." }
+                },
+                "field_histogram_deltas": {
+                    "description": "field_histogram_deltas is omitted because its inputs cannot be compared on it (SPEC §3.5.2): exactly one input tracks histograms -- declares stats.param_histograms_size (absent_in_one_input), or both do at different declared caps (histogram_caps_differ). Absence is read before the caps. Added in v0.10.0.",
+                    "oneOf": [
+                        {
+                            "type": "object",
+                            "required": ["reason", "previous_param_histograms_size", "current_param_histograms_size", "previous_value_counts_size", "current_value_counts_size"],
+                            "description": "The four declared caps, each equal to its input's stats member, at least one pair unequal -- relations to the inputs no keyword can see.",
+                            "properties": {
+                                "reason": { "type": "string", "enum": ["histogram_caps_differ"] },
+                                "previous_param_histograms_size": { "type": "integer", "minimum": 1 },
+                                "current_param_histograms_size": { "type": "integer", "minimum": 1 },
+                                "previous_value_counts_size": { "type": "integer", "minimum": 1 },
+                                "current_value_counts_size": { "type": "integer", "minimum": 1 }
+                            },
+                            "additionalProperties": false
+                        },
+                        {
+                            "$ref": "#/$defs/incomparable_absent_in_one_input",
+                            "properties": { "block": { "const": "stats.top_k[].param_histograms" } }
+                        }
+                    ]
                 }
             },
             "additionalProperties": false
@@ -414,16 +480,96 @@
             "$ref": "#/$defs/extensions"
         }
     },
-    "dependentSchemas": {
-        "incomparable_signals": {
-            "description": "A property named in incomparable_signals is absent, and is not named in withheld_signals (SPEC §13.2.3). Written over the member's presence rather than per key because ngram_delta is the one key the vocabulary admits and minProperties is 1, so presence IS that key; a second key restates this per key.",
-            "not": { "required": ["ngram_delta"] },
-            "properties": {
-                "withheld_signals": { "not": { "contains": { "const": "ngram_delta" } } }
+    "allOf": [
+        {
+            "description": "A property named in incomparable_signals is absent, and is not named in withheld_signals (SPEC §13.2.3): one entry per key of the member's vocabulary, each stating the rule for its own key."
+        },
+        {
+            "if": { "required": ["incomparable_signals"], "properties": { "incomparable_signals": { "required": ["ngram_delta"], "additionalProperties": { "description": "Open: this test only asks whether the key is present; the member's own schema closes it." } } } },
+            "then": {
+                "not": { "required": ["ngram_delta"] },
+                "properties": {
+                    "withheld_signals": { "not": { "contains": { "const": "ngram_delta" } } }
+                }
+            }
+        },
+        {
+            "if": { "required": ["incomparable_signals"], "properties": { "incomparable_signals": { "required": ["branching_delta"], "additionalProperties": { "description": "Open: this test only asks whether the key is present; the member's own schema closes it." } } } },
+            "then": {
+                "not": { "required": ["branching_delta"] },
+                "properties": {
+                    "withheld_signals": { "not": { "contains": { "const": "branching_delta" } } }
+                }
+            }
+        },
+        {
+            "if": { "required": ["incomparable_signals"], "properties": { "incomparable_signals": { "required": ["cube_diff"], "additionalProperties": { "description": "Open: this test only asks whether the key is present; the member's own schema closes it." } } } },
+            "then": {
+                "not": { "required": ["cube_diff"] },
+                "properties": {
+                    "withheld_signals": { "not": { "contains": { "const": "cube_diff" } } }
+                }
+            }
+        },
+        {
+            "if": { "required": ["incomparable_signals"], "properties": { "incomparable_signals": { "required": ["reservoir_delta"], "additionalProperties": { "description": "Open: this test only asks whether the key is present; the member's own schema closes it." } } } },
+            "then": {
+                "not": { "required": ["reservoir_delta"] },
+                "properties": {
+                    "withheld_signals": { "not": { "contains": { "const": "reservoir_delta" } } }
+                }
+            }
+        },
+        {
+            "if": { "required": ["incomparable_signals"], "properties": { "incomparable_signals": { "required": ["field_histogram_deltas"], "additionalProperties": { "description": "Open: this test only asks whether the key is present; the member's own schema closes it." } } } },
+            "then": {
+                "not": { "required": ["field_histogram_deltas"] },
+                "properties": {
+                    "withheld_signals": { "not": { "contains": { "const": "field_histogram_deltas" } } }
+                }
             }
         }
-    },
+    ],
     "$defs": {
+        "incomparable_ngram_size_differs": {
+            "type": "object",
+            "description": "Reason ngram_size_differs (SPEC §13.2.3): both inputs carry behavior and their behavior.ngram_size values differ. The two orders MUST equal the inputs' and so differ -- a relation to the inputs no keyword can see.",
+            "required": ["reason", "previous_ngram_size", "current_ngram_size"],
+            "properties": {
+                "reason": { "type": "string", "enum": ["ngram_size_differs"] },
+                "previous_ngram_size": { "type": "integer", "minimum": 2 },
+                "current_ngram_size": { "type": "integer", "minimum": 2 }
+            },
+            "additionalProperties": false
+        },
+        "incomparable_absent_in_one_input": {
+            "type": "object",
+            "description": "Reason absent_in_one_input (SPEC §13.1, §13.2.3): exactly one input carries the block the property reads; absent_in names the input that lacks it, and block names the block, constrained per key where this definition is referenced. When neither input carries it no statement is made: the pair holds no operand.",
+            "required": ["reason", "absent_in", "block"],
+            "properties": {
+                "reason": { "type": "string", "enum": ["absent_in_one_input"] },
+                "absent_in": { "type": "string", "enum": ["previous", "current"] },
+                "block": { "type": "string", "enum": ["behavior", "behavior.branching", "cube", "stats.reservoir", "stats.top_k[].param_histograms"] }
+            },
+            "additionalProperties": false
+        },
+        "cube_axis_schema": {
+            "type": "object",
+            "description": "A cube axis descriptor WITHOUT its collapse stamps (SPEC §13.6, §16.2): the axis schema two cubes are compared on. floor_depth and band_floor are forbidden here, because the evidence of a schema difference must not point a reader at a stamp difference, which is comparable.",
+            "required": ["name", "kind"],
+            "properties": {
+                "name": { "type": "string", "minLength": 1 },
+                "kind": { "type": "string", "enum": ["categorical", "chain"] },
+                "chain": {
+                    "type": "array",
+                    "minItems": 1,
+                    "items": { "type": "string", "minLength": 1 }
+                }
+            },
+            "additionalProperties": false,
+            "if": { "properties": { "kind": { "const": "chain" } } },
+            "then": { "required": ["chain"] }
+        },
         "reservoir_delta_entry": {
             "type": "object",
             "description": "One rare-salient membership change (SPEC §13.7.1). A SUBSET of the §3.7.1 reservoir entry, and every field means there what it means here. count and salience MUST be copied from the document the entry comes from, never re-derived at diff time; salience is comparable across the pair only because §2.4's gate already requires a matching retention_profile.",
@@ -461,7 +607,7 @@
                 "band_floor": {
                     "type": "integer",
                     "minimum": 1,
-                    "description": "Ordinal-axis collapse stamp (SPEC §16.2/§16.10): the applied interval-banding floor, omitted when no banding was applied. It is carried here because §13.6 requires cube_diff.axes to EQUAL both inputs' cube.axes, so a diff of two collapsed cubes carries the stamp its inputs carry. Added to metalog.v0.schema.json in v0.8.0 and to this mirror in v0.9.0."
+                    "description": "Ordinal-axis collapse stamp (SPEC §16.2/§16.10): the applied interval-banding floor, omitted when no banding was applied. It is carried here because cube_diff.axes declares the minimal common collapse the diff was computed at (SPEC §13.6), so a diff of collapsed cubes carries the coarser stamp. Added to metalog.v0.schema.json in v0.8.0 and to this mirror in v0.9.0."
                 }
             },
             "additionalProperties": false,

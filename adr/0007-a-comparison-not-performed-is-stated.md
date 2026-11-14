@@ -110,3 +110,6 @@ optional member at the `MetaLogDiff` root:
   from the diff today with no statement either. Both have the same shape as this
   decision's case, and the vocabulary can take them additively; neither is in this
   text.
+- **Decided since, in [ADR 0010](0010-every-comparison-a-pair-made-impossible-is-stated.md):**
+  both cases above, the cross-order `branching_delta` rows, and the one-sided reservoir and
+  field-histogram pairs, under the same member.
