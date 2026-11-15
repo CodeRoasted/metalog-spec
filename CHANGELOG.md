@@ -115,7 +115,12 @@ are taken**: see the composition entry under *Changed*. No item of RFC #8 stays 
   inputs carrying the key, §4's conditional over the merged lines where every input carries it —
   a count-weighted mean of the probabilities is not, and is refused. `unique_templates` and
   `tail_unique` are counted over the templates the inputs carry individually, and said to be lower
-  bounds. **§12.2:** associativity is restated as a partition — the window envelope and
+  bounds; a template's count in `C` is the sum of the counts the inputs carry for it individually,
+  and the "best-effort attribution of tail mass" that let a composer move an input's anonymous
+  `tail_count` onto a template is withdrawn. A one-sided `behavior` block is composed from its one
+  input, its counts lower bounds; a one-sided `cube` **MUST** be omitted when the other input
+  observed lines (was **MAY**), because the fully aggregated cell carries the window total.
+  **§12.2:** associativity is restated as a partition — the window envelope and
   `lines_observed` agree in every bracketing; every quantity computed over a retained set may
   differ, because a cut is irreversible across a rung — replacing a clause that required counts
   no capped producer could keep; and the identity law, *"`compose(A, ZERO)` MUST equal `A`"*,

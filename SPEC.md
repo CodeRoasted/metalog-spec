@@ -1569,8 +1569,13 @@ on a document that still validates.
   most-specific common prefix (e.g. same `fleet`, drop differing
   `service`); empty if no common prefix.
 - `C.stats.top_k` is recomputed from the union of per-template
-  counts (sum across `A.stats.top_k`, `B.stats.top_k`, and best-effort
-  attribution of tail mass), then truncated to `C.stats.top_k_size`. Its entries
+  counts, a template's count being the sum of the counts the inputs carry
+  for it **individually** (in a `stats.top_k` or `stats.reservoir` entry),
+  then truncated to `C.stats.top_k_size`. Tail mass is never attributed to a
+  template: an input's `tail_count` names no template, so a composer that
+  moved part of it onto one would be inventing a count (§12.3). *(Until
+  v0.10.0 this clause allowed a "best-effort attribution of tail mass", which
+  no two composers needed to perform alike.)* Its entries
   are ordered by `count` descending and, at equal counts, by `template_id`
   ascending; that order also decides which template takes the last slot at
   the `top_k_size` boundary.
@@ -1624,6 +1629,12 @@ on a document that still validates.
   raw scales; the rare-salient structure that must survive a rollup rides
   `stats.reservoir` (§3.7). *(Until v0.10.0 this clause told a composer to
   recompute all three from "the merged graph", which no composer has.)*
+- When exactly **one** input carries `behavior`, `C.behavior` is composed from that
+  input's block alone, by the clauses above, and its counts are lower bounds on
+  `C`'s lines: the other input counted no sequence, or computed none, and the
+  document does not say which (§13.1 states the same absence for a diff). Nothing
+  either input carries is dropped, which is what separates this case from the
+  next one.
 - `C.behavior` **MUST** be omitted entirely when both inputs carry a `behavior` block
   and their `ngram_size` values **differ**. An order-`m` key and an order-`n` key with
   `m ≠ n` denote different objects, so there is no merged n-gram population to derive:
@@ -1704,7 +1715,12 @@ on a document that still validates.
   inputs' `cube.axes` **MUST** be equal. The **compose cube** draws its WHERE
   coordinate from each input's **`source`** block (service / fleet / region — the
   cross-document organ), distinct from the intra-window cube's `component`-chain
-  (§16.7). When either input omits `cube`, `C.cube` **MAY** be omitted.
+  (§16.7). When exactly one input carries a `cube` and the other observed lines,
+  `C.cube` **MUST** be omitted: the fully aggregated cell carries the window total
+  (§16.4), and a cube re-closed from one input's counts would carry a total below
+  `C.window.lines_observed`. When the other input observed no line, `C` **MAY**
+  carry the one cube re-closed under `C`'s budget. *(Until v0.10.0 this clause
+  read "**MAY** be omitted" in both cases.)*
 - `C.templates` is the union of `A.templates` and `B.templates`
   (both keyed by `template_id`; values are byte-equal by §3.2 so
   conflicts cannot arise).
