@@ -24,10 +24,10 @@
             "path": "valid/rich.metalog.jsonl",
             "kind": "metalog",
             "control": "closure-spares-maps",
-            "why": "exercises EVERY position whose keys are DATA, the maps a closed schema must still admit (SPEC §7, \"Closure and maps\"): extensions (§7), source.tags, param_histogram.value_counts, cube coordinates keyed by axis name (§16.4) and attribution.sketch_params (§6, a REQUIRED map whose keys depend on sketch_type), beside provenance[].source (§12.4), which 0.10.0 closed over the document-level source block's members. All must validate. A closure that also closed a map would red this conformant document, and attribution.sketch_params is the costly one: `additionalProperties: false` there admits only the empty object, so every document carrying attribution would fail.",
+            "why": "exercises EVERY position whose keys are DATA, the maps a closed schema must still admit (SPEC §7, \"Closure and maps\"): extensions (§7), source.tags, param_histogram.value_counts, cube coordinates keyed by axis name (§16.4) and attribution.sketch_params (§6, a REQUIRED map whose keys depend on sketch_type), beside provenance[].source (§12.4), which 0.10.0 closed over the document-level source block's members. All must validate. A closure that also closed a map would red this conformant document, and attribution.sketch_params is the costly one: `additionalProperties: false` there admits only the empty object, so every document carrying attribution would fail. Since 0.10.0 the file carries TWO documents: §12.1 omits `stability` and the graph-derived `behavior` members on a composed document and the schema refuses them beside `provenance` (§12.4), so one document can no longer carry every member. Line 1 is raw and carries them; line 2 is composed and carries `provenance` with its closed `source`.",
             "expect": {
                 "exit": 0,
-                "documents": 1,
+                "documents": 2,
                 "findings": []
             }
         },
@@ -1055,6 +1055,42 @@
             "expect": {
                 "exit": 0,
                 "documents": 2,
+                "findings": []
+            }
+        },
+        {
+            "path": "invalid/composed_with_graph_members.metalog.jsonl",
+            "kind": "metalog",
+            "why": "a composed document (it carries `provenance`, which §12.4 makes the mark of a composition since 0.10.0) that still carries `stability` and the four `behavior` members read from the transition graph: `branching`, `branching_size`, `graph_edge_count`, `dominant_path`. §12.1 omits all of them: `stability` is meaningless across composed inputs, and no document carries the graph the other four describe, so a composer can only derive them from the retained n-grams, with a bias of known sign. Two findings, one per root `allOf` entry, so a schema that encoded only the 0.10.0 behavior rule, or only the older stability rule, reds here. Until 0.10.0 §12.1 told a composer to recompute the graph members, and this document validated.",
+            "expect": {
+                "exit": 1,
+                "documents": 1,
+                "findings": [
+                    [
+                        "<root>",
+                        "not",
+                        [],
+                        1,
+                        1
+                    ],
+                    [
+                        "behavior",
+                        "not",
+                        [],
+                        1,
+                        1
+                    ]
+                ],
+                "window_unjudged": 1
+            }
+        },
+        {
+            "path": "valid/composed_behavior.metalog.jsonl",
+            "kind": "metalog",
+            "why": "the same composed document with the graph members and `stability` removed: `behavior` keeps `ngram_size`, `top_ngrams` and `top_ngrams_size`, the members §12.1 composes. It must validate, so a conditional that refused `behavior` itself on a composed document, rather than the four graph members, reds here.",
+            "expect": {
+                "exit": 0,
+                "documents": 1,
                 "findings": []
             }
         }

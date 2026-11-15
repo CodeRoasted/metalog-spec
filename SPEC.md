@@ -891,6 +891,19 @@ and the second is not obvious.
    salience, frequency and level are unchanged, and only *which* tied template
    occupies the last slot moves.
 
+3. **Under composition (§12) the same tie-break decides SURVIVAL, not slot occupancy.**
+   `salience` is the severity axes modulated by rarity (§3.7.2), so a maximally severe,
+   less rare template and a less severe, rarer one **can** score equal under any
+   conformant weighting: such a tie is reachable by construction. At a composed rung the
+   loser is admitted nowhere and leaves as **mass only** (§3.7.3), so it cannot re-enter
+   at any wider scale. Consequence 2 is scoped to one window's last slot; this one is
+   not. A content-derived, meaning-blind key decides which of two equally salient
+   templates **exists at every wider scale of a rollup**, and the more severe one is the
+   one that can lose. A producer that needs severity to dominate such a tie **MUST**
+   encode it in `salience` itself — the tie-break cannot see it — and a consumer **MUST
+   NOT** read a template's absence from a composed `reservoir` as evidence that it was
+   less severe than one present.
+
 Consumers **MUST NOT** attribute a reservoir-membership difference to a change in
 behaviour when the two documents' template texts differ. "Content-preserving" is a
 human notion; this spec preserves **bytes**, not meaning, and offers no predicate for
@@ -913,8 +926,10 @@ tail aggregates. Under composition (§12) the reservoir is **carried**: `salienc
 is **re-derived** over the merged counts (rarity shifts on merge),
 `structural_surprise` / `novelty` are carried as the **max** across inputs, and
 entries remain **excluded from the tail**. A composed reservoir is re-derivable
-for any template that was salient in **at least one** input; it cannot recover a
-template that was pure-tail in every input (the `compose`-lossy-tail limit).
+for any template that was salient in **at least one** input **and that survives the
+composed document's admission bound** (`C.stats.reservoir_size`, §12.1); it cannot
+recover a template that was pure-tail in every input (the `compose`-lossy-tail
+limit).
 
 ### 3.8 `component` — the dominant functional source of a template (optional)
 
@@ -1517,6 +1532,30 @@ to a 1-hour MetaLog).
 
 ### 12.1 Definition
 
+**Caps of the composed document (new in v0.10.0).** Composition is a
+**production step**: `C` is a MetaLog, and every capped block of `C` **MUST** be
+admitted under a cap that `C` itself declares, exactly as a window producer
+declares one. A composer that holds a cap of its own for a block declares that
+one and admits under it: `cube.cell_budget` is the worked example, the
+composer's own static budget when it re-closes a cube (§16.10), never a function
+of the inputs'. A composer that holds no cap of its own for a block **MUST**
+take the **minimum over the inputs that declare one**, and where no input
+declares one it **MUST** omit the cap, in which case the block is unbounded and
+§8 clause 4 makes no claim about it. The minimum is what makes the declared cap
+independent of operand order (§12.2): a cap inherited from one side is exactly
+an order-dependent member. Taking it over the **declared** caps only is what
+keeps an input that declares none — one whose producer does not keep the block —
+from stripping the cap of one that does. At this version the rule decides
+`stats.top_k_size` (required on both inputs, so always the smaller of two
+values, or the composer's own), `behavior.top_ngrams_size`,
+`stats.reservoir_size`, `stats.param_histograms_size`, `stats.value_counts_size`
+(below) and `cube.cell_budget`. `behavior.branching_size` is never declared on
+`C`, because `C.behavior.branching` is omitted (below). Every cap is enforced
+**inside** the block's admission, never by cutting a finished array: the
+reservoir's admission writes the tail's exclusion set (§3.7.3), so a cut made
+afterwards would drop retained mass out of the reservoir and the tail at once,
+on a document that still validates.
+
 `compose(A, B) -> C` produces a MetaLog `C` such that:
 
 - `C.window.start = min(A.window.start, B.window.start)`
@@ -1531,7 +1570,7 @@ to a 1-hour MetaLog).
   `service`); empty if no common prefix.
 - `C.stats.top_k` is recomputed from the union of per-template
   counts (sum across `A.stats.top_k`, `B.stats.top_k`, and best-effort
-  attribution of tail mass), then truncated to `top_k_size`. Its entries
+  attribution of tail mass), then truncated to `C.stats.top_k_size`. Its entries
   are ordered by `count` descending and, at equal counts, by `template_id`
   ascending; that order also decides which template takes the last slot at
   the `top_k_size` boundary.
@@ -1545,20 +1584,46 @@ to a 1-hour MetaLog).
   NOT** take a label from an input by its position as `A` or `B` (§12.2).
 - `C.stats.tail_count` is `A.tail_count + B.tail_count` plus any
   templates that fell out of the new top-K.
-- `C.stats.tail_unique` and `C.stats.unique_templates` are
-  recomputed from the union.
+- `C.stats.tail_unique` and `C.stats.unique_templates` are recomputed over the
+  templates the inputs carry **individually** — the union of their `stats.top_k`
+  and `stats.reservoir` entries: `unique_templates` counts that union, and
+  `tail_unique` counts its members that `C` retains in neither `top_k` nor
+  `reservoir`. A template an input knows only through its tail contributes
+  **mass** (`tail_count`), never identity, so it can be neither counted nor
+  deduplicated, and both values are **lower bounds** on the quantities they
+  name: the true distinct count of `C` lies between the larger and the sum of the
+  inputs' own, and no formula over two documents pins it (§12.2).
 - `C.stats.entropy_bits` is recomputed from the merged counts.
 - `C.behavior.top_ngrams` is recomputed from the union of per-key
-  counts and re-truncated to `top_ngrams_size`, its entries ordered by
+  counts and re-truncated to `C.behavior.top_ngrams_size`, its entries ordered by
   count descending and, at equal counts, by their key sequence compared
-  element by element.
+  element by element. An entry's `probability` is `Σ count / Σ (count /
+  probability)`, both sums taken over the inputs whose `top_ngrams` carry the
+  key with a `count` above 0, and 0 when none does. Each such input's `count /
+  probability` is the number of sequences it counted under the key's prefix
+  (§4), so where every input carries the key this is §4's conditional over the
+  merged lines, up to floating-point rounding; where one does not, the key fell
+  below that input's cut, its count is not in the document, and the value is
+  the conditional over the lines of the inputs that carry it. A mean of the
+  inputs' probabilities weighted by `count` is **not** the merged conditional,
+  even when the inputs counted equally many sequences under the prefix, and a
+  composer **MUST NOT** use it.
 - `C.behavior.dropped_ngram_observations` is the SUM of both inputs'
   values (absent counts as zero); it is omitted when that sum is zero.
-- `C.behavior.graph_edge_count` is the union edge count.
-- `C.behavior.branching` is recomputed from the merged graph.
-- `C.behavior.dominant_path` is re-derived greedily from the merged
-  graph; consumers **MUST NOT** assume it equals the path of either
-  input.
+- `C.behavior.branching`, `C.behavior.branching_size`,
+  `C.behavior.graph_edge_count` and `C.behavior.dominant_path` **MUST** be
+  omitted. `compose()` is a function of two documents, and no document carries
+  the transition graph these describe (§4.2): `fanout` and `graph_edge_count` are
+  cardinalities of **sets** the inputs do not carry, `entropy_bits` needs a
+  **distribution** that is not a function of the inputs' entropies and totals,
+  and `dominant_path` can only be walked over the **retained** n-grams. Deriving
+  any of them from the retained n-grams is not noisy but **biased with a known
+  sign** — truncation keeps the heaviest successors, so fanout is under-reported
+  and entropy under-stated — and a `MetaLogDiff` between a raw and a composed
+  document would report that bias as a change. Structural signals are diffed at
+  raw scales; the rare-salient structure that must survive a rollup rides
+  `stats.reservoir` (§3.7). *(Until v0.10.0 this clause told a composer to
+  recompute all three from "the merged graph", which no composer has.)*
 - `C.behavior` **MUST** be omitted entirely when both inputs carry a `behavior` block
   and their `ngram_size` values **differ**. An order-`m` key and an order-`n` key with
   `m ≠ n` denote different objects, so there is no merged n-gram population to derive:
@@ -1601,8 +1666,9 @@ to a 1-hour MetaLog).
   and carried entries remain **excluded** from the tail (§3.7.3). The composed
   reservoir is therefore present at every pyramid scale. Its entries are
   ordered by `salience` descending and, at equal salience, by `template_id`
-  ascending — §3.7.2's admission order — and each entry's labels follow the
-  per-template label rule above.
+  ascending — §3.7.2's admission order — admitted in that order under
+  `C.stats.reservoir_size` (the caps rule above), and each entry's labels follow
+  the per-template label rule above.
 - `C.stats.top_k[*].param_histograms` are **carried** through composition. For
   each `(template_id, param_index)` pair present in **both** inputs'
   histograms, the composer **MUST** merge: union the `value_counts` keys, sum
@@ -1667,11 +1733,39 @@ to a 1-hour MetaLog).
 
 ### 12.2 Algebraic properties
 
-- **Associativity (best-effort):** `compose(compose(A, B), C)` and
-  `compose(A, compose(B, C))` **SHOULD** produce documents whose
-  required fields agree exactly. Behavior fields (`dominant_path`,
-  `branching`, `top_ngrams` ordering) **MAY** differ in tie-breaking;
-  the underlying counts **MUST** agree.
+- **Associativity is a partition, not a best effort.**
+  `compose(compose(A, B), C)` and `compose(A, compose(B, C))` agree on two
+  different classes of member, and the split is a property of what a composed
+  document carries, not a list of exceptions. A composed document carries template
+  **identities** only for the entries it retains; everything cut survives as
+  **mass** (`stats.tail_count`) and as a **cardinality** (`stats.tail_unique`),
+  never as a set, so a cut is irreversible across a rung: the next composition
+  cannot see the template, recover its count, or deduplicate it against a template
+  still visible on the other side.
+  - Members that are **exact functions of the inputs' own members** — the window
+    envelope and `window.lines_observed` — **MUST** agree in every bracketing.
+  - Members a composed document computes over its **retained set** — everything
+    downstream of a `_size` cap: `stats.unique_templates`, `stats.tail_unique`,
+    `stats.tail_count`, `stats.entropy_bits`, `stats.tail_summary`, and the
+    membership and `count` of `stats.top_k`, `stats.reservoir` and
+    `behavior.top_ngrams` — **MAY** differ with the bracketing, and a consumer
+    **MUST NOT** read a difference between two bracketings of the same inputs as a
+    change in the workload. No formula over two documents is both exact and
+    associative: the inputs' tails are opaque, so a distinct count is only
+    bounded.
+  - `stats.reservoir` is the sharpest case. Its ranking key, `salience`, is
+    re-derived over the merged counts **because** rarity moves with the merge
+    scope (§12.1), so a low-rung cut is not a cut a higher rung would have made,
+    and the content-derived tie-break decides which of two equally salient
+    templates exists at every wider scale (§3.7.2.1). What this clause withdraws is
+    the **guarantee** of bracket-independence; whether two bracketings of three
+    given documents differ depends on salience weights this specification does
+    not fix.
+
+  A producer that needs bracket-independent composed documents composes in a
+  fixed bracket order. *(Until v0.10.0 this clause said the counts underlying the
+  behaviour fields **MUST** agree in every bracketing, which no producer applying
+  §12.1's own caps could meet.)*
 - **Commutativity:** `compose(A, B)` and `compose(B, A)` **MUST** be
   the **same document**: every member present in one is present in the
   other with an equal value, and every array holds equal elements in the
@@ -1682,8 +1776,18 @@ to a 1-hour MetaLog).
   wherever the inputs disagree, §12.1 resolves the value by a rule over the
   values themselves (counts first, then a lexicographic or canonical
   order).
-- **Identity:** `compose(A, ZERO)` **MUST** equal `A`, where `ZERO`
-  is a MetaLog with `lines_observed = 0` and empty stats.
+- **No identity element.** For `ZERO`, a MetaLog with `lines_observed` 0
+  and empty `stats`, `compose(A, ZERO)` agrees with `A` on the members that are
+  exact functions of the inputs' own (the window envelope and
+  `window.lines_observed`), and on the rest it obeys the same partition as
+  associativity: it recounts what it retains, so a template `A` knows only
+  through its tail is mass, not identity, even beside an empty input. It is
+  never **equal** to `A`, and a consumer **MUST NOT** expect composing with an
+  empty window to return its input: `C` records the composition (`provenance`,
+  `coordinate`, the composer's own `producer` and `metalog_version`) and omits
+  what §12.1 never composes (`stability`, the graph-derived `behavior` members).
+  *(Until v0.10.0 this clause read "`compose(A, ZERO)` **MUST** equal `A`", which
+  no composer following §12.1 could satisfy for a raw `A`.)*
 
 ### 12.3 Lossy aggregation
 
@@ -1706,16 +1810,12 @@ rules; small differences in interleaving order can swap which template
 follows which, even when the per-source behaviour is unchanged. This
 manifests downstream as:
 
-- *Dominant-path swaps*: the greedy path reconstruction (§4.1) can flip
-  between two near-equal candidates window-to-window, producing a stream of
-  "the dominant path changed" signals that reflect interleaving rather than
-  service behaviour.
 - *N-gram churn*: bigrams `(A, B)` and `(A, B')` can both have appreciable
   mass and trade ranking each composition, leading to "new n-gram" /
   "vanished n-gram" reports against a stable underlying workload.
 
 Consumers operating on composed MetaLogs **SHOULD** treat the standalone
-confidence of n-gram-derived signals (BranchingShift, NoveltyNGram,
+confidence of n-gram-derived signals (NoveltyNGram,
 VanishedTemplate when scoped to an n-gram pair) as **inherently bounded
 below the level required for an isolated alert** and **SHOULD** surface
 those signals only as supporting evidence for incidents that other
@@ -1737,6 +1837,12 @@ When emitted, `provenance` is an array of objects:
   }
 ]
 ```
+
+`provenance` is present exactly when the document is a composition: a window
+producer **MUST NOT** emit it, and `compose()` always does (§12.1). That is what
+lets a reader, and the schema, tell a composed document from a raw one — the
+schema refuses `stability` and the graph-derived `behavior` members on a
+document carrying `provenance` (§12.1).
 
 Consumers **MAY** use `provenance` to reconstruct the breakdown of
 a composed document. Producers **MUST NOT** put sensitive
