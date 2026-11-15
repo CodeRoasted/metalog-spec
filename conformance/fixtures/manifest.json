@@ -1047,6 +1047,16 @@
                 ],
                 "window_unjudged": 1
             }
+        },
+        {
+            "path": "valid/cube_where_collapse_stamps.metalog.jsonl",
+            "kind": "metalog",
+            "why": "§16.2's collapse stamps on a chain axis declared `[\"subsystem\", \"component\"]`, two documents. Line 1 stamps `floor_depth` 1, below `len(chain)` 2, with cells pinned at depth 1 at most: since 0.10.0 the declared chain stops at the frozen schema floor (§16.3), so this cube reads as TRUNCATED, decided from the document alone. Until 0.10.0 the same bytes were also what an uncollapsed cube with a schema floor of 1 under a two-level chain wrote, and no member said which: that ambiguity is the witness this line records, and it validates under both versions because the change is to what the bytes mean, not to whether they are legal. Line 2 stamps `floor_depth` 0, the chain DROPPED by §16.10's last WHERE step, which §16.2 has always named and which the schema refused with `minimum: 1` until 0.10.0: it is a clause 1 finding against the schemas at 63784ae and validates here.",
+            "expect": {
+                "exit": 0,
+                "documents": 2,
+                "findings": []
+            }
         }
     ],
     "window_violations_encoding": "[clause, detail, documents affected]. SPEC §8 clause 2, over §2.2's `window` and nothing else. `clause` is one of `utc` / `ordering` / `duration` / `empty-extent` / `estimated-flag`; `detail` is the instrument's own sentence for that violation and is asserted VERBATIM, because the five clauses are decided by five different computations and a fixture pinning only the clause name would pass against an arm that fired the right label off the wrong arithmetic. Types are NOT among these clauses: `duration_seconds` and `lines_observed` are typed `integer, minimum 0` by the schema, so their non-negativity is clause 1's business and re-checking it here would be a second copy that can disagree with the first.",

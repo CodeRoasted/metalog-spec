@@ -593,7 +593,7 @@
                     "minItems": 1,
                     "items": { "type": "string", "minLength": 1 }
                 },
-                "floor_depth": { "type": "integer", "minimum": 1 },
+                "floor_depth": { "type": "integer", "minimum": 0 },
                 "band_floor": {
                     "type": "integer",
                     "minimum": 1,

@@ -756,7 +756,7 @@
                 "chain": {
                     "type": "array",
                     "minItems": 1,
-                    "description": "kind=chain only: the ordered roll-up levels, coarsest first, down to (and including) the floor. The WHICH-leaf below the floor is NOT cubed (SPEC §16.3).",
+                    "description": "kind=chain only: the ordered roll-up levels, coarsest first, down to and including the frozen schema floor, so len(chain) IS that floor. The WHICH-leaf below the floor is neither cubed nor declared here (SPEC §16.3).",
                     "items": {
                         "type": "string",
                         "minLength": 1
@@ -764,8 +764,8 @@
                 },
                 "floor_depth": {
                     "type": "integer",
-                    "minimum": 1,
-                    "description": "kind=chain only: the schema-frozen retained depth (<= len(chain)). A future runtime roll-up shrinks this with no schema change (SPEC §16.3)."
+                    "minimum": 0,
+                    "description": "kind=chain only: a collapse stamp, the window's EFFECTIVE retained depth: len(chain) when the chain was not collapsed, smaller after the budget collapse's WHERE step, 0 when the chain was dropped (SPEC §16.2, §16.10). The chain was truncated exactly when floor_depth < len(chain). Minimum 0 since v0.10.0."
                 },
                 "band_floor": {
                     "type": "integer",
