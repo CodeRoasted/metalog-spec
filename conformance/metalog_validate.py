@@ -1303,9 +1303,9 @@ def render(report: dict, stream) -> None:
         judged = acc["documents"] - report["window_unjudged"]
         w(f"WINDOW — none. {plural(judged, 'judged document')} of "
           f"{acc['documents']} {'carries a' if judged == 1 else 'carry'} "
-          f"`{WINDOW_MARKER}` whose start and end are RFC 3339 UTC instants in "
-          f"order, whose `duration_seconds` is `end - start` to the nearest second, "
-          f"whose start equals its end when it contains no line, "
+          f"`{WINDOW_MARKER}` that has no envelope when it contains no line, "
+          f"whose start and end, where present, are RFC 3339 UTC instants in order, "
+          f"whose `duration_seconds` is `end - start` to the nearest second, "
           f"and whose §7 estimated-lines flag, where present, is `true`.")
     if report["window_governed"] and report["window_unjudged"]:
         w(f"  NOT judged: {plural(report['window_unjudged'], 'document')} — §2.2's "
@@ -1340,12 +1340,13 @@ def render(report: dict, stream) -> None:
     w("  required field is checked only as far as the schema expresses it. The five")
     w("  relations decided here are the UTC-ness of `start` and `end` (`format:")
     w("  date-time` accepts any offset, and by default asserts nothing at all),")
-    w("  their ordering, `duration_seconds` against `end - start`, their equality")
-    w("  when `lines_observed` is 0, and the §7 estimated-lines flag. Their TYPES")
-    w("  are clause 1's business and are not re-checked here. §2.2 states UTC as a")
-    w("  field definition rather than with the word MUST; this tool reads a")
-    w("  definition as binding, so a `+02:00` offset is reported — open §2.2 before")
-    w("  treating that as a producer bug rather than a spec-prose question.")
+    w("  their ordering, `duration_seconds` against `end - start`, the absence of")
+    w("  any envelope when `lines_observed` is 0, and the §7 estimated-lines flag.")
+    w("  Their TYPES are clause 1's business and are not re-checked here. §2.2")
+    w("  states UTC as a field definition rather than with the word MUST; this tool")
+    w("  reads a definition as binding, so a `+02:00` offset is reported — open")
+    w("  §2.2 before treating that as a producer bug rather than a spec-prose")
+    w("  question.")
     w("  NOT checked: the rest of clause 2, and clause 3 (template_id computed")
     w("  per §3.2 — no pinned cross-implementation vector exists yet). A green above")
     w("  says nothing about those two. The rest of clause 2 includes part of")
@@ -1630,8 +1631,8 @@ REQUIRED_CONTROLS = {
                                     # its own start/end, which reds a conformant
                                     # composition across every gap between shards
     "window-empty-extent",          # forecloses can't-FAIL on §2.2's empty-window
-                                    # relation: `start` equal to `end` when the
-                                    # window contains no line
+                                    # relation: no envelope when the window
+                                    # contains no line
     "window-no-envelope",           # forecloses a schema or an arm that still
                                     # demands an envelope from a window none of
                                     # whose lines has an event time

@@ -42,15 +42,10 @@ without further reduction**.
 
 ## Why a spec?
 
-The observability industry stores logs at $0.50–$3 per GB ingested and
-queries them with full-text search. This works at small scale and
-collapses at large scale: companies routinely drop logs after 7 days
-because retention is unaffordable, then have no incident forensics.
-
-The industry response has been *more storage, more indexes, more
-dashboards*. The MetaLog response is *compress the meaning, then store
-that*. A MetaLog is bounded by the **structure** a window contains —
-its top templates, its salient tail, its n-grams, its cube cells, its
+A raw log stream grows with every line it carries, and so does what it
+costs to keep and to search. The MetaLog response is *compress the
+meaning, then store that*. A MetaLog is bounded by the **structure** a
+window contains — its top templates, its salient tail, its n-grams, its cube cells, its
 branching — each capped by a size the producer fixes before the window
 starts and writes **in the document itself** (§11.1): `stats.top_k_size`
 and `behavior.top_ngrams_size` in every document that carries their
