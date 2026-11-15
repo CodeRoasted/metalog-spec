@@ -57,7 +57,12 @@ order defined for integers above 2^53, a flattened coordinate that keeps every l
 omitted when an input with lines carries none, and a `param_histograms` merge cut at the
 declared cap with a key tie-break — which a composer ordering, nesting, deduplicating or
 cutting otherwise now violates, and a cube chain declared down to the frozen schema floor and no
-further (§16.3), which a producer declaring levels below its floor now violates.
+further (§16.3), which a producer declaring levels below its floor now violates, and a
+composition clause (§12.1, §12.2) under which the composed document declares its own caps,
+omits the graph-derived `behavior` members and `stability` (the schema now refuses them beside
+`provenance`), and derives an n-gram `probability` from the inputs' prefix totals, which a
+composer inheriting a cap from one input, recomputing the graph members, or averaging
+probabilities by count now violates.
 It also adds optional members
 (`withheld_signals`, §13.2.2, `incomparable_signals`, §13.2.3, and `max_text_bytes` with the two
 histogram caps, §2.6 and §3.5), each additive on its own. MINOR bump: MAJOR stays `0`, so
@@ -67,9 +72,9 @@ who expects a `v1` schema and a MAJOR check that starts refusing documents will
 find neither. RFC issue
 [#8](https://github.com/CodeRoasted/metalog-spec/issues/8), opened 2026-08-24.
 
-**From RFC #8 this entry covers P2 only.** P1 (closing the extension boundary),
-P3 (the composed document's own caps) and P4 (the `branching` compose clause) are
-proposed in the same issue and are **not** in this text yet. **The two §13.1.1 /
+**From RFC #8 this entry covers all four problems.** P2 landed first; P1 (closing the
+extension boundary), P3 (the composed document's own caps) and P4 (the `branching`
+compose clause) landed later as editor changes, each recorded below. **The two §13.1.1 /
 §13.2.2 items below are not from that RFC**; they are editor-raised defects found
 while P2 was in draft, and they land in this version because 0.10.0 is still
 unreleased under [`GOVERNANCE.md`](GOVERNANCE.md) §7 — no tag, no Release, and so
@@ -89,10 +94,41 @@ implementation is the only producer and consumer. The RFC comes back at the v1.0
 freeze, or earlier the day a second implementation is listed. P1, P3 and P4 stay
 proposed; any of them that is taken lands as an editor change recorded here. **P3's item (f)**,
 the order-dependent `behavior.ngram_size`, is the first taken: see the §2.4 / §12.1 entry under
-*Changed*. **P1 is taken**: see the closure entry under *Changed*. The rest of P3 (the caps
-rule) and P4 stay proposed.
+*Changed*. **P1 is taken**: see the closure entry under *Changed*. **The rest of P3 and P4
+are taken**: see the composition entry under *Changed*. No item of RFC #8 stays proposed.
 
 ### Changed
+
+- **§12.1, §12.2, §12.4, §3.7.2.1, §3.7.3 — the composed document declares its own caps, omits what
+  no document carries, and §12.2 states the algebra a bounded format has (RFC #8, P3 and P4).**
+  §12.1 said how every *value* composes and never which *cap* governs `C`: two inputs at
+  `reservoir_size` 4 with disjoint salient sets composed to 8 entries under no declared bound, and
+  `top_k_size`, a required member, had to be taken from one side, an order-dependent member
+  against §12.2. Now `C` declares every cap it admits under: the composer's own where it holds one
+  (`cube.cell_budget`), otherwise the **minimum over the inputs that declare one**, omitted when
+  none does, enforced inside admission. §12.1 also told a composer to recompute
+  `behavior.branching`, `graph_edge_count` and `dominant_path` from "the merged graph", which no
+  document carries; deriving them from the retained n-grams is biased with a known sign. They are
+  now **omitted**, with `branching_size`, and the schema refuses them, and `stability`, on a
+  document carrying `provenance`, which §12.4 now makes the mark of a composition. A composed
+  n-gram's `probability` was unspecified; it is now `Σ count / Σ (count / probability)` over the
+  inputs carrying the key, §4's conditional over the merged lines where every input carries it —
+  a count-weighted mean of the probabilities is not, and is refused. `unique_templates` and
+  `tail_unique` are counted over the templates the inputs carry individually, and said to be lower
+  bounds. **§12.2:** associativity is restated as a partition — the window envelope and
+  `lines_observed` agree in every bracketing; every quantity computed over a retained set may
+  differ, because a cut is irreversible across a rung — replacing a clause that required counts
+  no capped producer could keep; and the identity law, *"`compose(A, ZERO)` MUST equal `A`"*,
+  which no composer following §12.1 could satisfy (`C` gains `provenance` and the composer's own
+  `producer`, and recounts a tail as mass), is replaced by what holds. **§3.7.2.1** gains a third
+  consequence: under composition the reservoir's content-derived tie-break decides which of two
+  equally salient templates exists at every wider scale. **Fixtures:**
+  `invalid/composed_with_graph_members.metalog.jsonl` (exit 0 before this change, two findings
+  after), `valid/composed_behavior.metalog.jsonl`, and `valid/rich.metalog.jsonl` split into a raw
+  and a composed document. **Breaking** — a composer inheriting a cap, recomputing the graph
+  members, emitting `stability`, or averaging probabilities by count becomes non-conformant, and
+  a composed document carrying those members no longer validates — and editor-merged under
+  [`GOVERNANCE.md`](GOVERNANCE.md) §2's 0.x rule. RFC #8, P3 and P4.
 
 - **§2, §7, §8 — the schema is CLOSED: a member this specification does not name, outside
   `extensions`, fails validation at every depth.** §7 has made `extensions` the only carrier of

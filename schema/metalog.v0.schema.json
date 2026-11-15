@@ -12,6 +12,31 @@
         "source",
         "stats"
     ],
+    "allOf": [
+        {
+            "description": "A composed document (one carrying provenance, SPEC §12.4) omits stability: it is meaningless across composed inputs (SPEC §12.1).",
+            "if": { "required": ["provenance"] },
+            "then": { "not": { "required": ["stability"] } }
+        },
+        {
+            "description": "A composed document omits the four behavior members read from the transition graph, which no document carries for compose() to merge (SPEC §12.1). Since v0.10.0.",
+            "if": { "required": ["provenance"] },
+            "then": {
+                "properties": {
+                    "behavior": {
+                        "not": {
+                            "anyOf": [
+                                { "required": ["branching"] },
+                                { "required": ["branching_size"] },
+                                { "required": ["graph_edge_count"] },
+                                { "required": ["dominant_path"] }
+                            ]
+                        }
+                    }
+                }
+            }
+        }
+    ],
     "properties": {
         "metalog_version": {
             "type": "string",
