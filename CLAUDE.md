@@ -10,9 +10,9 @@ happens to be edited here, not a component of a product.
 
 - No build and no `malf` — the artifacts are `SPEC.md`, `schema/*.json`, and the
   prose around them. There IS one test, and it is the standard's own: `SPEC.md` §8
-  declares schema validation as conformance clause 1 and closes with "the schema is
-  the test", so `conformance/metalog_validate.py` is that sentence made runnable
-  (`--selftest` first, always — it proves the validator can still fail). Changing a
+  declares schema validation as conformance clause 1 and says "the schema is the
+  test for clause 1", so `conformance/metalog_validate.py` is that sentence made
+  runnable (`--selftest` first, always — it proves the validator can still fail). Changing a
   schema means re-running it over the example, which its CI does on every push.
 - `SPEC.md` is **normative**; `RATIONALE.md` holds the *why* behind settled
   choices; `adr/` holds decisions with their argument; `CHANGELOG.md` is the

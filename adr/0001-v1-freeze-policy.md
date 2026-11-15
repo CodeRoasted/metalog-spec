@@ -18,9 +18,9 @@ to evaluate it. A condition that only the editor can evaluate is not a policy �
 an announcement, and it asks the ecosystem to take the freeze on trust.
 
 That constrains the conditions more than it first appears. §8 already states the
-conformance model — *"there is no central conformance authority; the schema is the
-test"* — so the freeze bar has to be expressible in those same terms: artifacts
-anyone can fetch and run, not judgements anyone has to accept.
+conformance model — *"There is no central conformance authority. The schema is the
+test for clause 1."* — so the freeze bar has to be expressible in those same terms:
+artifacts anyone can fetch and run, not judgements anyone has to accept.
 
 ## Decision
 

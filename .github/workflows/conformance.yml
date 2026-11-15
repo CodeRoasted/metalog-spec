@@ -1,6 +1,6 @@
 name: Conformance
 
-# SPEC.md §8 closes with "The schema is the test." This workflow is the half of that
+# SPEC.md §8 says "The schema is the test for clause 1." This workflow is the half of that
 # test the STANDARD can run on its own: the validator's self-test, then the shipped
 # example judged by the shipped schema. It is also what makes CONTRIBUTING.md §Process
 # step 2 ("CI runs JSON Schema validation against the example file") a true sentence —

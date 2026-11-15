@@ -1,13 +1,14 @@
 # conformance — the test `SPEC.md` §8 declares
 
-`SPEC.md` §8 closes with:
+`SPEC.md` §8 says:
 
-> There is no central conformance authority. **The schema is the test.**
+> There is no central conformance authority. **The schema is the test for clause 1.**
 
-This directory is that test, made runnable. It ships **with the standard** rather
-than with any implementation, because a conformance test only an editor can run is
-not a conformance test: an external implementer must be able to check their own
-producer without asking anyone.
+This directory is that test, made runnable, with checks beside it for the clauses a
+document decides on its own (§8 clauses 2, 4 and 6, each as far as *What this does not
+reach* states). It ships **with the standard** rather than with any implementation,
+because a conformance test only an editor can run is not a conformance test: an
+external implementer must be able to check their own producer without asking anyone.
 
 ```
 pip install -r conformance/requirements.txt
@@ -306,10 +307,9 @@ Declared, because an instrument's silence is read as coverage.
   required field populated according to its definition*, and for exactly one required
   block that definition says something a schema cannot: `window` (§2.2) states four
   relations BETWEEN its members — `start` at or before `end`, `duration_seconds`
-  equal to their difference to the nearest second, both instants in UTC, and `start`
-  equal to `end` when `lines_observed` is 0 — plus a §7
-  extension flag (`org.metalog.lines_observed_estimated`) that §2.2 admits only as
-  `true` and that lives inside a container the schema deliberately leaves untyped.
+  equal to their difference to the nearest second, both instants in UTC, and no
+  envelope at all when `lines_observed` is 0 — plus a §7 extension flag
+  (`org.metalog.lines_observed_estimated`) that §2.2 admits only as `true` and that lives inside a container the schema deliberately leaves untyped.
   Those five are decided here, on schema-valid documents only, and the withheld count
   is printed. What §2.2 relates to the window's LINES rather than to its members is
   not: that `start` and `end` are the earliest and latest event time among the lines
