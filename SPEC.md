@@ -1605,15 +1605,26 @@ to a 1-hour MetaLog).
 - `C.stats.top_k[*].param_histograms` are **carried** through composition. For
   each `(template_id, param_index)` pair present in **both** inputs'
   histograms, the composer **MUST** merge: union the `value_counts` keys, sum
-  the counts, truncate to `C.stats.value_counts_size` (keeping
-  the top-N by count); set `total = A.total + B.total`; recompute
-  `entropy_bits` over the (possibly-truncated) merged `value_counts`;
-  `approximate_cardinality` **MAY** be merged via a sketch union when the
-  producer supports it (§3.5.1), otherwise set to `max(A.cardinality,
-  B.cardinality)` as a conservative lower-bound estimate. When a histogram is
-  present in only **one** input (the other had the template in its tail, or
-  omitted the histogram), the composer **MAY** carry it unchanged — in which
-  case `total` reflects only that input's contribution — or **MAY** omit it.
+  the counts, and keep at most `C.stats.value_counts_size` keys — highest count
+  first and, at equal counts, the key whose UTF-8 bytes sort first; set
+  `total = A.total + B.total`. `approximate_cardinality`, when either input
+  carries it, is the **largest** of the inputs' values and of the number of
+  distinct keys the merged map held **before** it was cut: every key is a
+  distinct observed value, so that count is a lower bound the merged slot owes
+  §3.5.1's "`approximate_cardinality` **SHOULD** be ≥ `len(value_counts)`", and
+  the larger input's estimate alone can fall below it when the two inputs saw
+  different values. It is omitted when neither input carries it. A composer
+  **MUST NOT** merge sketches it does not read from the inputs: no document
+  carries a sketch's registers, so a composer that unions sketches it holds
+  elsewhere computes `C` from something other than `A` and `B`. The slot's
+  entropy is not a member of the histogram (§3.5) and is not emitted. When a
+  histogram is present in only **one** input (the other had the template in its
+  tail, or omitted the histogram), the composer **MAY** carry it — cut to
+  `C.stats.value_counts_size` keys by the same order, `total` and
+  `approximate_cardinality` unchanged — or **MAY** omit it; carried unchanged, a
+  map kept under a larger input cap would overrun the cap `C` declares (§8
+  clause 4). A composed `top_k` entry's histograms are ordered by `param_index`
+  ascending.
   This makes per-slot value-distribution shifts visible in `MetaLogDiff`
   against composed baselines (status-code regimes, latency-bucket shifts, etc.)
   that previously vanished at composed scales.
@@ -1630,13 +1641,25 @@ to a 1-hour MetaLog).
 - `C.templates` is the union of `A.templates` and `B.templates`
   (both keyed by `template_id`; values are byte-equal by §3.2 so
   conflicts cannot arise).
-- `C.provenance` is `A.provenance ∪ B.provenance ∪ [{window: A.window, source: A.source, lines_observed: A.window.lines_observed, document_id: <id of A if known>}, {window: B.window, source: B.source, ...}]`,
-  with its entries **sorted**: by `window.start` ascending, an entry whose
-  `window` carries no bounds first; then by `window.end` ascending; then by
-  the byte order of the entries' canonical serialisations under
+- `C.provenance` is `A.provenance + B.provenance + [{window: A.window, source: A.source, lines_observed: A.window.lines_observed, document_id: <id of A if known>}, {window: B.window, source: B.source, ...}]`,
+  where `+` concatenates: every entry of each is kept, a duplicate included — `C.window.lines_observed`
+  counts an input once per time it entered (§12.3), and so does `provenance` —
+  and its entries **sorted**: by `window.start` ascending, an entry whose
+  `window` carries no bounds first; then by `window.end` ascending; then in the
+  **canonical order** of the entries. The canonical order of two JSON values is
+  the byte order of their canonical serialisations under
   [RFC 8785](https://www.rfc-editor.org/rfc/rfc8785) (JSON Canonicalization
-  Scheme). Two entries equal under that order are equal documents, so
-  their relative order cannot be observed.
+  Scheme) and, where those are byte-equal, the byte order of the same
+  serialisations with every number written as the decimal digits of its exact
+  integer value. RFC 8785 writes a number through its IEEE-754 double, so two
+  different integers above 2^53 that round to one double serialise alike under
+  it, and the second key separates them. Every number in a `provenance` entry or
+  a `coordinate` is a non-negative integer (§2.2, §12.4, §15.2), so the second
+  form is defined for both. Two entries equal under that order are byte-equal
+  under both forms, so they are equal documents and their relative order
+  cannot be observed.
+- `C.coordinate` is the flattened, ordered coordinate §15.5 defines, and is
+  omitted when §15.5 says so.
 - `C.producer` is the **composer's own** `producer` block (§2.1): the
   composer produced `C`. It is never copied from either input, and
   `C.metalog_version` is the version the composer writes `C` in.
@@ -2501,8 +2524,9 @@ Consumers discriminate by the presence of `children`.
 
 **Composed coordinate** — addresses a `compose()` output:
 
-- `children` — a non-empty array of `coordinate` objects, each addressing a raw
-  (or recursively composed) child of the composition. A composed coordinate
+- `children` — a non-empty array of **raw** `coordinate` objects, one per raw
+  window that entered the composition (§15.5); an element is never itself a
+  composed coordinate. A composed coordinate
   **MUST NOT** carry `source_ref` or `bounds`: it has no single source, and a
   coarse `[start, end]` standing in for the children would over-claim across
   gaps, shards, or sources (§15.5).
@@ -2552,11 +2576,35 @@ a replay round-trip as a standing conformance fixture.
 
 ### 15.5 Composition
 
-A composed document's coordinate **MUST** be the **set of its raw children's
-coordinates** (carried alongside `provenance`, §12.4), **never** a single coarse
+A composed document's coordinate **MUST** be the **raw coordinates of its
+inputs** (carried alongside `provenance`, §12.4), **never** a single coarse
 `[first, last]` range (which over-claims across gaps, shards, or sources). A
 composed coordinate therefore always resolves to **raw children**, never to a
-composed intermediate.
+composed intermediate. Three rules make it a function of the raw windows that
+entered `C`, independent of operand order and of association (§12.2):
+
+- **Flatten.** A composer **MUST** write every element of `children` as a raw
+  coordinate: an input whose coordinate is raw contributes it, and an input
+  whose coordinate is composed contributes its `children`, never itself. Nesting
+  would record the association order in the shape of the tree, which
+  re-association changes.
+- **Keep every leaf.** A raw coordinate appears once per time its window entered
+  the composition, a duplicate included: `children` holds what `provenance`
+  holds, and `C.window.lines_observed` counts an input once per time it entered
+  (§12.3), so a coordinate that listed a repeated window once would recover
+  fewer lines than `C` counts.
+- **Order.** `children` **MUST** be ordered by `bounds.start_tick` ascending,
+  then by `bounds.end_tick` ascending, both compared as integers, then in the
+  canonical order of §12.1. The ticks lead because they are exact integers
+  compared as integers, where RFC 8785 would write a nanosecond tick through a
+  double, and because a reader then gets the children in event-time order; the
+  canonical order separates children with equal bounds, such as two sources
+  over one interval.
+
+`C` carries a coordinate only when **every** input either carries one or observed
+no line (`window.lines_observed` 0); otherwise `C.coordinate` **MUST** be
+omitted. A coordinate's presence promises raw recovery (§15.1), and a coordinate
+missing an input that observed lines would recover fewer lines than `C` counts.
 
 ### 15.6 Determinism, security, and the bounding gate
 

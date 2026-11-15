@@ -52,7 +52,11 @@ transition graph (§4.2), rules on every signal property one input cannot supply
 property, or declaring a cap only beside an emitted block, now violates, and a closed schema (§2,
 §7, §8 clause 1) that rejects a member this specification does not name at either document root,
 in any `window` object or in `provenance[].source`, where a producer's bare vendor member used to
-validate.
+validate, and three composition rules (§12.1, §15.5) — a `provenance` and `coordinate.children`
+order defined for integers above 2^53, a flattened coordinate that keeps every leaf and is
+omitted when an input with lines carries none, and a `param_histograms` merge cut at the
+declared cap with a key tie-break — which a composer ordering, nesting, deduplicating or
+cutting otherwise now violates.
 It also adds optional members
 (`withheld_signals`, §13.2.2, `incomparable_signals`, §13.2.3, and `max_text_bytes` with the two
 histogram caps, §2.6 and §3.5), each additive on its own. MINOR bump: MAJOR stays `0`, so
@@ -537,6 +541,52 @@ rule) and P4 stay proposed.
   rather than to their producer.
 
 ### Fixed
+
+- **§12.1, §15.2, §15.5 — a composed `provenance` and `coordinate.children` have one order, defined
+  above 2^53, and a composed coordinate is flattened, keeps every leaf, and is omitted when it
+  could not recover every line.** Issues [#23](https://github.com/CodeRoasted/metalog-spec/issues/23)
+  and [#24](https://github.com/CodeRoasted/metalog-spec/issues/24). §12.1 broke `provenance` ties by
+  the RFC 8785 bytes of the entries and said that two entries equal under that order are equal
+  documents. RFC 8785 writes every number through an IEEE-754 double, so two different integers
+  above 2^53 serialise alike: two entries differing only in `lines_observed`, or in a nanosecond
+  tick of their `coordinate`, tied while being different documents. And §15.5 called a composed
+  coordinate the *set* of its raw children while §12.1 gave `C.coordinate` no clause: no order,
+  no rule for a repeated leaf, and §15.2 admitted a *"raw (or recursively composed) child"*, so
+  `compose(A, B)` and `compose(B, A)`, or two associations of three inputs, could write different
+  arrays, against §12.2's commutativity MUST. Now: §12.1 defines a **canonical order** — the RFC
+  8785 bytes, then the same serialisation with every number written as its exact integer digits —
+  and orders `provenance` by its window bounds and then by it; `+` replaces `∪`, and a duplicate
+  entry is kept, as the reference implementation keeps it. §15.5 makes the coordinate a function
+  of the raw windows that entered `C`: a composer **flattens** (every child raw, a composed input
+  contributing its children), **keeps every leaf** (a window that entered twice is listed twice,
+  because `C.window.lines_observed` counts it twice, so a deduplicated coordinate would recover
+  fewer lines than `C` counts — issue #24 proposed collapsing byte-equal children, and that is
+  refused for this reason), and **orders** `children` by `bounds.start_tick`, then
+  `bounds.end_tick`, as integers, then by the canonical order. `C` carries a coordinate only when
+  every input carries one or observed no line, for the same reason. **Schema:**
+  `coordinate.children` admits raw coordinates only. **Breaking by the letter** — a composer that
+  orders such a tie otherwise, nests, deduplicates, or writes a coordinate covering part of its
+  inputs becomes non-conformant, and a document with a nested composed child no longer validates —
+  and editor-merged under [`GOVERNANCE.md`](GOVERNANCE.md) §2's 0.x rule. The order is decidable
+  from one document and is not checked by the conformance tool: §8 names no ordering clause.
+
+- **§12.1 — the `param_histograms` merge cuts at the composed document's declared cap, breaks
+  equal counts by key, recomputes nothing §3.5 forbids, and bounds `approximate_cardinality` from
+  below.** Issue [#25](https://github.com/CodeRoasted/metalog-spec/issues/25). The clause kept *"the
+  top-N by count"* with no tie-break, so at the cut two keys with equal counts were kept in no
+  defined order, against §12.2; it told the composer to recompute `entropy_bits`, a member §3.5
+  forbids and the closed `param_histogram` object rejects; it allowed a sketch union of
+  `approximate_cardinality` *"when the producer supports it"*, which no composer can perform from
+  two documents, because no document carries a sketch's registers; and `max` of the inputs'
+  estimates alone can fall below the merged map's own key count, which §3.5.1 says it **SHOULD**
+  not. Now: keep at most `C.stats.value_counts_size` keys, highest count first, then the key whose
+  UTF-8 bytes sort first; `approximate_cardinality` is the largest of the inputs' values and the
+  merged map's key count before the cut, omitted when neither input carries one; a histogram from
+  one input is carried cut to `C`'s cap by the same order, since carried unchanged it can overrun
+  the cap `C` declares; a composed entry's histograms are ordered by `param_index`. The cap's name
+  and referent were already repaired by the declared histogram caps of this version (§3.5, issue
+  #26). **Breaking by the letter** and editor-merged under [`GOVERNANCE.md`](GOVERNANCE.md) §2's
+  0.x rule. No document's validity changes.
 
 - **§13.1.1 — `diff_version` now has a meaning.** The field an implementer branches
   on was the one this specification had never defined. Its only occurrences in the
