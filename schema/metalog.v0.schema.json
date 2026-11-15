@@ -4,9 +4,7 @@
     "title": "MetaLog v0",
     "description": "A bounded-size statistical fingerprint of a window of log behaviour. Tracks the MetaLog v0.x line; pin a concrete version via the document's metalog_version, not this schema URI (SPEC §9). See https://github.com/CodeRoasted/metalog-spec/blob/main/SPEC.md",
     "type": "object",
-    "additionalProperties": {
-        "description": "Open, and NOT by design: this root admits any member, including a bare vendor member §7 forbids, so an unknown key here validates and is reported legal-but-undescribed rather than rejected. Closing it is a breaking change under GOVERNANCE.md §2 and is not in this release."
-    },
+    "additionalProperties": false,
     "required": [
         "metalog_version",
         "producer",
@@ -74,29 +72,8 @@
             "additionalProperties": false
         },
         "source": {
-            "type": "object",
-            "properties": {
-                "service": {
-                    "type": "string"
-                },
-                "fleet": {
-                    "type": "string"
-                },
-                "host_count": {
-                    "type": "integer",
-                    "minimum": 0
-                },
-                "host": {
-                    "type": "string"
-                },
-                "tags": {
-                    "type": "object",
-                    "additionalProperties": {
-                        "type": "string"
-                    }
-                }
-            },
-            "additionalProperties": false
+            "description": "What was observed (SPEC §2.3).",
+            "$ref": "#/$defs/source"
         },
         "templates": {
             "x-metalog-reserved": {
@@ -448,15 +425,11 @@
                                 "format": "date-time"
                             }
                         },
-                        "additionalProperties": {
-                            "description": "Open, and NOT by design: this window object names `start` and `end` and admits anything else, while the document-level `window` (§2.2) is closed. Closing it is a breaking change under GOVERNANCE.md §2 and is not in this release."
-                        }
+                        "additionalProperties": false
                     },
                     "source": {
-                        "type": "object",
-                        "additionalProperties": {
-                            "description": "Open, and NOT by design: §12.4's own example carries `service` and `host` here and this position declares neither, so closing it bare would forbid the members the spec itself shows. It is a standard OBJECT, not a map — what it needs is its members declared, which is a breaking change under GOVERNANCE.md §2 and is not in this release."
-                        }
+                        "description": "The composed input's `source` block (SPEC §2.3, §12.4), the same object as the document-level one. Closed since v0.10.0.",
+                        "$ref": "#/$defs/source"
                     },
                     "lines_observed": {
                         "type": "integer",
@@ -501,6 +474,32 @@
         }
     },
     "$defs": {
+        "source": {
+            "type": "object",
+            "description": "The `source` block (SPEC §2.3). Defined once and referenced by the document root and by every provenance entry (SPEC §12.4), so the two cannot drift.",
+            "properties": {
+                "service": {
+                    "type": "string"
+                },
+                "fleet": {
+                    "type": "string"
+                },
+                "host_count": {
+                    "type": "integer",
+                    "minimum": 0
+                },
+                "host": {
+                    "type": "string"
+                },
+                "tags": {
+                    "type": "object",
+                    "additionalProperties": {
+                        "type": "string"
+                    }
+                }
+            },
+            "additionalProperties": false
+        },
         "extensions": {
             "type": "object",
             "description": "The §7 extension container: reverse-DNS keys, arbitrary payloads, closed to everything else. Defined once and referenced at every object the spec grants one, so the grammar cannot drift between placements. Closure is preserved: a misspelled STANDARD member is still rejected by its object, because it is not inside this container.",

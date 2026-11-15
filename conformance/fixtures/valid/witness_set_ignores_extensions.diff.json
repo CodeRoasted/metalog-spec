@@ -1,7 +1,6 @@
 {
     "diff_version": "0.10.0",
     "comparison_outcome": "unchanged",
-    "vendor_private_counter": 7,
     "current": {
         "window": { "start": "2026-01-01T00:01:00Z", "end": "2026-01-01T00:02:00Z" },
         "document_id": "window-2"
@@ -47,5 +46,6 @@
             { "name": "level", "kind": "categorical" }
         ]
     },
-    "withheld_signals": []
+    "withheld_signals": [],
+    "extensions": { "com.example.vendor_private_counter": 7 }
 }

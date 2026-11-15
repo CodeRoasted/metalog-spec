@@ -96,6 +96,18 @@ subset of the optional fields. Consumers **MUST** ignore unknown
 top-level fields and **MUST** ignore unknown keys inside
 `extensions`.
 
+**Validation and acceptance are different questions (new in v0.10.0).**
+The schema is **closed**: a document carrying a member this
+specification does not name, outside `extensions`, does **not**
+validate (§7, *Closure and maps*). The consumer obligation above is
+unchanged and is deliberately **not** encoded in the schema. It governs
+what a consumer does with a document of a **later** version that it can
+still process (§9's MAJOR check), which is a question about acceptance,
+not about validity. A validator holding an older schema that rejects a
+newer document's member is reporting a true fact — it does not know that
+member — and a consumer **MUST NOT** read that rejection as a reason to
+refuse a document it can otherwise process.
+
 **RESERVED features.** A feature marked **RESERVED** is registered in
 this specification but is **not** part of any conformance level. A
 producer **MUST NOT** be judged non-conformant for omitting it, and a
@@ -1165,15 +1177,34 @@ under `GOVERNANCE.md` §2 and costs one reviewer. The list is deliberately short
 and grows on evidence — a container granted everywhere in advance could never be
 withdrawn, because removing one is a *breaking* change.
 
-**What detects a bare member, and what does not.** Inside a **closed** object the
-schema rejects it, and §8 clause 1 reports it. At either **document root** it does
-not: both roots are **open**, so a bare vendor member there
-validates, and the MUST above is the only thing forbidding it. That is a property
-of the schema, not a softening of the rule. The gap is not silent either —
-`conformance/metalog_validate.py` reports such a member as
-**legal-but-undescribed**, which is a report and not a verdict. Closing a root
-would make the rule decidable there; it is a *breaking* change under
-`GOVERNANCE.md` §2, and granting a placement neither performs it nor waits on it.
+**Closure and maps (new in v0.10.0).** Every object position in both schema files
+states its admission rule in `additionalProperties`, and there are exactly three:
+
+1. **Closed** — this specification names every member: `false`. Both document roots,
+   every `window` object and `provenance[].source` included.
+2. **A map** — the object's **keys are data**, not member names: `source.tags`, a
+   cube coordinate keyed by axis name (§16.4), a `value_counts` map (§3.5). A map is
+   closed over its **values** by a value schema, never over its key set. It is not an
+   extension point: its keys are values of the block that owns it, and vendor data
+   still belongs in `extensions`.
+3. **A map whose values are not yet constrained** — a subschema that asserts nothing
+   and carries a `description` saying why. `attribution.sketch_params` (§6, RESERVED)
+   is the one such position: its parameter set depends on `sketch_type`, and no
+   value grammar is frozen for any sketch family. Closing it over its key set would
+   admit only the empty object, and §6 makes the field required.
+
+An object position whose `additionalProperties` is **absent** is a defect of the
+schema: JSON Schema defaults it to open, so an omission is indistinguishable from a
+decision. Stating every position's rule is what makes the closure checkable by
+walking the schema, with no hand-kept list of exemptions to fall out of date, and
+`conformance/metalog_validate.py --selftest` refuses to run when a position states
+none.
+
+**So a bare member is detected wherever it sits.** Inside a closed object the
+schema rejects it, and §8 clause 1 reports it — at either document root as at any
+depth. Until v0.10.0 both roots, the three `window` objects of a `provenance` entry
+and of a `MetaLogDiff`'s two inputs, and `provenance[].source` were open, so a bare
+vendor member there validated and the MUST above was the only thing forbidding it.
 
 Granting the container **does not** re-open the object. A misspelled standard
 member is still a violation, because it is not inside `extensions` — which is the
@@ -1187,7 +1218,10 @@ A producer is **conformant** with this spec at version *X.Y.Z* if:
 
 1. Every MetaLog it emits validates against
    [`schema/metalog.v0.schema.json`](schema/metalog.v0.schema.json)
-   for that version's MAJOR.
+   for that version's MAJOR. From v0.10.0 the schema is closed (§7,
+   *Closure and maps*), so this clause also decides §7's placement
+   rule: a non-standard member outside `extensions` fails validation
+   instead of passing it silently.
 2. Every required field is populated according to its definition
    above.
 3. `template_id` values are computed exactly as specified in §3.2.
