@@ -146,3 +146,8 @@ prose that names the known offenders' disposition.
 - Does `reservoir_delta`'s `frontier_crossings` list belong inside the block
   or as a §13 sibling? Proposal: inside — it is derived from the same
   membership comparison.
+
+*Both answered by the 0.9.0 adoption, recorded here so the questions do not read
+as open:* SPEC §2.5 gives `run_outcome` its composition rule (a composed document
+carries a verdict only when every input carrying one agrees), and SPEC §13.7.2
+places `frontier_crossings` inside `reservoir_delta`.

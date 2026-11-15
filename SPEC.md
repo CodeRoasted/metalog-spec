@@ -7,31 +7,10 @@
 This document uses [RFC 2119](https://www.rfc-editor.org/rfc/rfc2119)
 keywords: **MUST**, **MUST NOT**, **SHOULD**, **SHOULD NOT**, **MAY**.
 
-> **What changed in 0.6 (the cube — EXPERIMENTAL):** added §16 the **`cube`**
-> block — an intra-window joint categorical condensation (a *closed cube* over
-> `level × structural_role × where`-chain) — and §13.6 **`cube_diff`** (its
-> emerging border). The cube is **additive, provisional, and removable in a single
-> revert** (§16.8); it is gated for comparability by `canonicalization_version` and
-> `retention_profile`. `reservoir` entries gain an optional `cube_coord` (the
-> LOCATION-only reservoir→cell cross, §16.6). See [`CHANGELOG.md`](CHANGELOG.md).
->
-> **What changed in 0.5 (Phase-3 formalization, in progress):** added §15 the
-> **re-derivation coordinate** — every window is addressable back to its source
-> (`raw(window) = replay(source, bounds)`) for on-demand raw recovery and citable
-> findings. §14 *Sessions* is now a removed-section tombstone (deferred to
-> correlation-keyed `trace_id` processing). Further 0.5 additions are landing:
-> the `reservoir` (salient-entry) section, header `canonicalization_version` /
-> `retention_profile` with `compose()`/diff version-gating, and compose-visible
-> field histograms. See [`CHANGELOG.md`](CHANGELOG.md).
->
-> **What changed in 0.2:** template strings are no longer required
-> inside `stats.top_k` entries — they live in an optional top-level
-> `templates` dedup map instead, and may be omitted entirely
-> (id-only mode). The `behavior` block has been formalised
-> (`dominant_path`, `graph_edge_count`, `branching`). Two sibling
-> sections were added: `compose()` (§12) for merging MetaLogs across
-> windows or shards, and a separate `MetaLogDiff` document (§13). See
-> [`CHANGELOG.md`](CHANGELOG.md) for the full diff.
+What changed in each version, and why, is [`CHANGELOG.md`](CHANGELOG.md): this
+document states only the current rules. *(Until v0.10.0 a summary of three past
+versions stood here, the last of them describing 0.5 as "in progress" five
+versions after it shipped.)*
 
 ---
 
