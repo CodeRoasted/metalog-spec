@@ -994,6 +994,59 @@
                 ],
                 "witness_unjudged": 1
             }
+        },
+        {
+            "path": "valid/composed_coordinate_flattened.metalog.jsonl",
+            "kind": "metalog",
+            "why": "a composed coordinate written the way §15.5 requires since 0.10.0: four RAW children, one per raw window that entered the composition, the window `shard-a` [1729000000000000000, 1729000025000000000) TWICE because it entered twice, then a second source over the same interval, then the next interval. The ticks sit above 2^53, where RFC 8785 would serialise two neighbouring ticks alike, which is why §15.5 orders by the ticks as integers first. The order is decidable from this document and is not checked by this tool (SPEC §8 names no ordering clause); what the schema decides is that every child is raw and that a repeated leaf is admitted.",
+            "expect": {
+                "exit": 0,
+                "documents": 1,
+                "findings": []
+            }
+        },
+        {
+            "path": "invalid/composed_coordinate_nested_child.metalog.jsonl",
+            "kind": "metalog",
+            "why": "§15.5's flattening rule, which the schema decides from 0.10.0: the composed coordinate's first child is itself a composed coordinate. Until 0.10.0 §15.2 admitted a \"raw (or recursively composed) child\" and this document validated; now every element of `children` must carry `source_ref` and `bounds`, so the nested child is one finding naming both. Nesting records the association order in the shape of the tree, so `compose(compose(A, B), C)` and `compose(A, compose(B, C))` would differ, against §12.2.",
+            "expect": {
+                "exit": 1,
+                "documents": 1,
+                "findings": [
+                    [
+                        "coordinate.children[]",
+                        "required",
+                        [
+                            "bounds",
+                            "source_ref"
+                        ],
+                        2,
+                        1
+                    ]
+                ],
+                "window_unjudged": 1
+            }
+        },
+        {
+            "path": "invalid/param_histogram_entropy_bits.metalog.jsonl",
+            "kind": "metalog",
+            "why": "the member §12.1's histogram merge told a composer to recompute until 0.10.0: `entropy_bits` on a `param_histograms` entry. §3.5 forbids emitting it (it is losslessly derivable from `value_counts`) and the closed `param_histogram` object has always rejected it, so a composer that followed the old merge sentence wrote a schema-invalid document. The sentence is gone; this fixture pins that the schema and §3.5 agree, so a later edit that admits the member to the schema reds here.",
+            "expect": {
+                "exit": 1,
+                "documents": 1,
+                "findings": [
+                    [
+                        "stats.top_k[].param_histograms[]",
+                        "additionalProperties",
+                        [
+                            "entropy_bits"
+                        ],
+                        1,
+                        1
+                    ]
+                ],
+                "window_unjudged": 1
+            }
         }
     ],
     "window_violations_encoding": "[clause, detail, documents affected]. SPEC §8 clause 2, over §2.2's `window` and nothing else. `clause` is one of `utc` / `ordering` / `duration` / `empty-extent` / `estimated-flag`; `detail` is the instrument's own sentence for that violation and is asserted VERBATIM, because the five clauses are decided by five different computations and a fixture pinning only the clause name would pass against an arm that fired the right label off the wrong arithmetic. Types are NOT among these clauses: `duration_seconds` and `lines_observed` are typed `integer, minimum 0` by the schema, so their non-negativity is clause 1's business and re-checking it here would be a second copy that can disagree with the first.",
