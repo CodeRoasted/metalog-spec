@@ -50,16 +50,24 @@ because retention is unaffordable, then have no incident forensics.
 The industry response has been *more storage, more indexes, more
 dashboards*. The MetaLog response is *compress the meaning, then store
 that*. A MetaLog is bounded by the **structure** a window contains —
-its top templates, its salient tail, its n-grams, its branching, its
-cube cells — each capped by a size the producer declares **in the
-document itself** (§11.1) — and **not** by how many lines the window
-carried. §11 makes that bound computable rather than quoted: §11.3's
+its top templates, its salient tail, its n-grams, its cube cells, its
+branching — each capped by a size the producer fixes before the window
+starts and writes **in the document itself** (§11.1): `stats.top_k_size`
+and `behavior.top_ngrams_size` in every document that carries their
+block, the reservoir cap in every document of a producer that keeps a
+reservoir (§3.7.2), the cube's budget and the branching cap where the
+producer reports them (§16.10, §4.2) — and **not** by how many lines the
+window carried. §11 makes that bound computable rather than quoted: §11.3's
 formula prices a document from the caps it declares, and a document
 that also carries `behavior` or `cube` pays for those blocks by the same
 arithmetic. No size is published per line count, because a document's
-size is set by its caps and not by its line count (§11.5).
-That is the value proposition: the artifact stops growing where the
-stream does not.
+size is set by its caps, its template mode and the content its entries
+carry, and not by its line count (§11.5).
+That is the value proposition: for every block whose cap the document
+declares, the artifact stops growing where the stream does not. A block
+whose cap it does not declare is bounded by nothing a consumer can read —
+§4.2 places no cap on `behavior.branching` unless `branching_size`
+declares one, and §11.5 names what no cap reaches.
 
 > **That is a bound, not a measured ratio, and no ratio is quoted
 > anywhere in this spec.** A compression ratio is a measurement,
@@ -96,9 +104,11 @@ listed here.
 | [`RATIONALE.md`](RATIONALE.md) | Design decisions and the alternatives that were rejected. |
 | [`schema/metalog.v0.schema.json`](schema/metalog.v0.schema.json) | JSON Schema for the v0 MetaLog envelope. |
 | [`schema/metalog.v0.example.json`](schema/metalog.v0.example.json) | Worked example MetaLog. |
-| [`conformance/`](conformance/README.md) | §8 clause 1, made runnable — validate your documents against the shipped schemas. |
+| [`schema/metalog_diff.v0.schema.json`](schema/metalog_diff.v0.schema.json) | JSON Schema for the v0 `MetaLogDiff` document (§13). |
+| [`conformance/`](conformance/README.md) | §8 clauses 1, 4 and 6, and clause 2 over §2.2's `window`, made runnable — validate your documents against the shipped schemas. |
 | [`CHANGELOG.md`](CHANGELOG.md) | Versioned history of the spec. |
 | [`GOVERNANCE.md`](GOVERNANCE.md) | How the spec evolves; who can propose changes. |
+| [`adr/`](adr/) | Decisions about the format, each with its argument and the alternatives rejected. |
 | [`adr/0001-v1-freeze-policy.md`](adr/0001-v1-freeze-policy.md) | Conditions for freezing the first stable MetaLog version. |
 
 ---
@@ -107,33 +117,41 @@ listed here.
 
 This is a **draft** — v0.x — published to reserve the term, the
 schema, and the design intent before incumbents publish a
-proprietary equivalent. The format **will** change in incompatible
-ways before v1.
+proprietary equivalent. Any MINOR release before v1.0 may break
+compatibility (§9, [`GOVERNANCE.md`](GOVERNANCE.md) §6); 0.10.0 did, and
+its [`CHANGELOG.md`](CHANGELOG.md) entry lists every break.
 
-The first stable version (v1.0) will land alongside the InSight
-reference implementation when the `insight-metalog` producer and
-downstream consumers have enough compatibility evidence
-to freeze the schema. After v1.0, breaking changes follow semver and
+The first stable version (v1.0) is frozen only when the five conditions of
+[`adr/0001`](adr/0001-v1-freeze-policy.md) hold, each verifiable by a third
+party from this repository alone — among them two independent
+implementations that interoperate, and published conformance vectors that
+cover `compose()` and `diff()`. No implementation's delivery schedule is one
+of them. After v1.0, breaking changes follow semver and
 [GOVERNANCE.md](GOVERNANCE.md).
 
 ---
 
 ## Checking your implementation
 
-§8 says "there is no central conformance authority — the schema is the test".
-[`conformance/`](conformance/README.md) is that test, shipped with the standard so
-you can run it yourself:
+§8 says "there is no central conformance authority. The schema is the test for
+clause 1." [`conformance/`](conformance/README.md) is that test, shipped with the
+standard so you can run it yourself, with checks for three more clauses that a
+document decides on its own:
 
 ```
 pip install -r conformance/requirements.txt
-python3 conformance/metalog_validate.py --selftest        # prove the tool has teeth
-python3 conformance/metalog_validate.py my_metalogs.jsonl  # judge your documents
+python3 conformance/metalog_validate.py --selftest                 # prove the tool has teeth
+python3 conformance/metalog_validate.py my_metalogs.jsonl           # judge your MetaLogs
+python3 conformance/metalog_validate.py --kind diff my_diffs.jsonl  # judge your MetaLogDiffs
 ```
 
-It reports schema violations separately from members that an *open* container
-permits but no schema describes — the second is legal, and conflating the two
-misprices both. It covers **§8 clause 1 only**; clauses 2–4 are not tested, and the
-tool says so on every run.
+It decides §8 clause 1 (the schema, which since 0.10.0 is closed, so a bare vendor
+member fails it at any depth), clause 4 (every array and map whose cap the same
+document declares, against that cap, and observed text against `max_text_bytes`),
+clause 2 over §2.2's `window` only, and, on a `MetaLogDiff`, clause 6 (§13.2's
+witness rule). It reports each kind of finding on its own and never adds them into
+one number. It does **not** test clause 3, clause 5 or the rest of clause 2, and
+every run prints the scope it covered.
 
 ---
 
@@ -141,7 +159,7 @@ tool says so on every run.
 
 | Implementation | Language | License | Status |
 |---|---|---|---|
-| **insight-metalog** ([repo](https://github.com/CodeRoasted/insight-metalog)) | C++23 | CodeRoast-owned package | Declares `metalog_version` **0.10.0** — producer, compose, and diff. **It declares `diff_version` `0.6.0` on the diffs it publishes, and that is non-conformant as of 0.10.0** ([`adr/0004`](adr/0004-diff-version-is-the-spec-version.md), §13.1.1): measured 2026-09-02 over the determinism evidence linked below, 9 of 9 published `MetaLogDiff` documents declare a version four MINOR releases older than the `comparison_outcome` member they carry. GOVERNANCE §3 resolves it in the spec's favour; the producer repoints. Its **published documents meet §8 clause 1** — measured 2026-08-22 with [`conformance/`](conformance/README.md) over both published surfaces: the [determinism evidence](https://github.com/CodeRoasted/coderoast-hub/blob/main/determinism/metalog.determinism_golden.txt) (17 documents) and the two published diff documents — zero schema violations, zero undescribed members. The member that failed here before (`stats.top_k[].ordinal_histograms`, bare in a closed object) now rides in `stats.top_k[].extensions` under a reverse-DNS key, per §7: its bins ride an unfrozen ladder, so it stays vendor data until an RFC freezes the ladder. The two members the producer emitted that no spec text described — `run_outcome` (MetaLog root) and `reservoir_delta` (MetaLogDiff root) — are **described as of 0.9.0** (§2.5 and §13.7), the adoption arm of [`adr/0003`](adr/0003-undescribed-wire-members.md) (Accepted, 2026-08-22); neither had reached a published surface. **One divergence remains and the spec wins it** (`GOVERNANCE.md` §3): §2.5's enum is lower-case, and this producer currently spells `run_outcome` in upper case, so it is non-conformant on that member until it normalises — a producer-side fix affecting no published byte, since the member has never been published. The two vendor-shaped members that ADR relocates — `ruleset` and `service_edge_delta` — now ride in `extensions` under reverse-DNS keys. The diff-root container that carries the second of them is **granted in §7's placement table as of 0.9.0**, drafted on `main` and unreleased at the time of writing (`GOVERNANCE.md` §7): a consumer pinned to the 0.8.0 Release still reads that container as legal-but-undescribed. |
+| **insight-metalog** ([repo](https://github.com/CodeRoasted/insight-metalog)) | C++23 | CodeRoast-owned package | Declares `metalog_version` **0.10.0** and `diff_version` **0.10.0** — producer, compose, and diff. Both stamps read one constant ([source at `17089a1`](https://github.com/CodeRoasted/insight-metalog/blob/17089a1d7aa715a36fdc615c249f96ed9c4cf25d/api/metalog.api.cppm#L990)), as §13.1.1 requires. Its **published documents meet §8 clauses 1, 4 and 6, and clause 2 over §2.2's `window`** — measured 2026-11-15 with [`conformance/`](conformance/README.md) at v0.10.0 over the [determinism evidence](https://github.com/CodeRoasted/coderoast-hub/blob/9bccc655e6971b71a208e5417acc6259be242b55/determinism/metalog.determinism_golden.txt) published for producer version 1.10.12: 35 MetaLog and 10 `MetaLogDiff` documents, zero schema violations, zero cap or text-cap violations, every `window` consistent, every `comparison_outcome` agreeing with its witness. Clauses 3 and 5 were not tested. The `diff_version` `0.6.0` stamp that §13.1.1 made non-conformant ([`adr/0004`](adr/0004-diff-version-is-the-spec-version.md); measured 2026-09-02 on 9 of 9 published diffs) is gone: all 10 published diffs declare `0.10.0`. Its vendor data rides in `extensions` under reverse-DNS keys, at both document roots and in `stats.top_k[]` — `ordinal_histograms`, `ruleset` and `service_edge_delta` among it (§7, [`adr/0003`](adr/0003-undescribed-wire-members.md)) — and since 0.10.0 closed both roots, §8 clause 1 decides that placement rather than leaving it to §7's MUST. It spells `run_outcome` in §2.5's lower-case vocabulary ([source at `17089a1`](https://github.com/CodeRoasted/insight-metalog/blob/17089a1d7aa715a36fdc615c249f96ed9c4cf25d/src/stats/wire_format.cpp#L138)); no published document carries the member yet. |
 | *Your implementation here* | — | — | PRs welcome |
 
 The spec is deliberately implementation-agnostic. Any language that
