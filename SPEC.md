@@ -275,10 +275,11 @@ declare different values, or of which only one declares it (§2.6, §12.1, §13)
 consumer **MUST NOT** read a cap out of `retention_profile`: the identifier is
 opaque, and the value is declared where a reader can read it.
 
-The `cube` block (§16) is part of these contracts: its **axis set**, each axis's
-**chain** levels, and the frozen **`floor_depth`** are fixed by the
+The `cube` block (§16) is part of these contracts: its **axis set** and each axis's
+**chain** levels — whose number is the frozen schema floor (§16.3) — are fixed by the
 `canonicalization_version` (WHERE grounding) and `retention_profile` (axis/floor
-configuration). Two cubes are diffable into a `cube_diff` (§13.6) **only** when both
+configuration). The per-window collapse stamps (`floor_depth`, `band_floor`, §16.10)
+are not: they describe one window. Two cubes are diffable into a `cube_diff` (§13.6) **only** when both
 identifiers match **and** their axis schemas are equal (§13.6).
 
 ### 2.5 `run_outcome` — terminal verdict of the run the window covers (optional)
@@ -2345,10 +2346,12 @@ disappearance). Each border cell carries `coord` + `previous_count` +
   SCHEMAS are equal — each axis's `name`, its `kind` and, on a chain axis, its `chain`
   levels, in order. Their collapse stamps (§16.2) **MAY** differ: the diff is then
   computed at the minimal common collapse (§16.10), which `cube_diff.axes` declares,
-  and is exact at that granularity. Two cubes whose schema floors (§16.3) differ are
-  compared the same way: no document carries a schema floor, a window's retained
-  depth is its `floor_depth` stamp, and reading both cubes at the smaller one is
-  prefix truncation (§16.3), exact whichever floor produced it. When exactly one
+  and is exact at that granularity. Two cubes whose schema floors (§16.3) differ
+  declare chains of different lengths, so their axis schemas differ and the pair is
+  stated, never compared: §2.4 refuses such a pair before §13 whenever both carry
+  `retention_profile`, and a pair without it is stated with the reason
+  `cube_axes_differ` like any other schema difference, though the two cubes agree at
+  the shorter chain's depth — the conservative reading, never a silent one. When exactly one
   input carries a `cube`, the producer **MUST** omit `cube_diff` and state it with
   the reason `absent_in_one_input` and `block` = `"cube"`; when both do and their
   axis schemas differ, with the reason `cube_axes_differ` and both inputs' axis
@@ -2664,12 +2667,16 @@ which is exactly the incident). Each axis is one of two kinds:
 | `chain` | a single-parent roll-up hierarchy (§16.3) | an ordered prefix-path (array of strings) |
 
 An axis descriptor additionally carries the **collapse stamps** (§16.10):
-`floor_depth` (chain axes — the window's **effective** retained depth, `≤` the
-schema-frozen floor of §16.3; equal to it when uncollapsed, `0` when the chain was
-dropped) and `band_floor` (the ordinal `level` axis — the applied interval-banding
-floor; **omitted when absent**). The stamps make a collapsed cube
+`floor_depth` (chain axes — the window's **effective** retained depth: `len(chain)`
+when the chain was not collapsed, smaller after §16.10's WHERE step, `0` when the
+chain was dropped) and `band_floor` (the ordinal `level` axis — the applied
+interval-banding floor; **omitted when absent**). The stamps make a collapsed cube
 **self-describing**: a truncated granularity **MUST NOT** be mistakable for a full
-one, and two cubes compare only at their minimal common collapse (§16.10).
+one, and the stamps decide it from the document alone — a chain axis was truncated
+exactly when its `floor_depth` is below `len(chain)`, and the `level` axis was banded
+exactly when it carries `band_floor`. That reading holds because the declared `chain`
+stops at the frozen schema floor (§16.3). Two cubes compare only at their minimal
+common collapse (§16.10).
 
 The reference producer's grounded axes in v0.6.0 are:
 
@@ -2696,12 +2703,19 @@ deployment), declared as the ordered `chain` array (**coarsest first**). A cell'
 `where` coordinate is a **prefix** of that chain — `["test", "auth"]` pins the first
 two levels and aggregates (`*`) below.
 
-- **The schema floor** is the frozen retained depth (`≤ len(chain)`). The
-  hierarchy is **cut at the floor**: levels below it (the **WHICH-leaf** — e.g.
-  `file`, an ephemeral `instance.id`) are **not cubed**; they are the matching key
-  Sift pairs *along*, consumed below the floor (a key is *allowed* to be
-  high-cardinality — that is its role). The **schema** floor is frozen **offline,
-  per regime, once — never re-chosen per window**. What *can* move per window is
+- **The schema floor** is the frozen retained depth, and the declared `chain`
+  stops at it: `len(chain)` **is** the schema floor. The hierarchy is **cut at the
+  floor**: levels below it (the **WHICH-leaf** — e.g. `file`, an ephemeral
+  `instance.id`) are **not cubed** and are **not declared** in `chain`; they are the
+  matching key Sift pairs *along*, consumed below the floor (a key is *allowed* to be
+  high-cardinality — that is its role). A producer whose hierarchy runs deeper than
+  its floor **MUST** declare the chain only down to the floor: a declared level the
+  cube can never hold would make an uncollapsed cube read as a truncated one (§16.2),
+  and no other member carries the floor. *(New in v0.10.0: until then the floor was
+  any depth `≤ len(chain)` and no document carried it, so an uncollapsed cube whose
+  floor sat above the chain's last level and a collapsed one carried the same
+  stamps.)* The **schema** floor is frozen **offline, per regime, once — never
+  re-chosen per window**. What *can* move per window is
   the **effective** retained depth, and only **downward**, through the declared
   budget collapse of §16.10 — stamped on the axis as `floor_depth`. The emerging
   border floats *up* from the floor, **never below it**.

@@ -56,7 +56,8 @@ validate, and three composition rules (§12.1, §15.5) — a `provenance` and `c
 order defined for integers above 2^53, a flattened coordinate that keeps every leaf and is
 omitted when an input with lines carries none, and a `param_histograms` merge cut at the
 declared cap with a key tie-break — which a composer ordering, nesting, deduplicating or
-cutting otherwise now violates.
+cutting otherwise now violates, and a cube chain declared down to the frozen schema floor and no
+further (§16.3), which a producer declaring levels below its floor now violates.
 It also adds optional members
 (`withheld_signals`, §13.2.2, `incomparable_signals`, §13.2.3, and `max_text_bytes` with the two
 histogram caps, §2.6 and §3.5), each additive on its own. MINOR bump: MAJOR stays `0`, so
@@ -541,6 +542,23 @@ rule) and P4 stay proposed.
   rather than to their producer.
 
 ### Fixed
+
+- **§2.4, §13.6, §16.2, §16.3 — a truncated WHERE chain is decidable on the wire: the declared
+  `chain` stops at the frozen schema floor, and `floor_depth` admits 0.** §16.2 promises that a
+  truncated granularity MUST NOT be mistakable for a full one, and §16.3 let the schema floor be
+  any depth up to `len(chain)` while no document carries it. So a chain of two levels stamped
+  `floor_depth` 1 was either an uncollapsed cube under a floor of 1 or a cube under a floor of 2
+  truncated in this window, with the same bytes. Now `len(chain)` **is** the floor — levels below
+  it are neither cubed nor declared — so a chain axis was truncated exactly when `floor_depth` is
+  below `len(chain)`. Two cubes whose floors differ declare different chains, so §13.6 states the
+  pair `cube_axes_differ` instead of comparing it at the smaller depth, as this version had
+  drafted; §2.4 refuses that pair first whenever both carry `retention_profile`. §16.2 has always
+  named `floor_depth` 0 for a dropped chain and both schemas refused it with `minimum: 1`; both
+  now admit it. §2.4 stops listing `floor_depth` among the identifiers' contract: it is a
+  per-window stamp. **Breaking by the letter** — a producer declaring levels below its floor
+  becomes non-conformant — and editor-merged under [`GOVERNANCE.md`](GOVERNANCE.md) §2's 0.x
+  rule; a document stamping 0 now validates. Decision and alternatives:
+  [ADR 0012](adr/0012-the-declared-chain-stops-at-the-floor.md).
 
 - **§12.1, §15.2, §15.5 — a composed `provenance` and `coordinate.children` have one order, defined
   above 2^53, and a composed coordinate is flattened, keeps every leaf, and is omitted when it
