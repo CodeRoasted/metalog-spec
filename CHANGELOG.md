@@ -31,7 +31,7 @@ The spec follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 > labelled as one — it is not a claim that the version was available earlier. The dates in the
 > headings below are the specification's, and they are unchanged.
 
-## [0.10.0] — UNRELEASED
+## [0.10.0] — 2026-11-15
 
 **Breaking** under [`GOVERNANCE.md`](GOVERNANCE.md) §2 — a new **required** member
 on `MetaLogDiff`, a rewritten §13.2 clause, a `diff_version` rule (§13.1.1) that
