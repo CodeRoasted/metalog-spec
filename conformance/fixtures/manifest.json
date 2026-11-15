@@ -1,7 +1,6 @@
 {
     "description": "The oracle for metalog_validate's self-test. Every expectation here is HAND-AUTHORED from SPEC.md and the shipped schemas, never captured from a run: an expectation copied out of the tool under test would make the tool its own oracle, and the pair would agree forever while both were wrong. The `control` tag on a fixture names the specific way this validator could have gone green while blind; metalog_validate refuses to run its self-test if any of them is missing from this file.",
     "findings_encoding": "[instance path, failing keyword, offending member names, error count, documents affected]",
-    "undescribed_encoding": "[instance path, member name, documents affected]",
     "first_documents_encoding": "one label per finding, in order: the document a finding was FIRST seen in. Under a pointer that selects every element of an array the label is the file name followed by the concrete RFC 6901 pointer of the element, e.g. `report.json/raw/2/diff`; otherwise it is the label the corpus reader already used. Optional in general and MANDATORY on any fixture whose pointer carries the every-element token — metalog_validate derives that demand from the pointer itself and refuses to run without it, because a count alone ('1 of 4') passes against a validator that judges every element and names the wrong one.",
     "refusal_mentions_encoding": "a substring the instrument's own message must contain. MANDATORY on any exit-2 fixture that carries a pointer, and derived from the fixture rather than listed here: exit 2 is a CLASS, not a reason, and a pointer refusal has several — the member is absent, the wire shape moved, the selection is empty, the walk hit a scalar. A fixture asserting only the number passes against an instrument that refuses for a reason nobody intended.",
     "unadjudicated_directories": {
@@ -18,20 +17,18 @@
             "expect": {
                 "exit": 0,
                 "documents": 1,
-                "findings": [],
-                "undescribed": []
+                "findings": []
             }
         },
         {
             "path": "valid/rich.metalog.jsonl",
             "kind": "metalog",
-            "control": "undescribed-false-positive",
-            "why": "exercises EVERY open container the schema opens on purpose — extensions (§7), source.tags, param_histogram.value_counts, cube coordinates keyed by axis name (§16.4), attribution.sketch_params (§6, a REQUIRED map whose keys depend on sketch_type) and provenance[].source (§12.4). All are described BY MECHANISM, so the undescribed walker must report zero. A walker that reports any of these would send a lane to delete a field the schema does describe. The last two carried NOTHING until 2026-08-24: this entry claimed \"sketch-shaped free objects\" while the document had no attribution block at all, so the two positions whose disposition the closure walk has to rule on were the two positions this control could not see. With them present, writing their openness down instead of leaving additionalProperties absent reds this fixture with five invented findings on a fully conformant document — unless the walker reads what an open declaration MEANS rather than whether the keyword is spelled out.",
+            "control": "closure-spares-maps",
+            "why": "exercises EVERY position whose keys are DATA, the maps a closed schema must still admit (SPEC §7, \"Closure and maps\"): extensions (§7), source.tags, param_histogram.value_counts, cube coordinates keyed by axis name (§16.4) and attribution.sketch_params (§6, a REQUIRED map whose keys depend on sketch_type), beside provenance[].source (§12.4), which 0.10.0 closed over the document-level source block's members. All must validate. A closure that also closed a map would red this conformant document, and attribution.sketch_params is the costly one: `additionalProperties: false` there admits only the empty object, so every document carrying attribution would fail.",
             "expect": {
                 "exit": 0,
                 "documents": 1,
-                "findings": [],
-                "undescribed": []
+                "findings": []
             }
         },
         {
@@ -43,7 +40,6 @@
                 "exit": 0,
                 "documents": 1,
                 "findings": [],
-                "undescribed": [],
                 "window_violations": [],
                 "window_unjudged": 0
             }
@@ -57,7 +53,6 @@
                 "exit": 1,
                 "documents": 4,
                 "findings": [],
-                "undescribed": [],
                 "window_violations": [
                     [
                         "duration",
@@ -92,7 +87,6 @@
                 "exit": 1,
                 "documents": 1,
                 "findings": [],
-                "undescribed": [],
                 "window_violations": [
                     [
                         "empty-extent",
@@ -112,7 +106,6 @@
                 "exit": 0,
                 "documents": 2,
                 "findings": [],
-                "undescribed": [],
                 "window_violations": [],
                 "window_unjudged": 0
             }
@@ -137,30 +130,47 @@
                         1
                     ]
                 ],
-                "undescribed": [],
                 "window_unjudged": 1
             }
         },
         {
-            "path": "undescribed/open_containers.metalog.jsonl",
+            "path": "invalid/bare_vendor_members.metalog.jsonl",
             "kind": "metalog",
-            "why": "a member at the OPEN root and a second one nested inside provenance[].window, which is also open. Two locations on purpose: a root-only walker finds one of them and looks correct. Neither is a schema violation.",
+            "control": "closed-root-violation",
+            "why": "SPEC §7's placement rule, decided by the schema at the three MetaLog positions that were open until 0.10.0: a bare vendor member at the document root, one inside provenance[].window and one inside provenance[].source. Three locations on purpose: a closure applied to the root alone finds one of them and looks correct. Until 0.10.0 the first two validated and were reported as legal-but-undescribed members, a report and not a verdict, and the third was invisible, because provenance[].source declared no members at all.",
             "expect": {
-                "exit": 0,
+                "exit": 1,
                 "documents": 1,
-                "findings": [],
-                "undescribed": [
+                "findings": [
                     [
                         "<root>",
-                        "vendor_side_channel",
+                        "additionalProperties",
+                        [
+                            "vendor_side_channel"
+                        ],
+                        1,
+                        1
+                    ],
+                    [
+                        "provenance[].source",
+                        "additionalProperties",
+                        [
+                            "rack"
+                        ],
+                        1,
                         1
                     ],
                     [
                         "provenance[].window",
-                        "tenant_zone",
+                        "additionalProperties",
+                        [
+                            "tenant_zone"
+                        ],
+                        1,
                         1
                     ]
-                ]
+                ],
+                "window_unjudged": 1
             }
         },
         {
@@ -192,7 +202,6 @@
                         1
                     ]
                 ],
-                "undescribed": [],
                 "window_unjudged": 1
             }
         },
@@ -221,7 +230,6 @@
                         1
                     ]
                 ],
-                "undescribed": [],
                 "window_unjudged": 1
             }
         },
@@ -244,7 +252,6 @@
                         1
                     ]
                 ],
-                "undescribed": [],
                 "window_unjudged": 1
             }
         },
@@ -255,8 +262,7 @@
             "expect": {
                 "exit": 0,
                 "documents": 1,
-                "findings": [],
-                "undescribed": []
+                "findings": []
             }
         },
         {
@@ -277,14 +283,13 @@
                         1,
                         1
                     ]
-                ],
-                "undescribed": []
+                ]
             }
         },
         {
             "path": "invalid/run_outcome_vocabulary.metalog.jsonl",
             "kind": "metalog",
-            "why": "the v0.9.0 `run_outcome` adoption (SPEC §2.5), both directions in ONE corpus — two documents, because one document can carry only one value. Line 1 spells it `failure` and MUST validate AND MUST NOT be reported undescribed: describing the member is what takes it out of the open root's shadow. Line 2 spells it `SUCCESS` and MUST be rejected — the enum is closed and case-sensitive, and lower case is what this spec mints (`sketch_type`, `cube.axes[].kind`) as against `level`, whose tokens come from the observed stream. `SUCCESS` is not an invented mistake: it is exactly what the reference implementation emits today, so this fixture is the executable form of the divergence GOVERNANCE §3 resolves in the spec's favour. It is also the ONLY fixture in this set that exercises an `enum` violation at all — every other finding here is `additionalProperties`, `required` or `pattern`. Revert the adoption and it reds three ways: the finding disappears, the exit drops to 0, and `run_outcome` joins the undescribed list on BOTH documents.",
+            "why": "the v0.9.0 `run_outcome` adoption (SPEC §2.5), both directions in ONE corpus — two documents, because one document can carry only one value. Line 1 spells it `failure` and MUST validate: describing the member is what makes it legal at a root that 0.10.0 closed. Line 2 spells it `SUCCESS` and MUST be rejected — the enum is closed and case-sensitive, and lower case is what this spec mints (`sketch_type`, `cube.axes[].kind`) as against `level`, whose tokens come from the observed stream. `SUCCESS` is not an invented mistake: it is exactly what the reference implementation emits today, so this fixture is the executable form of the divergence GOVERNANCE §3 resolves in the spec's favour. It is also the ONLY fixture in this set that exercises an `enum` violation at all — every other finding here is `additionalProperties`, `required` or `pattern`. Revert the adoption and it reds: the `enum` finding disappears and an `additionalProperties` finding at the closed root takes its place, on BOTH documents.",
             "expect": {
                 "exit": 1,
                 "documents": 2,
@@ -297,14 +302,13 @@
                         1
                     ]
                 ],
-                "undescribed": [],
                 "window_unjudged": 1
             }
         },
         {
             "path": "invalid/reservoir_delta_direction.diff.json",
             "kind": "diff",
-            "why": "the v0.9.0 `reservoir_delta` adoption (SPEC §13.7), with a legal sibling beside the illegal member so the report has to discriminate. The `new_salient` entry is fully conformant — required `template_id`/`count`/`salience` plus the two optional §3.7.1 members — and MUST validate; the `frontier_crossings` entry spells `direction` as `increased`, which the closed `up`/`down` enum MUST reject. Direction is the right member to put teeth in: it is the one place in this block where a plausible synonym changes meaning, and the enum is what stops a producer inventing `escalated`/`recovered` and shipping the polarity reading §13.7.2 refuses to make. Revert the adoption and this reds three ways — the finding disappears, the exit drops to 0, and `reservoir_delta` joins the undescribed list.",
+            "why": "the v0.9.0 `reservoir_delta` adoption (SPEC §13.7), with a legal sibling beside the illegal member so the report has to discriminate. The `new_salient` entry is fully conformant — required `template_id`/`count`/`salience` plus the two optional §3.7.1 members — and MUST validate; the `frontier_crossings` entry spells `direction` as `increased`, which the closed `up`/`down` enum MUST reject. Direction is the right member to put teeth in: it is the one place in this block where a plausible synonym changes meaning, and the enum is what stops a producer inventing `escalated`/`recovered` and shipping the polarity reading §13.7.2 refuses to make. Revert the adoption and this reds: the `enum` finding disappears and an `additionalProperties` finding at the closed diff root takes its place.",
             "expect": {
                 "exit": 1,
                 "witness_unjudged": 1,
@@ -317,19 +321,27 @@
                         1,
                         1
                     ]
-                ],
-                "undescribed": []
+                ]
             }
         },
         {
             "path": "invalid/unprefixed_extension_key.diff.json",
             "kind": "diff",
-            "why": "the v0.9.0 diff-root `extensions` grant (SPEC §7), proved in both directions inside ONE document. The container is now DESCRIBED, so its reverse-DNS grammar is enforced at this root: `topology_delta` written bare inside `extensions` is rejected, while `com.example.topology_delta` beside it MUST validate — a legal member next to the illegal one, so the report has to discriminate rather than reject the object wholesale. These teeth cannot fall out the way a fixture built on a live defect can: no future standardisation can make an unprefixed key legal INSIDE `extensions`, whatever the standard mints elsewhere. `vendor_private_counter` sits bare at the diff ROOT to hold the limit the grant does NOT close — that root is open, so the member is legal-but-undescribed and changes no exit code. Revert the grant and this fixture reds three ways: the finding disappears, the exit drops to 0, and `extensions` itself joins the undescribed list.",
+            "why": "the v0.9.0 diff-root `extensions` grant (SPEC §7), proved in both directions inside ONE document. The container is now DESCRIBED, so its reverse-DNS grammar is enforced at this root: `topology_delta` written bare inside `extensions` is rejected, while `com.example.topology_delta` beside it MUST validate — a legal member next to the illegal one, so the report has to discriminate rather than reject the object wholesale. These teeth cannot fall out the way a fixture built on a live defect can: no future standardisation can make an unprefixed key legal INSIDE `extensions`, whatever the standard mints elsewhere. `vendor_private_counter` sits bare at the diff ROOT, which 0.10.0 closed, so it is a second finding beside the first: a vendor member is legal inside `extensions` under a reverse-DNS key, and nowhere else. Revert the grant and the `extensions` finding moves to the root, where the whole container is then an unknown member.",
             "expect": {
                 "exit": 1,
                 "witness_unjudged": 1,
                 "documents": 1,
                 "findings": [
+                    [
+                        "<root>",
+                        "additionalProperties",
+                        [
+                            "vendor_private_counter"
+                        ],
+                        1,
+                        1
+                    ],
                     [
                         "extensions",
                         "additionalProperties",
@@ -337,13 +349,6 @@
                             "topology_delta"
                         ],
                         1,
-                        1
-                    ]
-                ],
-                "undescribed": [
-                    [
-                        "<root>",
-                        "vendor_private_counter",
                         1
                     ]
                 ]
@@ -357,8 +362,7 @@
             "expect": {
                 "exit": 0,
                 "documents": 1,
-                "findings": [],
-                "undescribed": []
+                "findings": []
             }
         },
         {
@@ -376,8 +380,7 @@
                         [],
                         1
                     ]
-                ],
-                "undescribed": []
+                ]
             }
         },
         {
@@ -388,8 +391,7 @@
             "expect": {
                 "exit": 0,
                 "documents": 1,
-                "findings": [],
-                "undescribed": []
+                "findings": []
             }
         },
         {
@@ -400,8 +402,7 @@
             "expect": {
                 "exit": 0,
                 "documents": 1,
-                "findings": [],
-                "undescribed": []
+                "findings": []
             }
         },
         {
@@ -418,8 +419,7 @@
                         [],
                         1
                     ]
-                ],
-                "undescribed": []
+                ]
             }
         },
         {
@@ -438,8 +438,7 @@
                         1,
                         1
                     ]
-                ],
-                "undescribed": []
+                ]
             }
         },
         {
@@ -450,8 +449,7 @@
             "expect": {
                 "exit": 0,
                 "documents": 1,
-                "findings": [],
-                "undescribed": []
+                "findings": []
             }
         },
         {
@@ -462,8 +460,7 @@
             "expect": {
                 "exit": 0,
                 "documents": 1,
-                "findings": [],
-                "undescribed": []
+                "findings": []
             }
         },
         {
@@ -474,8 +471,7 @@
             "expect": {
                 "exit": 0,
                 "documents": 1,
-                "findings": [],
-                "undescribed": []
+                "findings": []
             }
         },
         {
@@ -486,8 +482,7 @@
             "expect": {
                 "exit": 0,
                 "documents": 1,
-                "findings": [],
-                "undescribed": []
+                "findings": []
             }
         },
         {
@@ -498,8 +493,7 @@
             "expect": {
                 "exit": 0,
                 "documents": 1,
-                "findings": [],
-                "undescribed": []
+                "findings": []
             }
         },
         {
@@ -510,8 +504,7 @@
             "expect": {
                 "exit": 0,
                 "documents": 1,
-                "findings": [],
-                "undescribed": []
+                "findings": []
             }
         },
         {
@@ -522,8 +515,7 @@
             "expect": {
                 "exit": 0,
                 "documents": 1,
-                "findings": [],
-                "undescribed": []
+                "findings": []
             }
         },
         {
@@ -534,8 +526,7 @@
             "expect": {
                 "exit": 0,
                 "documents": 1,
-                "findings": [],
-                "undescribed": []
+                "findings": []
             }
         },
         {
@@ -554,8 +545,7 @@
                         1,
                         1
                     ]
-                ],
-                "undescribed": []
+                ]
             }
         },
         {
@@ -574,8 +564,7 @@
                         1,
                         1
                     ]
-                ],
-                "undescribed": []
+                ]
             }
         },
         {
@@ -594,8 +583,7 @@
                         1,
                         1
                     ]
-                ],
-                "undescribed": []
+                ]
             }
         },
         {
@@ -614,8 +602,7 @@
                         1,
                         1
                     ]
-                ],
-                "undescribed": []
+                ]
             }
         },
         {
@@ -634,8 +621,7 @@
                         1,
                         1
                     ]
-                ],
-                "undescribed": []
+                ]
             }
         },
         {
@@ -655,26 +641,18 @@
                         ],
                         1
                     ]
-                ],
-                "undescribed": []
+                ]
             }
         },
         {
-            "path": "undescribed/diff_root_vendor_member.diff.json",
+            "path": "valid/witness_set_ignores_extensions.diff.json",
             "kind": "diff",
             "control": "witness-set-from-schema",
-            "why": "the fourth member of the witness-rule family, and the only one whose subject is WHERE the witness set comes from. The same body as valid/unchanged_all_vacuous.diff.json with ONE member added — `vendor_private_counter` bare at the diff ROOT, which is open, so it validates and is reported LEGAL-BUT-UNDESCRIBED without changing the exit code. SPEC §13.2.1 step 2 reads the witness set from the SCHEMA and never from the document: a member the document carries that the schema does not declare is NOT in the set, so this document still carries no witness and its `unchanged` stands. Read the set from the DOCUMENT instead — every non-required member it happens to hold — and the vendor member becomes a witness, this fixture reds, and a producer could manufacture a witness by inventing a member at an open root. Measured 2026-09-01: that mutation passed the other 25 fixtures 25/25, so without this entry §13.2.1's most consequential sentence had no arm at all.",
+            "why": "the fourth member of the witness-rule family, and the only one whose subject is WHERE the witness set comes from. The same body as valid/unchanged_all_vacuous.diff.json with ONE member added: a vendor counter inside the diff-root `extensions` container (§7). SPEC §13.2.1 step 2 reads the witness set from the SCHEMA, which names `extensions` and leaves it out: so this document carries no witness and its `unchanged` stands. Read the set from the DOCUMENT instead (every non-required member it happens to hold) and `extensions` becomes a witness, this fixture reds, and a producer could manufacture a witness out of its own vendor data. Until 0.10.0 this fixture carried the counter bare at the open diff root; the root is closed now, so the member that tests the rule is the one place vendor data may still sit.",
             "expect": {
                 "exit": 0,
                 "documents": 1,
-                "findings": [],
-                "undescribed": [
-                    [
-                        "<root>",
-                        "vendor_private_counter",
-                        1
-                    ]
-                ]
+                "findings": []
             }
         },
         {
@@ -701,8 +679,7 @@
                         3,
                         1
                     ]
-                ],
-                "undescribed": []
+                ]
             }
         },
         {
@@ -724,8 +701,7 @@
                         1,
                         1
                     ]
-                ],
-                "undescribed": []
+                ]
             }
         },
         {
@@ -773,8 +749,7 @@
                 ],
                 "first_documents": [
                     "report_with_dash_member.json"
-                ],
-                "undescribed": []
+                ]
             }
         },
         {
@@ -800,8 +775,7 @@
                 ],
                 "first_documents": [
                     "report_with_raw_diff_array.json/raw/2/diff"
-                ],
-                "undescribed": []
+                ]
             }
         },
         {
@@ -812,8 +786,7 @@
             "expect": {
                 "exit": 0,
                 "documents": 1,
-                "findings": [],
-                "undescribed": []
+                "findings": []
             }
         },
         {
@@ -849,8 +822,7 @@
                 ],
                 "first_documents": [
                     "aggregate_report_nested_arrays.json/runs/1/raw/1/diff"
-                ],
-                "undescribed": []
+                ]
             }
         },
         {
@@ -878,8 +850,7 @@
             "expect": {
                 "exit": 0,
                 "documents": 2,
-                "findings": [],
-                "undescribed": []
+                "findings": []
             }
         },
         {
@@ -891,7 +862,6 @@
                 "exit": 1,
                 "documents": 1,
                 "findings": [],
-                "undescribed": [],
                 "text_cap_violations": [
                     [
                         "stats.reservoir[].structural_role",
@@ -929,7 +899,6 @@
                 "exit": 1,
                 "documents": 1,
                 "findings": [],
-                "undescribed": [],
                 "cap_violations": [
                     [
                         "stats.top_k[].param_histograms",
@@ -964,7 +933,6 @@
                         1
                     ]
                 ],
-                "undescribed": [],
                 "window_unjudged": 1
             }
         },
@@ -975,8 +943,7 @@
             "expect": {
                 "exit": 0,
                 "documents": 1,
-                "findings": [],
-                "undescribed": []
+                "findings": []
             }
         },
         {
@@ -987,7 +954,6 @@
                 "exit": 1,
                 "documents": 1,
                 "findings": [],
-                "undescribed": [],
                 "text_cap_violations": [
                     [
                         "reservoir_delta.new_salient[].level",
@@ -996,6 +962,37 @@
                         1
                     ]
                 ]
+            }
+        },
+        {
+            "path": "invalid/bare_vendor_members.diff.json",
+            "kind": "diff",
+            "control": "closed-root-violation",
+            "why": "SPEC §7's placement rule, decided by the schema at the MetaLogDiff positions that were open until 0.10.0: a bare vendor member at the diff root and one inside current.window. The body is valid/minimal.diff.json with those two members added and nothing else, so the two findings are the whole report. Until 0.10.0 both validated, and the root member was reported as legal-but-undescribed, a report and not a verdict.",
+            "expect": {
+                "exit": 1,
+                "documents": 1,
+                "findings": [
+                    [
+                        "<root>",
+                        "additionalProperties",
+                        [
+                            "vendor_private_counter"
+                        ],
+                        1,
+                        1
+                    ],
+                    [
+                        "current.window",
+                        "additionalProperties",
+                        [
+                            "tenant_zone"
+                        ],
+                        1,
+                        1
+                    ]
+                ],
+                "witness_unjudged": 1
             }
         }
     ],

@@ -104,8 +104,9 @@ Three things about the rule are load-bearing, and each has its own fixture:
   findings with no array at all, and `stability_score`'s no-change value is **`1`**,
   not `0`.
 - **The witness set is read from the SCHEMA, never from the document.** A member a
-  document carries that the schema does not declare is not in the set — otherwise a
-  producer could manufacture a witness by inventing a member at the open root.
+  document carries is in the set only if the schema declares it a signal property —
+  otherwise a producer could manufacture a witness out of its own vendor data, which
+  sits in `extensions`, a member the schema names and leaves out of the set.
 - **Schema-validity comes first (§13.2.1 step 1).** `{"maxItems": 0}` is *inert* on
   a non-array, so judging an unvalidated document would call a mistyped property
   vacuous and make a real witness disappear. Documents the step withholds are
@@ -120,24 +121,25 @@ reads as *permission* — skipping an undeclared property would silently shrink 
 witness set. The self-test prints the denominator every run (`15 of 15 optional
 signal properties declared`), because an arm armed at zero is unobservable.
 
-**LEGAL-BUT-UNDESCRIBED** — a member that an *open* container permits and that no
-schema describes. The MetaLog root is open by design, so this is **not** a
-conformance failure and never changes the exit code. It is reported because a
-producer emitting one is doing one of two things, and the distinction matters:
+**There is no fifth species.** Until 0.10.0 this tool also reported a
+*LEGAL-BUT-UNDESCRIBED* member: one an open container permitted and no schema
+described, which both document roots and three `window` objects then admitted. From
+0.10.0 every object position is closed or is a map whose keys are data (SPEC §7,
+*Closure and maps*), so a member the schema does not describe is SCHEMA-INVALID and
+§8 clause 1 reports it. The walker that looked for the other kind could only report
+nothing, and it was removed with the closure, together with its
+`--strict-undescribed` flag.
 
-- riding ahead of a schema that lags its own prose (a **schema lag** — GOVERNANCE
-  §3 makes this the spec's problem, not the implementation's), or
-- extending the format outside §7 `extensions`, where vendor data belongs.
-
-To help tell those apart, each reported member is tagged `[in SPEC.md]` or
-`[nowhere]` — does the prose name it *as a member* (a code span or a quoted key)?
+Each SCHEMA-INVALID member is still tagged `[in SPEC.md]` or `[nowhere]` — does the
+prose name it *as a member* (a code span or a quoted key)? `[in SPEC.md]` points at
+a schema that lags its own prose (GOVERNANCE §3 makes that the spec's problem);
+`[nowhere]` points at a producer extending the format outside §7 `extensions`.
 **That tag is a lead, not a verdict.** A member whose name is also a code span for a
 different concept in another section reads `[in SPEC.md]` and is not a schema lag.
 Open the section before acting on it.
 
-The two species are **disjoint by construction**: a member rejected by a closed
-object is never also counted as undescribed. WITNESS is disjoint from both for a
-different reason — it is decided only on a document that already passed SCHEMA-INVALID.
+WITNESS is disjoint from SCHEMA-INVALID for a
+reason of order — it is decided only on a document that already passed it.
 
 ---
 
@@ -161,14 +163,18 @@ never looked.
 
 ## Why the self-test exists
 
-A validator that cannot fail is decoration. `--selftest` runs thirty-five fixtures whose
+A validator that cannot fail is decoration. `--selftest` runs every fixture
+`fixtures/manifest.json` lists, and prints how many, and their
 expected results are **hand-authored in `fixtures/manifest.json` from the spec and
 the schemas** — never captured from a run, because an expectation copied out of the
 tool under test makes the tool its own oracle, and the pair then agree forever
 while both are wrong.
 
-Twenty-one of those fixtures carry a `control` tag, naming **nineteen** distinct blindnesses
-(`instrument-failure` is carried by three), and the self-test **refuses to run**
+Some of those fixtures carry a `control` tag, each naming one distinct blindness
+(several controls are carried by more than one fixture). The self-test prints every
+armed control on its closing line, so no count is kept here: this paragraph said
+*thirty-five fixtures* and *nineteen* controls until 0.10.0, when the manifest held
+fifty-five and twenty-three. It **refuses to run**
 if any tag is missing from the manifest — deleting a fixture cannot quietly widen
 what a green covers. Each control forecloses one specific way this validator could
 have gone green while blind:
@@ -176,7 +182,8 @@ have gone green while blind:
 | control | the blindness it forecloses |
 |---|---|
 | `multi-document-section` | The published evidence is `### name ###` sections whose bodies are JSONL — **one document per line**. A reader that takes a section as one document validates its first line and silently ignores the rest, returning a smaller, entirely plausible number. This fixture puts the only violation on the *second* line of a section, so that reader fails twice over: wrong document count and a missed finding. |
-| `undescribed-false-positive` | The schema opens several containers on purpose (`extensions`, `source.tags`, cube coordinates keyed by axis name, `param_histogram.value_counts`, `attribution.sketch_params`, `provenance[].source`). A walker that reports those has invented findings, and a false positive from a prescriptive instrument costs more than a miss: it sends someone to delete a field the schema does describe. This fixture exercises all of them and must report zero. The last two were added on 2026-08-24, and their absence was not cosmetic: the fixture carried no `attribution` block at all while its own entry claimed "sketch-shaped free objects", so the two positions whose disposition the closure walk had to rule on were the two this control could not see. |
+| `closure-spares-maps` | 0.10.0 closed every object position whose members the spec names, and left open, over their VALUES only, the positions whose keys are data: `extensions`, `source.tags`, cube coordinates keyed by axis name, `param_histogram.value_counts` and `attribution.sketch_params`. A closure applied to those too would red a conformant document, and `attribution.sketch_params` is the costly one — `additionalProperties: false` there admits only the empty object, and §6 makes the field required, so every document carrying `attribution` would fail. The fixture exercises all five, beside `provenance[].source`, which 0.10.0 closed over the document-level `source` block's members, and it must validate. Until 0.10.0 the same fixture held the undescribed-member walker to zero findings over the same positions. |
+| `closed-root-violation` | §7's placement rule, decided by the schema at the positions that were open until 0.10.0: both document roots, `provenance[].window`, `provenance[].source` and the diff's `current.window`. Two fixtures carry a bare vendor member at each of those positions, and each member must be a clause 1 finding. A closure applied to one root only finds one member per fixture and looks correct; a schema that still left `provenance[].source` open would miss the third. |
 | `closed-object-violation` | The instrument must detect the real defect shape, not a toy one — extra members inside `stats.top_k[]` and `cube.axes[]`, the same two instance paths the reference implementation trips today. |
 | `declared-cap-violation` | §8 clause 4 is unreachable from the schema — `maxItems` takes a constant, the bound is the value of a sibling field — so a document can be **schema-valid and cap-violating**, which is exactly what a schema-only validator reports `CONFORMANT`. This fixture is that document, violating at two locations (`stats` and `behavior`) so a `top_k`-only checker reds, and carrying a vendor `shard_size`/`shard` pair under `extensions` that must **not** be reported. |
 | `declared-histogram-cap-violation` | The two §3.5 caps bound a member one level **below** their own object, and one of them bounds a map, so the sibling rule that derives every other pair cannot reach them. The fixture overruns both in a schema-valid document; a validator relying on the derived pairs alone reports it `CONFORMANT`. |
@@ -188,7 +195,7 @@ have gone green while blind:
 | `vacuity-is-declared-not-shaped` | §8 clause 6 asks whether a signal property carries a **finding**, and its JSON *shape* does not answer that. The fixture is a conformant `"unchanged"` diff carrying **twelve of the fifteen** optional signal properties, every one present and vacuous by its own `x-metalog-vacuous` declaration. A **presence** reader finds twelve witnesses on a document that carries none — the exact clause 0.10.0 deleted. An **emptiness** reader finds three (`template_deltas` holds a row whose `delta` is `0`; `tail_delta` holds nine members and no array; `cube_diff.axes` is a required non-empty **descriptor**). A reader that assumed `const: 0` for every scalar finds a fourth, `stability_score: 1`. Three properties are absent on purpose. `max_text_bytes` is a descriptor with its own fixture, `valid/text_cap_unchanged.diff.json`. `reservoir_delta`: §13.7 forbids emitting an all-empty block, so its declared vacuous state is unreachable by construction and writing it here would have made a "valid" fixture violate §13.7. `incomparable_signals`: it is omitted when nothing was incomparable (§13.2.3), and its own control is the row below. |
 | `witness-rule-changed-arm` | `"changed"` obliges a witness. The fixture is the control above with **one token** changed, so the exit-code difference between the two is attributable to that token and nothing else. The finding names no member, because on this arm the defect *is* an absence. |
 | `witness-rule-unchanged-arm` | `"unchanged"` forbids one, and a rule that binds only the other arm is satisfied forever by a producer that always writes `"unchanged"`. The fixture is the same control with **one row** changed — `template_deltas[0]` from `delta: 0` to `delta: 3`, with `current_count` moved to match (§13.3) — so the witness sits inside an array that is non-empty and the same length in both documents, where a presence reader and an emptiness reader are blind to the mutation. |
-| `witness-set-from-schema` | §13.2.1 step 2 reads the witness set from the **schema**, never from the document. The fixture carries a bare `vendor_private_counter` at the diff root, which is open: legal-but-undescribed, exit 0, and **not** a witness. Read the set from the document instead and it becomes one — a producer could then manufacture a witness by inventing a member at an open root. Measured 2026-09-01: that mutation passed the other twenty-five fixtures **25/25**, so until this entry existed the sentence had no arm at all. |
+| `witness-set-from-schema` | §13.2.1 step 2 reads the witness set from the **schema**, never from the document. The fixture carries a vendor counter inside the diff-root `extensions` container: exit 0, and **not** a witness, because the schema names `extensions` and leaves it out of the set. Read the set from the document instead and `extensions` becomes one — a producer could then manufacture a witness out of its own vendor data. Until 0.10.0 the counter sat bare at the open diff root; measured 2026-09-01, the document-reading mutation passed the other twenty-five fixtures **25/25**, so until this entry existed the sentence had no arm at all. |
 | `pointer-token-literal-in-object` | The extension must not swallow the standard it extends. `-` means *every element* where an **array** sits, because RFC 6901 gives that token no resolvable meaning there; where an **object** sits it is a literal member name and stays one. This fixture is an envelope carrying a member spelled `-` beside a second member, so a reading that wildcards the token everywhere judges two documents where one was addressed. |
 | `withheld-signal-is-a-witness` | §13.2.2 lets a `"changed"` diff name, in `withheld_signals`, a finding it computed and did not serialise. The fixture is `changed_without_witness` with **one array's content** changed — `withheld_signals` from `[]` to `["field_histogram_deltas"]` — and it is CONFORMANT while its twin is not. Judge `withheld_signals` by presence rather than by its declared vacuity and both twins flip, which turns the escape into a hole any producer can climb through. |
 | `incomparable-signal-is-not-a-witness` | §13.2.3's `incomparable_signals` names a signal property the producer omitted because its two inputs cannot be compared on it — at v0.10.0, `ngram_delta` across two n-gram orders. It is declared a **descriptor**: a comparison not performed is evidence of neither outcome. The fixture is the diff of an unstamped cross-order pair that found nothing else, `"unchanged"` beside the member, and it is CONFORMANT; its twin, one token away, asserts `"changed"` on the member alone and is not. Declare the member witness-shaped, as `withheld_signals` is, and both twins flip — a configuration difference becomes a change. A third fixture carries the omitted `ngram_delta` beside the member, a clause-1 finding the schema states per key in a root `allOf`. The control extends to every key the vocabulary holds: eight more CONFORMANT fixtures, one per (key, reason) pair — `absent_in_one_input` on all five keys, `ngram_size_differs` on `branching_delta`, `cube_axes_differ`, `histogram_caps_differ` — each `"unchanged"` beside its statement, and one invalid twin per new key carrying the omitted property beside it, plus one carrying a collapse stamp inside `cube_axes_differ`'s evidence. |
@@ -389,9 +396,9 @@ Declared, because an instrument's silence is read as coverage.
 - **The golden-pair suite `GOVERNANCE.md` §3 anticipates (`test/golden/`) is a
   different instrument and does not exist.** Input → output pairs any
   implementation can replay would test clause 3; this directory does not.
-- **`anyOf`/`oneOf` are unioned, not evaluated, by the undescribed walker.** That
-  over-approximates what the schema "describes", which is the conservative
-  direction: the walker may miss an undescribed member, it may never invent one.
+- **`anyOf`/`oneOf` are unioned, not evaluated, by the observed-text walk.** That
+  over-approximates where the schema places a member of observed text, which is
+  the conservative direction for a walk that only reads the positions it reaches.
   Schema validation itself is unaffected — that is the `jsonschema` library, at
   full strictness.
 

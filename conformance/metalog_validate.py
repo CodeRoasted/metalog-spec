@@ -26,15 +26,14 @@ MetaLogDiff) and it reports, separately:
                        shape; the witness set is read from the SCHEMA, never from
                        the document. Unreachable from the schema: the predicate is
                        an annotation a generic validator ignores by design.
-  * LEGAL-BUT-UNDESCRIBED
-                       a key an OPEN container permits and no schema describes.
-                       Not a conformance failure; reported because a producer
-                       emitting it is either extending outside `extensions` (§7)
-                       or riding ahead of a schema that lags the prose.
 
-The two are different defects with different owners, and a report that adds them
-together misprices both. They are disjoint by construction: a key rejected by a
-closed object is never counted as undescribed.
+There is no fifth species. Until 0.10.0 this tool also reported a key an OPEN
+container permitted and no schema described, as LEGAL-BUT-UNDESCRIBED, because
+both document roots and three `window` objects admitted any member. From 0.10.0
+every object position is closed or is a map (SPEC §7, "Closure and maps"), so a
+member the schema does not describe is SCHEMA-INVALID, and the walker that looked
+for the other kind could only ever have reported nothing. It was removed with the
+closure rather than kept to print an empty section.
 
 Exit codes are a contract:
   0  conformant against the schema
@@ -130,9 +129,10 @@ def constrains(node) -> bool:
     exactly what this predicate exists to stop the walkers below from confusing
     with a constraint. Measured 2026-08-24 on the shipped v0.9.0 pair: spelling
     `attribution.sketch_params`'s openness as `additionalProperties: true` instead
-    of leaving it absent made the undescribed walker report every sketch parameter
-    of a fully conformant document, five invented findings on one document, while
-    `additionalProperties: {}` — the same schema — reported none.
+    of leaving it absent made the (since removed) undescribed-member walker report
+    every sketch parameter of a fully conformant document, five invented findings
+    on one document, while `additionalProperties: {}` — the same schema — reported
+    none. The closure census and the observed-text walk still read it.
     """
     if node is True:
         return False
@@ -141,24 +141,6 @@ def constrains(node) -> bool:
     if isinstance(node, dict):
         return any(keyword not in ANNOTATION_KEYWORDS and not metalog_annotation(keyword)
                    for keyword in node)
-    return True
-
-
-def member_silent(subschema: dict) -> bool:
-    """True when this subschema says NOTHING about which members an object carries.
-
-    A deliberate "anything goes" (SPEC §7 extension payloads, §16.4 cube
-    coordinates, `attribution.sketch_params`). Descending into one would report
-    every key inside it as undescribed — a false positive on a surface the schema
-    opened on purpose. Silence is read from the MEANING of the declaration, never
-    from whether a keyword is spelled out: an author who writes the openness down
-    instead of leaving it absent must not thereby arm a walker against himself.
-    """
-    if subschema.get("properties") or subschema.get("patternProperties"):
-        return False
-    for keyword in ("additionalProperties", "unevaluatedProperties"):
-        if keyword in subschema and constrains(subschema[keyword]):
-            return False
     return True
 
 
@@ -402,9 +384,9 @@ def applicable(node, root: dict) -> list[dict]:
     Follows `$ref` (which in 2020-12 applies alongside its siblings, not instead
     of them) and the in-place applicators. `anyOf`/`oneOf` branches are UNIONED
     rather than evaluated: that over-approximates what the schema "describes",
-    which is the conservative direction — this instrument may miss an undescribed
-    key, it may never invent one. A false positive here would send a lane to
-    delete a field the schema does describe.
+    which is the conservative direction — a walk built on it may miss a position,
+    it may never invent one. A false positive here would send a lane to delete a
+    field the schema does describe.
 
     `if` is deliberately not unioned (it is a condition, not a description);
     `then`/`else` are. `not` is skipped entirely.
@@ -492,80 +474,6 @@ def collect_findings(docs, validator) -> tuple[list[dict], int]:
         "first_document": first[(path, keyword)],
     } for path, keyword in sorted(counts)]
     return findings, errors
-
-
-# --------------------------------------------------------------------------
-# Species 2 — LEGAL-BUT-UNDESCRIBED.
-# --------------------------------------------------------------------------
-
-def _walk_undescribed(instance, subschemas: list[dict], root: dict,
-                      path: str, out: list[tuple[str, str]], depth: int) -> None:
-    if depth > MAX_INSTANCE_DEPTH:
-        raise InstrumentError(
-            f"document nesting exceeded {MAX_INSTANCE_DEPTH} at {path or '<root>'}"
-        )
-
-    if isinstance(instance, dict):
-        if all(member_silent(s) for s in subschemas):
-            return  # unconstrained by design — see member_silent
-        closed = any(s.get("additionalProperties") is False for s in subschemas)
-        # Only a CONSTRAINING value schema describes the extras. An open
-        # declaration carrying nothing but its reason (`{"description": ...}`)
-        # describes nothing, and treating it as a describer would silence the
-        # undescribed species at exactly the two open roots.
-        fallback: list[dict] = []
-        for s in subschemas:
-            extra = s.get("additionalProperties")
-            if isinstance(extra, dict) and constrains(extra):
-                fallback += applicable(extra, root)
-
-        for key in sorted(instance):
-            children: list[dict] = []
-            for s in subschemas:
-                declared = s.get("properties", {})
-                if key in declared:
-                    children += applicable(declared[key], root)
-                for pattern, sub in (s.get("patternProperties") or {}).items():
-                    if re.search(pattern, key):
-                        children += applicable(sub, root)
-            if children:
-                child_path = f"{path}.{key}" if path else key
-                _walk_undescribed(instance[key], children, root, child_path, out, depth + 1)
-            elif fallback:
-                child_path = f"{path}.{key}" if path else key
-                _walk_undescribed(instance[key], fallback, root, child_path, out, depth + 1)
-            elif closed:
-                # Rejected by a closed object: species 1 already owns it. Counting
-                # it here too would report one defect as two.
-                continue
-            else:
-                out.append((path or "<root>", key))
-
-    elif isinstance(instance, list):
-        for index, item in enumerate(instance):
-            children: list[dict] = []
-            for s in subschemas:
-                prefix = s.get("prefixItems")
-                if isinstance(prefix, list) and index < len(prefix):
-                    children += applicable(prefix[index], root)
-                elif isinstance(s.get("items"), dict):
-                    children += applicable(s["items"], root)
-            if children:
-                _walk_undescribed(item, children, root, f"{path}[]", out, depth + 1)
-
-
-def collect_undescribed(docs, schema: dict) -> list[dict]:
-    hits: Counter = Counter()
-    first: dict[tuple[str, str], str] = {}
-    for label, doc in docs:
-        found: list[tuple[str, str]] = []
-        _walk_undescribed(doc, applicable(schema, schema), schema, "", found, 0)
-        for entry in set(found):
-            hits[entry] += 1
-            first.setdefault(entry, label)
-    return [{"path": path, "key": key, "documents": hits[(path, key)],
-             "first_document": first[(path, key)]}
-            for path, key in sorted(hits)]
 
 
 # --------------------------------------------------------------------------
@@ -756,8 +664,8 @@ def collect_histogram_cap_violations(docs) -> list[dict]:
 # The members a cap binds are DECLARED in the schema, never enumerated here: each
 # position carries an `x-metalog-observed-text` annotation, a string position for a
 # value and a `propertyNames` subschema for a map's keys. A member the schema marks
-# tomorrow is checked on arrival. The walk is the undescribed walker's co-walk of
-# instance and schema, so it reaches a position exactly where the schema places one.
+# tomorrow is checked on arrival. The walk co-walks instance and schema through
+# `applicable()`, so it reaches a position exactly where the schema places one.
 #
 # The rule, from §2.6, decided from the member's UTF-8 bytes alone:
 #   over    — longer than the document's `max_text_bytes`. No capped member is.
@@ -1408,15 +1316,6 @@ def render(report: dict, stream) -> None:
           f"type.")
     w()
 
-    if report["undescribed"]:
-        w("LEGAL-BUT-UNDESCRIBED — permitted by an OPEN container, described by no "
-          "schema. NOT a conformance failure:")
-        for u in report["undescribed"]:
-            w(f"  {u['path']}.{u['key']} — {u['documents']}/{acc['documents']} "
-              f"documents · [{tag(u['key'])}] · first: {u['first_document']}")
-    else:
-        w("LEGAL-BUT-UNDESCRIBED — none. Every emitted member is described somewhere.")
-    w()
     if lead:
         w("[in SPEC.md] / [nowhere] is a LEAD, not a verdict — it asks whether the "
           "prose names the member as a member (a code span or a quoted key). "
@@ -1538,7 +1437,6 @@ def run(corpora, kind: str, schema_dir: Path, spec_text: str, check_formats: boo
         )
 
     findings, _ = collect_findings(docs, validator)
-    undescribed = collect_undescribed(docs, schema)
     cap_violations = sorted(
         collect_cap_violations(docs, derive_cap_pairs(schema))
         + collect_histogram_cap_violations(docs),
@@ -1550,7 +1448,7 @@ def run(corpora, kind: str, schema_dir: Path, spec_text: str, check_formats: boo
     window_violations, window_unjudged = (
         collect_window_violations(docs, validator)
         if governs_window_rule(schema) else ([], 0))
-    names = [n for f in findings for n in f["properties"]] + [u["key"] for u in undescribed]
+    names = [n for f in findings for n in f["properties"]]
 
     return {
         "corpus": corpus,
@@ -1568,7 +1466,6 @@ def run(corpora, kind: str, schema_dir: Path, spec_text: str, check_formats: boo
         "window_violations": window_violations,
         "window_unjudged": window_unjudged,
         "window_governed": governs_window_rule(schema),
-        "undescribed": undescribed,
         "spec_mentions": spec_mentions(names, spec_text),
         "verdict": "NONCONFORMANT" if (findings or cap_violations or text_cap_violations
                                        or witness_violations or window_violations)
@@ -1693,7 +1590,12 @@ def census_control() -> None:
 
 REQUIRED_CONTROLS = {
     "multi-document-section",       # forecloses green-BLIND on the sectioned form
-    "undescribed-false-positive",   # forecloses a walker that invents findings
+    "closure-spares-maps",          # forecloses a closure that also closed a MAP
+                                    # (§7): every position whose keys are data
+                                    # must still validate a conformant document
+    "closed-root-violation",        # forecloses can't-FAIL on §7's placement rule
+                                    # at the two document roots and the window
+                                    # objects that were open until 0.10.0
     "closed-object-violation",      # forecloses can't-FAIL on species 1
     "instrument-failure",           # forecloses a corrupt corpus reading as clean
     "declared-cap-violation",       # forecloses can't-FAIL on §8 clause 4
@@ -1718,7 +1620,8 @@ REQUIRED_CONTROLS = {
                                     # zero assumed for every scalar
     "witness-set-from-schema",      # forecloses a witness set read from the
                                     # DOCUMENT, which lets a producer manufacture a
-                                    # witness by inventing a member at an open root
+                                    # witness out of a member it carries, such as
+                                    # its own `extensions`
     "window-consistency-violation", # forecloses can't-FAIL on §2.2's cross-field
                                     # relations — the arm that decides the only
                                     # mechanically decidable part of §8 clause 2
@@ -1970,10 +1873,6 @@ def _tuples(findings):
             for f in findings]
 
 
-def _undescribed_tuples(entries):
-    return [(u["path"], u["key"], u["documents"]) for u in entries]
-
-
 def _cap_tuples(entries):
     return [(v["path"], v["cap"], v["declared"], v["actual"], v["documents"])
             for v in entries]
@@ -2137,7 +2036,6 @@ def selftest(schema_dir: Path, spec_text: str, stream) -> int:
                 "witness_unjudged": report["witness_unjudged"],
                 "window_violations": _window_tuples(report["window_violations"]),
                 "window_unjudged": report["window_unjudged"],
-                "undescribed": _undescribed_tuples(report["undescribed"]),
                 "first_documents": [f["first_document"] for f in report["findings"]],
             }
         except InstrumentError as exc:
@@ -2145,7 +2043,7 @@ def selftest(schema_dir: Path, spec_text: str, stream) -> int:
                    "cap_violations": None, "text_cap_violations": None,
                    "witness_violations": None,
                    "witness_unjudged": None, "window_violations": None,
-                   "window_unjudged": None, "undescribed": None,
+                   "window_unjudged": None,
                    "first_documents": None, "why": str(exc)}
 
         expected = {
@@ -2178,8 +2076,6 @@ def selftest(schema_dir: Path, spec_text: str, stream) -> int:
                                  if want["exit"] != 2 else None,
             "window_unjudged": want.get("window_unjudged", 0)
                                if want["exit"] != 2 else None,
-            "undescribed": [tuple(t) for t in want.get("undescribed", [])]
-                           if want["exit"] != 2 else None,
         }
         # Compared only where the manifest declares it: naming the document a
         # finding first appeared in is an ADDITIONAL assertion, demanded above
@@ -2247,8 +2143,6 @@ def main(argv=None) -> int:
                              "Needs the optional format validators from "
                              "requirements.txt and REFUSES to run (exit 2) without "
                              "them — a checker-less assertion would pass everything.")
-    parser.add_argument("--strict-undescribed", action="store_true",
-                        help="also exit 1 on legal-but-undescribed members")
     parser.add_argument("--json", action="store_true", help="machine-readable report")
     parser.add_argument("--selftest", action="store_true",
                         help="run the shipped fixtures and prove this validator can fail")
@@ -2297,8 +2191,6 @@ def main(argv=None) -> int:
     # exited 0. A tool whose printed verdict and whose exit code can disagree is
     # worse than one that only prints, because CI reads the number.
     if report["verdict"] == "NONCONFORMANT":
-        return 1
-    if args.strict_undescribed and report["undescribed"]:
         return 1
     return 0
 

@@ -4,9 +4,7 @@
     "title": "MetaLogDiff v0",
     "description": "Pair-wise difference between two MetaLog documents (SPEC §13).",
     "type": "object",
-    "additionalProperties": {
-        "description": "Open, and NOT by design: this root admits any member, including a bare vendor member §7 forbids beside the `extensions` container it grants, so an unknown key here validates and is reported legal-but-undescribed rather than rejected. Closing it is a breaking change under GOVERNANCE.md §2 and is not in this release."
-    },
+    "additionalProperties": false,
     "required": ["diff_version", "current", "previous", "comparison_outcome"],
     "properties": {
         "diff_version": {
@@ -26,9 +24,7 @@
                         "start": { "type": "string", "format": "date-time" },
                         "end": { "type": "string", "format": "date-time" }
                     },
-                    "additionalProperties": {
-                        "description": "Open, and NOT by design: this window object names `start` and `end` and admits anything else, while the document-level `window` (§2.2) is closed. Closing it is a breaking change under GOVERNANCE.md §2 and is not in this release."
-                    }
+                    "additionalProperties": false
                 },
                 "document_id": { "type": "string" }
             },
@@ -46,9 +42,7 @@
                         "start": { "type": "string", "format": "date-time" },
                         "end": { "type": "string", "format": "date-time" }
                     },
-                    "additionalProperties": {
-                        "description": "Open, and NOT by design: this window object names `start` and `end` and admits anything else, while the document-level `window` (§2.2) is closed. Closing it is a breaking change under GOVERNANCE.md §2 and is not in this release."
-                    }
+                    "additionalProperties": false
                 },
                 "document_id": { "type": "string" }
             },

@@ -49,7 +49,10 @@ delta across them, or omitting it without saying so, now violates, and a definit
 transition graph (§4.2), rules on every signal property one input cannot supply (§3.5.2, §13.1,
 §13.6, §13.7) and the reservoir and histogram caps declared in every document that keeps the block
 (§3.5, §3.7.2), which a producer building its graph otherwise, computing or silently dropping such a
-property, or declaring a cap only beside an emitted block, now violates.
+property, or declaring a cap only beside an emitted block, now violates, and a closed schema (§2,
+§7, §8 clause 1) that rejects a member this specification does not name at either document root,
+in any `window` object or in `provenance[].source`, where a producer's bare vendor member used to
+validate.
 It also adds optional members
 (`withheld_signals`, §13.2.2, `incomparable_signals`, §13.2.3, and `max_text_bytes` with the two
 histogram caps, §2.6 and §3.5), each additive on its own. MINOR bump: MAJOR stays `0`, so
@@ -81,9 +84,39 @@ implementation is the only producer and consumer. The RFC comes back at the v1.0
 freeze, or earlier the day a second implementation is listed. P1, P3 and P4 stay
 proposed; any of them that is taken lands as an editor change recorded here. **P3's item (f)**,
 the order-dependent `behavior.ngram_size`, is the first taken: see the §2.4 / §12.1 entry under
-*Changed*. The rest of P3 (the caps rule) stays proposed.
+*Changed*. **P1 is taken**: see the closure entry under *Changed*. The rest of P3 (the caps
+rule) and P4 stay proposed.
 
 ### Changed
+
+- **§2, §7, §8 — the schema is CLOSED: a member this specification does not name, outside
+  `extensions`, fails validation at every depth.** §7 has made `extensions` the only carrier of
+  non-standard members since v0.8.0, and the schema could not decide it where it mattered most:
+  both document roots, the `window` object of a `provenance` entry and of a `MetaLogDiff`'s two
+  inputs, and `provenance[].source` admitted any member, so a bare vendor member there validated
+  and the conformance tool could only report it as *legal-but-undescribed*, a report and not a
+  verdict. The reference implementation once wrote three vendor blocks bare at the document root
+  of every published evidence document, each validating with zero errors. Now every object
+  position states its rule in `additionalProperties` — **closed**, a **map** closed over its
+  values (`source.tags`, a cube coordinate, a `value_counts` map), or a **map whose values are
+  not yet constrained** with its reason (`attribution.sketch_params`) — and the six open
+  positions close. `provenance[].source` closes over the members of the document-level `source`
+  block, which both now reference as `$defs/source`; it was open only because it declared no
+  members, while §12.4's own example carries `service` and `host`. **§2** separates validation
+  from acceptance: a consumer still ignores unknown top-level members of a document it can
+  process, and an older validator rejecting a newer member is reporting a true fact. **§8**
+  clause 1 now decides §7's placement rule. **Conformance tool:** the *legal-but-undescribed*
+  species, its walker and `--strict-undescribed` are removed, because after closure the walker
+  could only report nothing; `undescribed/` is gone, its two fixtures now under `invalid/` and
+  `valid/`; the `undescribed-false-positive` control becomes `closure-spares-maps`, and
+  `closed-root-violation` is new. **Breaking** — a producer writing vendor data bare at either
+  root, inside a `provenance` or diff `window`, or inside `provenance[].source`, becomes
+  non-conformant, and must move it under a reverse-DNS key in `extensions`. A member this
+  specification **describes** is not vendor data and stays where it is: `run_outcome` and
+  `reservoir_delta` were adopted in v0.9.0 at the two roots, and relocating them would take a
+  standard member back out of the standard. Editor-merged under [`GOVERNANCE.md`](GOVERNANCE.md)
+  §2's 0.x rule. RFC #8, P1. Decision and alternatives:
+  [ADR 0011](adr/0011-the-schema-is-closed.md).
 
 - **§12.2 — `compose()` is commutative in BYTES: `compose(A, B)` and `compose(B, A)` are the same
   document, and §12.1 resolves every member the inputs disagree on by a rule over the values,
